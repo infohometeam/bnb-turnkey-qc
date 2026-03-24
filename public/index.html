@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BNB Turnkey QC — The Rise Collective</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #030608; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .container { text-align: center; max-width: 600px; padding: 40px; }
+    .logo { width: 64px; height: 64px; border-radius: 16px; background: linear-gradient(135deg, #6366f1, #8b5cf6); display: inline-flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; color: #fff; margin-bottom: 24px; }
+    h1 { font-size: 28px; font-weight: 800; margin-bottom: 8px; }
+    .sub { color: #64748b; font-size: 14px; margin-bottom: 32px; }
+    .status { background: #0a0e14; border: 1px solid #1a2030; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    .status h3 { font-size: 12px; color: #4b5563; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; }
+    .badge.ok { background: #052e16; color: #22c55e; border: 1px solid #166534; }
+    .badge.engine { background: #0c1a3d; color: #60a5fa; border: 1px solid #1e40af; }
+    .endpoints { text-align: left; font-size: 13px; color: #64748b; line-height: 2; }
+    .endpoints code { background: #111520; padding: 2px 8px; border-radius: 4px; color: #94a3b8; font-size: 12px; }
+    a { color: #818cf8; text-decoration: none; }
+    .note { margin-top: 24px; font-size: 12px; color: #374151; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">Q</div>
+    <h1>BNB Turnkey QC</h1>
+    <p class="sub">Sales Call Quality Assurance — The Rise Collective</p>
+
+    <div class="status">
+      <h3>System Status</h3>
+      <span class="badge ok" id="status">● Checking...</span>
+      <span class="badge engine" id="engine" style="margin-left: 8px">...</span>
+    </div>
+
+    <div class="status">
+      <h3>API Endpoints</h3>
+      <div class="endpoints">
+        <div><code>GET</code> <a href="/health">/health</a> — System health check</div>
+        <div><code>GET</code> <a href="/api/webhook/health">/api/webhook/health</a> — Webhook status</div>
+        <div><code>GET</code> <a href="/api/calls">/api/calls</a> — List all calls</div>
+        <div><code>GET</code> <a href="/api/analytics">/api/analytics</a> — Analytics data</div>
+        <div><code>GET</code> <a href="/api/queue/status">/api/queue/status</a> — Queue status</div>
+        <div><code>GET</code> <a href="/api/reps">/api/reps</a> — Rep roster</div>
+        <div><code>GET</code> <a href="/api/health">/api/health</a> — Transcript health</div>
+        <div><code>POST</code> /api/webhook?src=xxx&key=xxx — Receive calls</div>
+        <div><code>POST</code> <a href="#" onclick="fetch('/api/queue/process',{method:'POST'}).then(r=>r.json()).then(d=>alert(JSON.stringify(d)))">Process Queue</a></div>
+      </div>
+    </div>
+
+    <p class="note">
+      The React dashboard will be connected to these live API endpoints.<br>
+      For now, you can verify the backend is working by visiting the links above.<br>
+      Webhook URL for Fathom/Aloware will be shown on deploy.
+    </p>
+  </div>
+
+  <script>
+    fetch('/health').then(r => r.json()).then(d => {
+      document.getElementById('status').textContent = '● ' + d.status.toUpperCase();
+      document.getElementById('engine').textContent = 'Engine: ' + d.engine.toUpperCase();
+    }).catch(() => {
+      document.getElementById('status').textContent = '● OFFLINE';
+      document.getElementById('status').className = 'badge';
+      document.getElementById('status').style.cssText = 'background:#2a0a0a;color:#ef4444;border:1px solid #991b1b';
+    });
+  </script>
+</body>
+</html>
