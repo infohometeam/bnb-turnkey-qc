@@ -127,12 +127,13 @@ function migrate() {
     CREATE INDEX IF NOT EXISTS idx_calls_flagged ON calls(flagged);
   `);
 
-  // Seed reps (Andrew + Steven on Aloware, Matt + Kevin on Fathom)
+  // Seed reps (Closers on Fathom, Setters on shared Aloware)
   const insertRep = db.prepare('INSERT OR IGNORE INTO rep_roster (name,role,team,src_tag,color) VALUES (?,?,?,?,?)');
   insertRep.run('Matt','Closer','Turnkey - Closers','fathom-closers-1','#6366f1');
   insertRep.run('Kevin','Closer','Turnkey - Closers','fathom-closers-2','#8b5cf6');
   insertRep.run('Andrew','Setter','Turnkey - Setters','aloware-setters','#06b6d4');
   insertRep.run('Steven','Setter','Turnkey - Setters','aloware-setters-2','#10b981');
+  insertRep.run('Anurag','Setter','Turnkey - Setters','aloware-setters-3','#f59e0b');
 
   // Seed rubric v1
   const hasRubric = db.prepare('SELECT COUNT(*) as c FROM rubric_items').get();
