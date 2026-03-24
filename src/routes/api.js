@@ -178,6 +178,16 @@ router.get('/reps', (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Debug (raw webhook payloads) ────────────────────────────
+router.get('/debug/webhooks', (req, res) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT id, received_at, src_tag, base_source, raw_payload FROM webhook_debug ORDER BY id DESC LIMIT 10').all();
+    db.close();
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Health ──────────────────────────────────────────────────
 router.get('/health', (req, res) => {
   try {
