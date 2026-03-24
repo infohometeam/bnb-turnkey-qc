@@ -1,70 +1,442 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BNB Turnkey QC — The Rise Collective</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #030608; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-    .container { text-align: center; max-width: 600px; padding: 40px; }
-    .logo { width: 64px; height: 64px; border-radius: 16px; background: linear-gradient(135deg, #6366f1, #8b5cf6); display: inline-flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; color: #fff; margin-bottom: 24px; }
-    h1 { font-size: 28px; font-weight: 800; margin-bottom: 8px; }
-    .sub { color: #64748b; font-size: 14px; margin-bottom: 32px; }
-    .status { background: #0a0e14; border: 1px solid #1a2030; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-    .status h3 { font-size: 12px; color: #4b5563; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
-    .badge { display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; }
-    .badge.ok { background: #052e16; color: #22c55e; border: 1px solid #166534; }
-    .badge.engine { background: #0c1a3d; color: #60a5fa; border: 1px solid #1e40af; }
-    .endpoints { text-align: left; font-size: 13px; color: #64748b; line-height: 2; }
-    .endpoints code { background: #111520; padding: 2px 8px; border-radius: 4px; color: #94a3b8; font-size: 12px; }
-    a { color: #818cf8; text-decoration: none; }
-    .note { margin-top: 24px; font-size: 12px; color: #374151; line-height: 1.6; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>BNB Turnkey QC — The Rise Collective</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--f:'Outfit',sans-serif;--m:'IBM Plex Mono',monospace;--bg:#030608;--card:#0a0e14;--border:#1a2030;--t1:#e2e8f0;--t2:#94a3b8;--t3:#4b5563;--t4:#374151;--t5:#1e293b}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--f);background:var(--bg);color:var(--t1);min-height:100vh;display:flex}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#1a2030;border-radius:3px}
+button{font-family:var(--f)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px}
+.stat-card{padding:16px 20px}
+.stat-label{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:10px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:1px;font-family:var(--m)}
+.stat-value{font-size:26px;font-weight:900;font-family:var(--m)}
+.stat-sub{font-size:10px;color:var(--t4);margin-top:4px}
+.badge{display:inline-block;padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700;font-family:var(--m);letter-spacing:.5px}
+.section-head{font-size:11px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:1px;font-family:var(--m);margin-bottom:16px}
+.btn{padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--t2);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}
+.btn:hover{background:#111520;color:var(--t1)}
+.btn-primary{background:#6366f1;border-color:#6366f1;color:#fff}
+.btn-primary:hover{background:#4f46e5}
+.btn-green{background:#052e16;border-color:#166534;color:#22c55e}
+.btn-red{background:#2a0a0a;border-color:#991b1b;color:#ef4444}
+.grid{display:grid;gap:12px}
+.grid-stats{grid-template-columns:repeat(auto-fit,minmax(165px,1fr))}
+.flex-col{display:flex;flex-direction:column}
+.gap-24{gap:24px}.gap-20{gap:20px}.gap-16{gap:16px}.gap-12{gap:12px}.gap-8{gap:8px}
+aside{width:220px;flex-shrink:0;background:#050910;border-right:1px solid #111520;display:flex;flex-direction:column;transition:width .2s}
+aside.collapsed{width:60px}
+nav button{display:flex;align-items:center;gap:11px;width:100%;padding:9px 14px;background:transparent;border:none;border-radius:8px;cursor:pointer;color:var(--t4);font-size:12px;font-weight:500;transition:all .15s;border-left:3px solid transparent;text-align:left}
+nav button.active{font-weight:800;border-left-color:currentColor}
+main{flex:1;overflow:auto;padding:28px 32px}
+.max-w{max-width:1080px;margin:0 auto}
+select{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:6px 12px;color:var(--t1);font-size:11px;font-family:var(--f);cursor:pointer}
+.call-row{display:grid;grid-template-columns:52px 1fr 110px 70px 70px 85px;gap:6px;padding:10px 18px;cursor:pointer;border-bottom:1px solid #060a10;transition:background .1s}
+.call-row:hover{background:var(--card)}
+.period-toggle{display:flex;gap:2px;background:var(--card);border-radius:8px;padding:3px;border:1px solid var(--border)}
+.period-toggle button{padding:6px 14px;border-radius:6px;border:none;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--f);background:transparent;color:var(--t3)}
+.period-toggle button.active{background:#1e293b;color:var(--t1)}
+.tab-btn{display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;border:2px solid var(--border);cursor:pointer;background:transparent;color:var(--t3);font-size:12px;font-weight:600;transition:all .2s}
+.tab-btn.active{color:#fff;font-weight:800}
+@media(max-width:768px){aside{display:none}main{padding:16px}.call-row{grid-template-columns:40px 1fr 80px}.grid-stats{grid-template-columns:repeat(2,1fr)}}
+</style>
 </head>
 <body>
-  <div class="container">
-    <div class="logo">Q</div>
-    <h1>BNB Turnkey QC</h1>
-    <p class="sub">Sales Call Quality Assurance — The Rise Collective</p>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
+<script type="text/babel">
+const {useState,useEffect,useCallback,useMemo} = React;
+const API = "/api";
 
-    <div class="status">
-      <h3>System Status</h3>
-      <span class="badge ok" id="status">● Checking...</span>
-      <span class="badge engine" id="engine" style="margin-left: 8px">...</span>
+// ── API Helper ──────────────────────────────────────────────
+function useApi(path, deps=[]) {
+  const [data,setData]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const reload=useCallback(()=>{
+    setLoading(true);
+    fetch(API+path).then(r=>r.json()).then(setData).catch(e=>console.error(e)).finally(()=>setLoading(false));
+  },[path]);
+  useEffect(()=>{reload()},[reload,...deps]);
+  return {data,loading,reload};
+}
+async function postApi(path){const r=await fetch(API+path,{method:"POST",headers:{"Content-Type":"application/json"}});return r.json();}
+
+// ── Helpers ─────────────────────────────────────────────────
+const fmt=d=>d?new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"—";
+const fmtF=d=>d?new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}):"—";
+const fmtD=s=>{if(!s&&s!==0)return"—";const m=Math.floor(s/60);return`${m}m ${String(s%60).padStart(2,"0")}s`};
+const avg=a=>{const f=a.filter(v=>v!=null&&isFinite(v));return f.length?+(f.reduce((a,b)=>a+b,0)/f.length).toFixed(1):0};
+const sClr=s=>{if(s==null)return"#4b5563";if(s>=8)return"#34d399";if(s>=6)return"#fbbf24";return"#ef4444"};
+const stClr=s=>({SCORED:["#052e16","#22c55e","#166534"],NEW:["#0c1a3d","#60a5fa","#1e40af"],REQC:["#1a0c3d","#a78bfa","#5b21b6"],ERROR:["#2a0a0a","#ef4444","#991b1b"],WAIT_RETRY_FULL:["#2a1a00","#f59e0b","#92400e"],WAIT_TRANSCRIPT:["#2a1a00","#f59e0b","#92400e"],PAUSED_DAILY_LIMIT:["#111","#6b7280","#374151"],SKIP_SHORT:["#111","#4b5563","#1f2937"]}[s]||["#0c1a3d","#60a5fa","#1e40af"]);
+const RC={"Matt":"#6366f1","Kevin":"#8b5cf6","Andrew":"#06b6d4","Steven":"#10b981"};
+const CATS=["discovery","qualification","pitch","objections","close_next_step"];
+const CL={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",objections:"Objections",close_next_step:"Close / Next Step"};
+
+// ── Small Components ────────────────────────────────────────
+function Badge({status}){const[bg,fg,bd]=stClr(status);return <span className="badge" style={{background:bg,color:fg,border:`1px solid ${bd}`}}>{status}</span>}
+
+function ScoreRing({value,size=44,sw=3}){
+  const c=sClr(value),r=(size-sw)/2,ci=2*Math.PI*r,p=value!=null?(value/10)*ci:0;
+  return <svg width={size} height={size} style={{transform:"rotate(-90deg)",flexShrink:0}}><circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1e293b" strokeWidth={sw}/>{value!=null&&<circle cx={size/2} cy={size/2} r={r} fill="none" stroke={c} strokeWidth={sw} strokeDasharray={ci} strokeDashoffset={ci-p} strokeLinecap="round" style={{transition:"stroke-dashoffset .7s"}}/>}<text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central" style={{transform:"rotate(90deg)",transformOrigin:"center",fontSize:size*.3,fontWeight:800,fill:c,fontFamily:"var(--m)"}}>{value!=null?value:"—"}</text></svg>
+}
+
+function MiniBar({value,max=10}){const c=sClr(value);return<div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:5,background:"#1e293b",borderRadius:3,overflow:"hidden"}}><div style={{width:`${((value||0)/max)*100}%`,height:"100%",background:c,borderRadius:3,transition:"width .5s"}}/></div><span style={{fontSize:11,fontWeight:700,color:c,fontFamily:"var(--m)",minWidth:28,textAlign:"right"}}>{value||"—"}</span></div>}
+
+function Pill({label,ok}){return<span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 10px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"var(--m)",background:ok?"#052e16":"#2a0a0a",color:ok?"#34d399":"#ef4444",border:`1px solid ${ok?"#166534":"#991b1b"}`}}>{ok?"✓":"✗"} {label}</span>}
+
+function PeriodToggle({period,onChange}){return<div className="period-toggle">{["day","week","month"].map(p=><button key={p} className={period===p?"active":""} onClick={()=>onChange(p)}>{p==="day"?"Today":p==="week"?"7 Days":"30 Days"}</button>)}</div>}
+
+// ── Dashboard ───────────────────────────────────────────────
+function Dashboard(){
+  const[period,setPeriod]=useState("week");
+  const{data}=useApi(`/analytics?period=${period}`,[period]);
+  const{data:qd}=useApi("/queue/status");
+  const{data:fd}=useApi(`/calls?flagged=true&period=${period}&limit=5`,[period]);
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading dashboard...</div>;
+  const s=data.stats||{};
+  return<div className="flex-col gap-24">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"} engine</p></div>
+      <PeriodToggle period={period} onChange={setPeriod}/>
     </div>
+    <div className="grid grid-stats">
+      <div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div><div className="stat-sub">Awaiting QC</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Duration</div><div className="stat-value" style={{color:"#e2e8f0"}}>{fmtD(s.avg_duration)}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>🎙</span> Avg Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div>
+    </div>
+    {data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}
+    {fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Recent Flagged</div>{fd.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid #111520"}}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}
+    {(!data.repStats||data.repStats.length===0)&&(s.scored||0)===0&&<div className="card" style={{padding:40,textAlign:"center"}}><div style={{fontSize:40,marginBottom:16}}>📞</div><div style={{fontSize:16,fontWeight:700,color:"#64748b",marginBottom:8}}>No calls scored yet</div><div style={{fontSize:13,color:"#374151",lineHeight:1.6}}>Once Fathom and Aloware webhooks are connected and calls start coming in, scores will appear here automatically. The queue processes every 2 minutes.</div></div>}
+  </div>
+}
 
-    <div class="status">
-      <h3>API Endpoints</h3>
-      <div class="endpoints">
-        <div><code>GET</code> <a href="/health">/health</a> — System health check</div>
-        <div><code>GET</code> <a href="/api/webhook/health">/api/webhook/health</a> — Webhook status</div>
-        <div><code>GET</code> <a href="/api/calls">/api/calls</a> — List all calls</div>
-        <div><code>GET</code> <a href="/api/analytics">/api/analytics</a> — Analytics data</div>
-        <div><code>GET</code> <a href="/api/queue/status">/api/queue/status</a> — Queue status</div>
-        <div><code>GET</code> <a href="/api/reps">/api/reps</a> — Rep roster</div>
-        <div><code>GET</code> <a href="/api/health">/api/health</a> — Transcript health</div>
-        <div><code>POST</code> /api/webhook?src=xxx&key=xxx — Receive calls</div>
-        <div><code>POST</code> <a href="#" onclick="fetch('/api/queue/process',{method:'POST'}).then(r=>r.json()).then(d=>alert(JSON.stringify(d)))">Process Queue</a></div>
+// ── Calls List ──────────────────────────────────────────────
+function CallsList({onSelect}){
+  const[statusF,setStatusF]=useState("ALL");
+  const[repF,setRepF]=useState("ALL");
+  const q=`/calls?limit=100${statusF!=="ALL"?"&status="+statusF:""}${repF!=="ALL"?"&rep="+repF:""}`;
+  const{data,reload}=useApi(q,[statusF,repF]);
+  const{data:reps}=useApi("/reps");
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  return<div className="flex-col gap-20">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>All Calls</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{data.total} calls</p></div>
+      <div style={{display:"flex",gap:8}}>
+        <select value={statusF} onChange={e=>setStatusF(e.target.value)}><option value="ALL">All Statuses</option>{["SCORED","NEW","REQC","ERROR","WAIT_RETRY_FULL","WAIT_TRANSCRIPT","SKIP_SHORT","PAUSED_DAILY_LIMIT"].map(s=><option key={s}>{s}</option>)}</select>
+        <select value={repF} onChange={e=>setRepF(e.target.value)}><option value="ALL">All Reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name} ({r.role})</option>)}</select>
+        <button className="btn" onClick={reload}>↻ Refresh</button>
       </div>
     </div>
-
-    <p class="note">
-      The React dashboard will be connected to these live API endpoints.<br>
-      For now, you can verify the backend is working by visiting the links above.<br>
-      Webhook URL for Fathom/Aloware will be shown on deploy.
-    </p>
+    <div className="card" style={{overflow:"hidden"}}>
+      <div style={{display:"grid",gridTemplateColumns:"52px 1fr 110px 70px 70px 85px",gap:6,padding:"10px 18px",borderBottom:"1px solid #111520"}}>{["","Call","Status","Dur","Agent%","Date"].map(h=><span key={h} style={{fontSize:9,fontWeight:700,color:"#2a3040",textTransform:"uppercase",letterSpacing:1,fontFamily:"var(--m)"}}>{h}</span>)}</div>
+      <div style={{maxHeight:500,overflowY:"auto"}}>
+        {data.calls.length===0&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>No calls match filters</div>}
+        {data.calls.map(c=><div key={c.id} className="call-row" onClick={()=>onSelect(c)} style={{background:c.flagged?"rgba(245,158,11,.03)":"transparent"}}>
+          <ScoreRing value={c.overall_score_adj} size={30} sw={2}/>
+          <div style={{minWidth:0}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} <span style={{color:"#1e293b"}}>→</span> {c.client_name||"Unknown"}</div><div style={{fontSize:10,color:"#2a3040",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.source}</div></div>
+          <Badge status={c.status}/>
+          <span style={{fontSize:11,color:"#4b5563",fontFamily:"var(--m)"}}>{fmtD(c.call_duration_sec)}</span>
+          <span style={{fontSize:11,color:sClr(c.agent_talk_pct>80||c.agent_talk_pct<20?3:8),fontFamily:"var(--m)"}}>{c.agent_talk_pct!=null?c.agent_talk_pct+"%":"—"}</span>
+          <span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span>
+        </div>)}
+      </div>
+    </div>
   </div>
+}
 
-  <script>
-    fetch('/health').then(r => r.json()).then(d => {
-      document.getElementById('status').textContent = '● ' + d.status.toUpperCase();
-      document.getElementById('engine').textContent = 'Engine: ' + d.engine.toUpperCase();
-    }).catch(() => {
-      document.getElementById('status').textContent = '● OFFLINE';
-      document.getElementById('status').className = 'badge';
-      document.getElementById('status').style.cssText = 'background:#2a0a0a;color:#ef4444;border:1px solid #991b1b';
-    });
-  </script>
+// ── Call Detail ──────────────────────────────────────────────
+function CallDetail({call:c,onBack}){
+  const[rescoring,setRescoring]=useState(false);
+  async function handleReqc(){setRescoring(true);await postApi(`/calls/${c.id}/reqc`);alert("Marked for re-score. Will process within 2 minutes.");setRescoring(false);}
+  if(!c)return null;
+  return<div className="flex-col gap-20">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><button className="btn" onClick={onBack}>← Back</button><div style={{display:"flex",gap:8}}><button className="btn-green btn" onClick={handleReqc} disabled={rescoring}>{rescoring?"...":"↻ Re-score"}</button></div></div>
+    <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+      <ScoreRing value={c.overall_score_adj} size={72} sw={4.5}/>
+      <div><h2 style={{fontSize:22,fontWeight:900,margin:0}}>{c.rep_name} → {c.client_name||"Unknown"}</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{fmtF(c.received_at)} · {c.source} · {fmtD(c.call_duration_sec)}</p>
+        <div style={{display:"flex",gap:8,marginTop:8}}><Badge status={c.status}/>{c.flagged&&<span className="badge" style={{background:"#2a1a00",color:"#f59e0b",border:"1px solid #92400e"}}>⚠ FLAGGED</span>}</div>
+      </div>
+    </div>
+    {c.audio_url&&<div className="card" style={{padding:16}}><div className="section-head" style={{marginBottom:8}}>Call Playback</div><a href={c.audio_url} target="_blank" rel="noopener" className="btn btn-primary" style={{textDecoration:"none"}}>▶ Open Recording</a><span style={{fontSize:11,color:"#374151",marginLeft:12}}>Opens in Fathom/Aloware</span></div>}
+    {c.quick_summary&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>Summary</div><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.7}}>{c.quick_summary}</p></div>}
+    <div className="grid grid-stats">
+      <div className="card stat-card"><div className="stat-label"><span>⏱</span> Duration</div><div className="stat-value" style={{fontSize:20}}>{fmtD(c.call_duration_sec)}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{fontSize:20,color:c.agent_talk_pct>75||c.agent_talk_pct<20?"#ef4444":"#22c55e"}}>{c.agent_talk_pct!=null?c.agent_talk_pct+"%":"—"}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>👤</span> Contact Talk</div><div className="stat-value" style={{fontSize:20}}>{c.contact_talk_pct!=null?c.contact_talk_pct+"%":"—"}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>◉</span> Raw Score</div><div className="stat-value" style={{fontSize:20,color:sClr(c.overall_score)}}>{c.overall_score??"—"}</div></div>
+    </div>
+    {c.category_scores&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:14}}>Category Scores</div>{CATS.map(cat=><div key={cat} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontSize:11,color:"#64748b",fontWeight:600,width:100}}>{CL[cat]}</span><div style={{flex:1}}><MiniBar value={c.category_scores[cat]}/></div></div>)}</div>}
+    {c.pass_fail&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}><Pill label="Next Step" ok={c.pass_fail.clear_next_step}/><Pill label="Offer Explained" ok={c.pass_fail.explained_offer}/><Pill label="Qualified Fit" ok={c.pass_fail.qualified_investor_fit}/></div>}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+      {c.strengths?.length>0&&<div className="card" style={{padding:18,background:"#041a0e",borderColor:"#166534"}}><div style={{fontSize:10,fontWeight:700,color:"#22c55e",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>✦ Strengths</div>{c.strengths.map((s,i)=><div key={i} style={{fontSize:12,color:"#a7f3d0",lineHeight:1.7}}>• {s}</div>)}</div>}
+      {c.improvements?.length>0&&<div className="card" style={{padding:18,background:"#1a0a0a",borderColor:"#991b1b"}}><div style={{fontSize:10,fontWeight:700,color:"#ef4444",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>△ Improvements</div>{c.improvements.map((s,i)=><div key={i} style={{fontSize:12,color:"#fca5a5",lineHeight:1.7}}>• {s}</div>)}</div>}
+    </div>
+    {c.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>🎯 Coaching Notes</div><p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7}}>{c.coaching_notes}</p></div>}
+    {c.next_step_text&&<div className="card" style={{padding:16,background:"#0c1a3d",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,textTransform:"uppercase",letterSpacing:1,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
+    {c.score_adjust_notes&&<div style={{fontSize:11,color:"#374151",marginTop:8}}>Score adjustments: {c.score_adjust_notes}</div>}
+  </div>
+}
+
+// ── Queue ────────────────────────────────────────────────────
+function QueuePage(){
+  const{data,reload}=useApi("/queue/status");
+  const{data:calls,reload:reloadCalls}=useApi("/calls?status=NEW&limit=50");
+  const{data:errors}=useApi("/calls?status=ERROR&limit=20");
+  const{data:waiting}=useApi("/calls?status=WAIT_TRANSCRIPT&limit=20");
+  const[processing,setProcessing]=useState(false);
+  const[retrying,setRetrying]=useState(false);
+  async function handleProcess(){setProcessing(true);const r=await postApi("/queue/process?max=5");alert(`Processed ${r.processed||0} calls`);reload();reloadCalls();setProcessing(false);}
+  async function handleRetryAll(){setRetrying(true);const r=await postApi("/queue/retry-all");alert(`Retried ${r.retriedCount||0} calls`);reload();reloadCalls();setRetrying(false);}
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  const d=data.daily||{};
+  return<div className="flex-col gap-24">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Queue Monitor</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>Live processing status</p></div>
+      <div style={{display:"flex",gap:8}}><button className="btn btn-primary" onClick={handleProcess} disabled={processing}>{processing?"Processing...":"▶ Process Now"}</button><button className="btn btn-green" onClick={handleRetryAll} disabled={retrying}>{retrying?"...":"↻ Retry All Failed"}</button></div>
+    </div>
+    <div className="card" style={{padding:"16px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:10,height:10,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 10px #22c55e55"}}/><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{data.engine?.toUpperCase()} Engine</span></div>
+      <div style={{display:"flex",gap:20}}>
+        <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:"#22c55e",fontFamily:"var(--m)"}}>{d.full_qc_used||0}</div><div style={{fontSize:9,color:"#374151",textTransform:"uppercase"}}>Today</div></div>
+        <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:"#60a5fa",fontFamily:"var(--m)"}}>${d.est_cost_usd||"0.00"}</div><div style={{fontSize:9,color:"#374151",textTransform:"uppercase"}}>Est. Cost</div></div>
+      </div>
+    </div>
+    <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))"}}>
+      {(data.queue||[]).map(q=>{const[bg,fg,bd]=stClr(q.status);return<div key={q.status} style={{background:bg,border:`1px solid ${bd}`,borderRadius:10,padding:"14px 12px",textAlign:"center"}}><div style={{fontSize:22,fontWeight:900,color:fg,fontFamily:"var(--m)"}}>{q.count}</div><div style={{fontSize:9,color:fg,opacity:.7,fontWeight:600,fontFamily:"var(--m)"}}>{q.status.replace(/_/g," ")}</div></div>})}
+    </div>
+    {[{title:"Queued",items:calls?.calls},{title:"Errors",items:errors?.calls},{title:"Waiting for Transcript",items:waiting?.calls}].map(({title,items})=>items?.length>0&&<div key={title} className="card" style={{overflow:"hidden"}}><div style={{padding:"14px 20px",borderBottom:"1px solid #111520"}}><span className="section-head" style={{marginBottom:0}}>{title} ({items.length})</span></div><div style={{maxHeight:300,overflowY:"auto"}}>{items.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 20px",borderBottom:"1px solid #060a10"}}><Badge status={c.status}/><span style={{fontSize:13,fontWeight:600,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name||"Unknown"}</span>{c.error&&<span style={{flex:1,fontSize:10,color:"#ef4444",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={c.error}>{c.error.slice(0,60)}</span>}<span style={{fontSize:10,color:"#1e293b"}}>{fmt(c.received_at)}</span></div>)}</div></div>)}
+  </div>
+}
+
+// ── Analytics ────────────────────────────────────────────────
+function AnalyticsPage(){
+  const[period,setPeriod]=useState("week");
+  const{data}=useApi(`/analytics?period=${period}`,[period]);
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  const s=data.stats||{};
+  return<div className="flex-col gap-24">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Analytics</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{s.scored||0} scored calls</p></div>
+      <PeriodToggle period={period} onChange={setPeriod}/>
+    </div>
+    <div className="grid grid-stats">
+      <div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Duration</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>👤</span> Contact Talk</div><div className="stat-value">{s.avg_contact_talk?s.avg_contact_talk+"%":"—"}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div>
+    </div>
+    {data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Comparison</div><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Rep","Role","Calls","Avg Score","Avg Duration","Agent Talk%","Flagged"].map(h=><th key={h} style={{textAlign:"left",padding:"8px 10px",fontSize:10,color:"#2a3040",fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #111520",fontFamily:"var(--m)"}}>{h}</th>)}</tr></thead><tbody>{data.repStats.map(r=><tr key={r.rep_name}><td style={{padding:10,fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:RC[r.rep_name],marginRight:8}}/>{r.rep_name}</td><td style={{padding:10,fontSize:12,color:"#4b5563"}}>{r.role}</td><td style={{padding:10,fontSize:12,color:"#4b5563",fontFamily:"var(--m)"}}>{r.call_count}</td><td style={{padding:10,fontSize:14,fontWeight:800,color:sClr(r.avg_score),fontFamily:"var(--m)"}}>{r.avg_score}</td><td style={{padding:10,fontSize:12,color:"#4b5563",fontFamily:"var(--m)"}}>{fmtD(r.avg_duration)}</td><td style={{padding:10,fontSize:12,color:r.avg_agent_talk>70?"#ef4444":"#4b5563",fontFamily:"var(--m)"}}>{r.avg_agent_talk?r.avg_agent_talk+"%":"—"}</td><td style={{padding:10,fontSize:12,color:"#f59e0b",fontFamily:"var(--m)"}}>{r.flagged_count||0}</td></tr>)}</tbody></table></div>}
+  </div>
+}
+
+// ── Coaching ─────────────────────────────────────────────────
+function CoachingPage(){
+  const[period,setPeriod]=useState("week");
+  const{data:reps}=useApi("/reps");
+  const[tab,setTab]=useState("team");
+  const roleFilter=tab==="closers"?"&role=Closer":tab==="setters"?"&role=Setter":tab.startsWith("rep:")?`&rep=${tab.split(":")[1]}`:"";
+  const{data}=useApi(`/calls?status=SCORED&period=${period}&limit=50${roleFilter}`,[period,tab]);
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  const calls=data.calls||[];
+  const avgScore=avg(calls.map(c=>c.overall_score_adj));
+  const catAvgs=Object.fromEntries(CATS.map(cat=>[cat,avg(calls.map(c=>c.category_scores?.[cat]))]));
+  const sorted=Object.entries(catAvgs).sort((a,b)=>a[1]-b[1]);
+  const weakest=sorted[0],strongest=sorted[sorted.length-1];
+  const impFreq={};calls.forEach(c=>(c.improvements||[]).forEach(i=>{impFreq[i]=(impFreq[i]||0)+1}));
+  const topImps=Object.entries(impFreq).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  const TABS=[{id:"team",label:"Team Overall"},{id:"closers",label:"Closers"},{id:"setters",label:"Setters"},...(reps||[]).map(r=>({id:`rep:${r.name}`,label:r.name,role:r.role}))];
+
+  return<div className="flex-col gap-24">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Coaching</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>Performance trends & insights</p></div>
+      <PeriodToggle period={period} onChange={setPeriod}/>
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{TABS.map(t=><button key={t.id} className={`tab-btn${tab===t.id?" active":""}`} onClick={()=>setTab(t.id)} style={tab===t.id?{background:RC[t.label]||"#f59e0b",borderColor:RC[t.label]||"#f59e0b"}:{}}>{t.label}{t.role&&<span style={{opacity:.6,fontSize:10}}> · {t.role}</span>}</button>)}</div>
+    <div className="grid" style={{gridTemplateColumns:"1fr 1fr 1fr"}}>
+      <div className="card stat-card"><div className="stat-label"><span>📊</span> Scored</div><div className="stat-value" style={{color:"#60a5fa"}}>{calls.length}</div></div>
+      {weakest&&weakest[1]>0&&<div className="card stat-card" style={{background:"#1a0a0a",borderColor:"#991b1b"}}><div style={{fontSize:10,color:"#ef4444",fontWeight:700,textTransform:"uppercase",letterSpacing:1,fontFamily:"var(--m)",marginBottom:4}}>⚡ Focus Area</div><div style={{fontSize:20,fontWeight:900,color:"#fca5a5"}}>{CL[weakest[0]]}</div><div style={{fontSize:12,color:"#ef4444",opacity:.7}}>Avg: {weakest[1]}/10</div></div>}
+      {strongest&&strongest[1]>0&&<div className="card stat-card" style={{background:"#041a0e",borderColor:"#166534"}}><div style={{fontSize:10,color:"#22c55e",fontWeight:700,textTransform:"uppercase",letterSpacing:1,fontFamily:"var(--m)",marginBottom:4}}>✦ Strongest</div><div style={{fontSize:20,fontWeight:900,color:"#a7f3d0"}}>{CL[strongest[0]]}</div><div style={{fontSize:12,color:"#22c55e",opacity:.7}}>Avg: {strongest[1]}/10</div></div>}
+    </div>
+    {calls.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Category Averages</div>{CATS.map(cat=><div key={cat} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontSize:11,color:"#64748b",fontWeight:600,width:100}}>{CL[cat]}</span><div style={{flex:1}}><MiniBar value={catAvgs[cat]}/></div></div>)}</div>}
+    {topImps.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Recurring Improvements</div>{topImps.map(([imp,ct],i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#060a10",borderRadius:8,border:"1px solid #111520",marginBottom:8}}><span style={{fontSize:18,fontWeight:900,color:"#ef4444",fontFamily:"var(--m)",width:28,textAlign:"center",opacity:.5}}>{ct}×</span><span style={{fontSize:13,color:"#94a3b8"}}>{imp}</span></div>)}</div>}
+    {calls.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Coaching Notes</div>{calls.slice(0,8).filter(c=>c.coaching_notes).map(c=><div key={c.id} style={{padding:"14px 16px",background:"#060a10",borderRadius:10,border:"1px solid #111520",marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:"#64748b"}}>{c.rep_name} → {c.client_name||"Unknown"}</span><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span><ScoreRing value={c.overall_score_adj} size={26} sw={2}/></div></div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.7}}>{c.coaching_notes}</div>{c.improvements?.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>{c.improvements.map((imp,j)=><span key={j} style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:"#1a0a0a",color:"#fca5a5",border:"1px solid #991b1b"}}>△ {imp}</span>)}</div>}</div>)}</div>}
+  </div>
+}
+
+// ── Health ───────────────────────────────────────────────────
+function HealthPage(){
+  const{data,reload}=useApi("/health");
+  const[retrying,setRetrying]=useState(false);
+  async function handleRetry(){setRetrying(true);await postApi("/queue/retry-all");reload();setRetrying(false);}
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  return<div className="flex-col gap-24">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Transcript Health</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>Auto-fix · diagnose · prevent duplicates</p></div><button className="btn btn-green" onClick={handleRetry} disabled={retrying}>{retrying?"...":"↻ Retry All Issues"}</button></div>
+    <div className="grid grid-stats">
+      <div className="card stat-card"><div className="stat-label"><span>♥</span> Health</div><div className="stat-value" style={{color:data.healthScore>90?"#22c55e":data.healthScore>70?"#f59e0b":"#ef4444"}}>{data.healthScore}%</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>◉</span> Missing</div><div className="stat-value" style={{color:data.missing>0?"#f97316":"#22c55e"}}>{data.missing||0}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>✗</span> Errors</div><div className="stat-value" style={{color:data.errors>0?"#ef4444":"#22c55e"}}>{data.errors||0}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>✓</span> Scored</div><div className="stat-value" style={{color:"#22c55e"}}>{data.scored||0}</div></div>
+    </div>
+    <div className="card" style={{padding:24}}><div className="section-head">Automated Safeguards</div>{[
+      {name:"Duplicate Detection",desc:"SHA-256 hash on source ID + URL + transcript. Blocks re-ingestion.",icon:"🛡",active:true},
+      {name:"Transcript Retry Queue",desc:"Calls without transcript held in WAIT_TRANSCRIPT. Auto-retried.",icon:"🔄",active:true},
+      {name:"Andrew/Steven Detection",desc:"Auto-detects which setter made the call from shared Aloware account.",icon:"👥",active:true},
+      {name:"Smart Transcript Slicing",desc:"Keyword-density scanning preserves important middle content for long closer calls.",icon:"✂️",active:true},
+      {name:"JSON Parse Recovery",desc:"Strips markdown, finds boundaries, retries up to 5 times on parse failure.",icon:"🔧",active:true},
+      {name:"Auto-Retry (every 2 min)",desc:"Failed calls automatically retried with exponential backoff.",icon:"⏱",active:true},
+    ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#060a10",borderRadius:10,border:"1px solid #111520",marginBottom:8}}><span style={{fontSize:20}}>{s.icon}</span><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{s.name}</div><div style={{fontSize:11,color:"#374151"}}>{s.desc}</div></div><span style={{fontSize:10,fontWeight:700,color:"#22c55e",fontFamily:"var(--m)",padding:"3px 10px",background:"#052e16",borderRadius:5,border:"1px solid #166534"}}>ACTIVE</span></div>)}</div>
+  </div>
+}
+
+// ── About / SOP ─────────────────────────────────────────────
+function AboutPage(){
+  return<div className="flex-col gap-24" style={{maxWidth:800}}>
+    <h2 style={{fontSize:24,fontWeight:900,margin:0}}>About BNB Turnkey QC</h2>
+    <div className="card" style={{padding:24}}><div className="section-head">What Is This?</div><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.8}}>BNB Turnkey QC is an AI-powered quality assurance system built for the BNB Turnkey sales team at The Rise Collective. Every call made by setters (Aloware) and closers (Fathom) is automatically transcribed, scored against our sales rubric, and analyzed for coaching opportunities.</p><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.8,marginTop:12}}>The system evaluates five categories — Discovery, Qualification, Pitch, Objection Handling, and Close/Next Step — producing a detailed scorecard with coaching notes, strengths, improvements, and flags for calls that need review.</p></div>
+    <div className="card" style={{padding:24}}><div className="section-head">How It Works</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.8}}><p>1. A rep finishes a call on Fathom (closers) or Aloware (setters).</p><p>2. The platform transcribes the call and sends it to this system via webhook.</p><p>3. The system parses the payload, extracts metrics (duration, talk %), identifies the rep and client, and queues it for scoring.</p><p>4. Every 2 minutes, the queue processor picks up unscored calls, builds a smart prompt with our BNB-specific rubric, and sends it to the AI engine for evaluation.</p><p>5. The AI returns scores, coaching notes, and flags. Results appear in the dashboard immediately.</p></div></div>
+    <div className="card" style={{padding:24}}><div className="section-head">Sales Team</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{[{name:"Matt",role:"Closer",source:"Fathom"},{name:"Kevin",role:"Closer",source:"Fathom"},{name:"Andrew",role:"Setter",source:"Aloware"},{name:"Steven",role:"Setter",source:"Aloware"}].map(r=><div key={r.name} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#060a10",borderRadius:10,border:"1px solid #111520"}}><div style={{width:36,height:36,borderRadius:10,background:RC[r.name],display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.name[0]}</div><div><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.name}</div><div style={{fontSize:11,color:"#374151"}}>{r.role} · {r.source}</div></div></div>)}</div></div>
+    <div className="card" style={{padding:24}}><div className="section-head">Daily SOP — Francis</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.8}}><p><strong style={{color:"#e2e8f0"}}>Morning (2 min):</strong> Open Dashboard. Check Queue Monitor for errors. If errors &gt; 0, visit Health page and click "Retry All Issues."</p><p style={{marginTop:8}}><strong style={{color:"#e2e8f0"}}>Review flagged calls:</strong> Any flagged call should be spot-checked. Open the detail view, read the summary. If the flag seems wrong, click "Re-score."</p><p style={{marginTop:8}}><strong style={{color:"#e2e8f0"}}>End of day:</strong> Check daily Analytics. Note any rep averaging below 6 — flag for Sam's coaching.</p></div></div>
+    <div className="card" style={{padding:24}}><div className="section-head">Weekly SOP — Sam</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.8}}><p><strong style={{color:"#e2e8f0"}}>Analytics review:</strong> Switch to 7-day view. Compare rep scores week-over-week. Look for category trends.</p><p style={{marginTop:8}}><strong style={{color:"#e2e8f0"}}>Coaching prep:</strong> Visit Coaching page per rep. Use recurring improvements to guide 1:1s.</p><p style={{marginTop:8}}><strong style={{color:"#e2e8f0"}}>Calibration:</strong> Pick 2-3 random scored calls. Listen to playback. Compare your score to the bot's. If they diverge consistently, provide feedback to tune the bot.</p></div></div>
+    <div className="card" style={{padding:24}}><div className="section-head">Company</div><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.8}}>The Rise Collective is a vertically integrated real estate group managing 300+ luxury vacation rentals across 20+ states. BNB Turnkey provides end-to-end STR launch services: property sourcing, professional design and renovation through BNB Construction, and full-service management through Home Team Luxury Rentals.</p><p style={{fontSize:12,color:"#374151",marginTop:12}}>Built by Sam Arnita (CRO) · Powered by AI · Zero-cost edition</p></div>
+  </div>
+}
+
+// ── Export ───────────────────────────────────────────────────
+function ExportPage(){
+  const[scope,setScope]=useState("team");
+  const[period,setPeriod]=useState("week");
+  const[generating,setGenerating]=useState(false);
+  const{data:reps}=useApi("/reps");
+  const roleFilter=scope==="closers"?"&role=Closer":scope==="setters"?"&role=Setter":scope.startsWith("rep:")?`&rep=${scope.split(":")[1]}`:"";
+  const{data}=useApi(`/analytics?period=${period}${scope!=="team"?roleFilter:""}`,[period,scope]);
+  const{data:callsData}=useApi(`/calls?status=SCORED&period=${period}&limit=100${roleFilter}`,[period,scope]);
+
+  function generateExport(){
+    if(!data||!callsData)return;
+    setGenerating(true);
+    const s=data.stats||{};
+    const lines=[
+      "═══════════════════════════════════════════",
+      "BNB TURNKEY QC REPORT",
+      "The Rise Collective",
+      "═══════════════════════════════════════════",
+      "",
+      `Scope: ${scope==="team"?"Full Team":scope==="closers"?"Closers Team":scope==="setters"?"Setters Team":scope.replace("rep:","")}`,
+      `Period: ${period==="day"?"Today":period==="week"?"Last 7 Days":"Last 30 Days"}`,
+      `Generated: ${new Date().toLocaleString()}`,
+      "",
+      "── SUMMARY ──────────────────────────────",
+      `Total Calls Scored: ${s.scored||0}`,
+      `Average Score: ${s.avg_score||"—"}/10`,
+      `Average Duration: ${fmtD(s.avg_duration)}`,
+      `Average Agent Talk: ${s.avg_agent_talk||"—"}%`,
+      `Average Contact Talk: ${s.avg_contact_talk||"—"}%`,
+      `Flagged Calls: ${s.flagged||0}`,
+      `Errors: ${s.errors||0}`,
+      "",
+    ];
+    if(data.repStats?.length>0){
+      lines.push("── REP BREAKDOWN ────────────────────────");
+      data.repStats.forEach(r=>{lines.push(`${r.rep_name} (${r.role}): ${r.avg_score}/10 avg | ${r.call_count} calls | ${r.flagged_count||0} flagged`)});
+      lines.push("");
+    }
+    if(callsData?.calls?.length>0){
+      lines.push("── CALL DETAILS ─────────────────────────");
+      callsData.calls.forEach(c=>{
+        lines.push(`\n${c.rep_name} → ${c.client_name||"Unknown"} | ${fmtF(c.received_at)} | Score: ${c.overall_score_adj??"-"}/10 | ${fmtD(c.call_duration_sec)} | Agent: ${c.agent_talk_pct??"-"}%`);
+        if(c.quick_summary) lines.push(`  Summary: ${c.quick_summary}`);
+        if(c.strengths?.length) lines.push(`  Strengths: ${c.strengths.join("; ")}`);
+        if(c.improvements?.length) lines.push(`  Improve: ${c.improvements.join("; ")}`);
+        if(c.next_step_text) lines.push(`  Next Step: ${c.next_step_text}`);
+        if(c.flagged) lines.push("  ⚠ FLAGGED");
+      });
+    }
+    const blob=new Blob([lines.join("\n")],{type:"text/plain"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download=`BNB_Turnkey_QC_Report_${scope}_${period}_${new Date().toISOString().slice(0,10)}.txt`;
+    a.click();URL.revokeObjectURL(url);
+    setGenerating(false);
+  }
+
+  return<div className="flex-col gap-24">
+    <h2 style={{fontSize:24,fontWeight:900,margin:0}}>Export Report</h2>
+    <div className="card" style={{padding:24}}>
+      <div className="section-head">Report Settings</div>
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:20}}>
+        <div><label style={{fontSize:11,color:"#4b5563",display:"block",marginBottom:6}}>Scope</label><select value={scope} onChange={e=>setScope(e.target.value)}><option value="team">Full Team</option><option value="closers">Closers Only</option><option value="setters">Setters Only</option>{(reps||[]).map(r=><option key={r.id} value={`rep:${r.name}`}>{r.name} ({r.role})</option>)}</select></div>
+        <div><label style={{fontSize:11,color:"#4b5563",display:"block",marginBottom:6}}>Period</label><select value={period} onChange={e=>setPeriod(e.target.value)}><option value="day">Today</option><option value="week">Last 7 Days</option><option value="month">Last 30 Days</option></select></div>
+      </div>
+      <button className="btn btn-primary" onClick={generateExport} disabled={generating} style={{fontSize:14,padding:"12px 32px"}}>{generating?"Generating...":"📥 Download Report"}</button>
+      <p style={{fontSize:11,color:"#374151",marginTop:12}}>Generates a text report with team summary, rep breakdown, and per-call details including scores, coaching notes, and flags.</p>
+    </div>
+    {data&&<div className="card" style={{padding:24}}><div className="section-head">Preview</div><div className="grid grid-stats">
+      <div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(data.stats?.avg_score)}}>{data.stats?.avg_score??"—"}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>📊</span> Scored</div><div className="stat-value">{data.stats?.scored||0}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{data.stats?.flagged||0}</div></div>
+    </div></div>}
+  </div>
+}
+
+// ── Main App ────────────────────────────────────────────────
+const NAV=[
+  {id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},
+  {id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},
+  {id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},
+  {id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},
+  {id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},
+  {id:"health",icon:"♥",label:"Health",color:"#f472b6"},
+  {id:"export",icon:"📥",label:"Export",color:"#22d3ee"},
+  {id:"about",icon:"ℹ",label:"About / SOP",color:"#94a3b8"},
+];
+
+function App(){
+  const[page,setPage]=useState("dashboard");
+  const[detail,setDetail]=useState(null);
+  const[collapsed,setCollapsed]=useState(false);
+
+  return<>
+    <aside className={collapsed?"collapsed":""}>
+      <div style={{padding:collapsed?"18px 0":"18px 20px",display:"flex",alignItems:"center",gap:11,justifyContent:collapsed?"center":"flex-start",borderBottom:"1px solid #111520"}}>
+        <div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff",flexShrink:0}}>Q</div>
+        {!collapsed&&<span style={{fontSize:15,fontWeight:900,whiteSpace:"nowrap",letterSpacing:-.3}}>Turnkey QC</span>}
+      </div>
+      <nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>
+        {NAV.map(n=><button key={n.id} className={page===n.id?"active":""} onClick={()=>{setPage(n.id);setDetail(null)}} title={n.label} style={page===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color,fontWeight:800}:{justifyContent:collapsed?"center":"flex-start",padding:collapsed?"10px 0":undefined}}>
+          <span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span>
+          {!collapsed&&<span>{n.label}</span>}
+        </button>)}
+      </nav>
+      <div style={{padding:collapsed?"14px 6px":"14px 16px",borderTop:"1px solid #111520"}}>
+        {!collapsed&&<><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontWeight:600,letterSpacing:.5,fontFamily:"var(--m)"}}>ADMIN</div></>}
+      </div>
+      <button onClick={()=>setCollapsed(!collapsed)} style={{padding:10,background:"none",border:"none",borderTop:"1px solid #111520",color:"#2a3040",cursor:"pointer",fontSize:12}}>{collapsed?"›":"‹"}</button>
+    </aside>
+    <main><div className="max-w">
+      {detail?<CallDetail call={detail} onBack={()=>setDetail(null)}/>:
+        page==="dashboard"?<Dashboard/>:
+        page==="analytics"?<AnalyticsPage/>:
+        page==="coaching"?<CoachingPage/>:
+        page==="calls"?<CallsList onSelect={setDetail}/>:
+        page==="queue"?<QueuePage/>:
+        page==="health"?<HealthPage/>:
+        page==="export"?<ExportPage/>:
+        page==="about"?<AboutPage/>:null}
+    </div></main>
+  </>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
 </body>
 </html>
