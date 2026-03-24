@@ -227,10 +227,56 @@ function extractMetrics(data, inner, baseSource, repHint) {
   return { durationSec: dur, agentTalkPct: agPct, contactTalkPct: coPct };
 }
 
-// ─── Voicemail Detection ─────────────────────────────────────
-function isVoicemail(inner) {
+// ─── Voicemail Detection (Enhanced) ──────────────────────────
+// Catches both explicit Aloware flags AND behavioral patterns
+// like short outbound calls where only the agent spoke
+const VOICEMAIL_PHRASES = [
+  'leave a message', 'leave your message', 'after the tone', 'after the beep',
+  'not available', 'unavailable', 'voicemail', 'mailbox', 'record your message',
+  'please leave', 'at the tone', 'no one is available', 'cannot take your call',
+  'is not available', 'press 1', 'press one',
+];
+
+function isVoicemail(inner, transcript, metrics) {
   if (!inner) return false;
-  return inner.has_voicemail === true || Number(inner.voicemail_duration || 0) > 0 || inner.has_recording === false;
+
+  // 1. Explicit Aloware flags
+  if (inner.has_voicemail === true) return true;
+  if (Number(inner.voicemail_duration || 0) > 0) return true;
+  if (inner.has_recording === false) return true;
+
+  // 2. Outbound call + short duration + no real conversation
+  const dur = metrics?.durationSec || inner.duration || 0;
+  const isOutbound = inner.direction === 2; // Aloware: 2 = outbound
+  const isShort = dur > 0 && dur <= 90;
+
+  // If outbound, short, and talk percentages are both 0 or missing — likely voicemail
+  if (isOutbound && isShort) {
+    const agPct = metrics?.agentTalkPct;
+    const coPct = metrics?.contactTalkPct;
+    if ((!agPct && !coPct) || (agPct === 0 && coPct === 0)) return true;
+  }
+
+  // 3. Transcript content check — voicemail indicator phrases
+  if (transcript) {
+    const lower = transcript.toLowerCase();
+    for (const phrase of VOICEMAIL_PHRASES) {
+      if (lower.includes(phrase)) return true;
+    }
+
+    // 4. Only one speaker in transcript (rep talking to voicemail, no client response)
+    const lines = transcript.split('\n').filter(l => l.trim());
+    if (lines.length > 0 && lines.length <= 5 && isShort) {
+      const speakers = new Set();
+      for (const line of lines) {
+        const match = line.match(/\]\s*([^:]+):/);
+        if (match) speakers.add(match[1].trim().toLowerCase());
+      }
+      if (speakers.size <= 1) return true;
+    }
+  }
+
+  return false;
 }
 
 // ─── Dedup Key ───────────────────────────────────────────────
@@ -307,6 +353,15 @@ function ingestCall(rawPayload, srcTag) {
       if (isTranscriptionEvent && transcript && transcript.length > (existingByAlowareId.transcript_chars || 0)) {
         // Update existing row with transcript and metrics
         const metrics = extractMetrics(data, inner, baseSource, repName);
+
+        // Check if this is actually a voicemail now that we have the transcript
+        if (isVoicemail(inner, transcript, metrics)) {
+          db.prepare("UPDATE calls SET transcript=?, transcript_chars=?, status='SKIP_VOICEMAIL', error='Voicemail detected from transcript.' WHERE id=?")
+            .run(transcript, transcript.length, existingByAlowareId.id);
+          db.close();
+          return { ok: true, duplicate: false, callId: existingByAlowareId.id, status: 'SKIP_VOICEMAIL', message: 'OK' };
+        }
+
         db.prepare(`UPDATE calls SET
           transcript=?, transcript_chars=?,
           call_duration_sec=COALESCE(?,call_duration_sec),
@@ -343,11 +398,11 @@ function ingestCall(rawPayload, srcTag) {
   const team = role === 'Setter' ? 'Turnkey - Setters' : role === 'Closer' ? 'Turnkey - Closers' : 'Turnkey';
   const ws = getWeekStart(new Date());
 
-  // Determine status
+  // Determine status — voicemail check now uses transcript + metrics
   let status = 'NEW', error = '';
   if (!data) { status = 'ERROR'; error = 'PARSE_ERROR'; }
+  else if (isVoicemail(inner, transcript, metrics)) { status = 'SKIP_VOICEMAIL'; error = 'Voicemail detected.'; }
   else if (!transcript || transcript.trim().length < 1) { status = 'WAIT_TRANSCRIPT'; error = 'Transcript not in payload. Will update when Transcription-Saved fires.'; }
-  else if (isVoicemail(inner)) { status = 'SKIP_VOICEMAIL'; error = 'Voicemail detected.'; }
   else if (transcript.trim().length < 120) { status = 'SKIP_SHORT'; error = 'Too short to QC.'; }
 
   const stmt = db.prepare(`INSERT INTO calls (received_at,source,base_source,src_tag,rep_name,rep_id,role,team,
