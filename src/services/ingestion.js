@@ -8,7 +8,7 @@
 const crypto = require('crypto');
 const { getDb } = require('../../migrations/run');
 
-const TEAM_NAMES = new Set(['sam','sam arnita','matt','matt snell','kevin','andrew','andrew niebur','andrew cluney','steven','francis']);
+const TEAM_NAMES = new Set(['sam','sam arnita','matt','matt snell','kevin','andrew','andrew niebur','andrew cluney','steven','anurag','francis']);
 
 // ─── Unwrap Aloware's nested structure ───────────────────────
 // Aloware sends: { body: { ...call data... }, event: "Recording-Saved" }
@@ -59,11 +59,13 @@ function detectSource(data, srcTag) {
 function detectAlowareRep(inner, transcript) {
   // 1. Check user_email field (most reliable — from payload)
   const email = (inner?.user_email || '').toLowerCase();
+  if (email.includes('anurag')) return { name: 'Anurag', srcTag: 'aloware-setters-3' };
   if (email.includes('steven')) return { name: 'Steven', srcTag: 'aloware-setters-2' };
   if (email.includes('andrew')) return { name: 'Andrew', srcTag: 'aloware-setters' };
 
   // 2. Check last_engagement_text for rep name
   const engagement = (inner?.contact?.last_engagement_text || '').toLowerCase();
+  if (engagement.includes('anurag')) return { name: 'Anurag', srcTag: 'aloware-setters-3' };
   if (engagement.includes('steven')) return { name: 'Steven', srcTag: 'aloware-setters-2' };
   if (engagement.includes('andrew')) return { name: 'Andrew', srcTag: 'aloware-setters' };
 
@@ -71,18 +73,24 @@ function detectAlowareRep(inner, transcript) {
   const lower = (transcript || '').toLowerCase();
   const agentLines = lower.split('\n').filter(l => l.includes('agent:') || l.includes('rep:'));
   for (const line of agentLines) {
+    if (line.includes('anurag')) return { name: 'Anurag', srcTag: 'aloware-setters-3' };
     if (line.includes('steven')) return { name: 'Steven', srcTag: 'aloware-setters-2' };
     if (line.includes('andrew')) return { name: 'Andrew', srcTag: 'aloware-setters' };
   }
 
   // 4. Mention count fallback
+  const anuragCount = (lower.match(/anurag/g) || []).length;
   const stevenCount = (lower.match(/steven/g) || []).length;
   const andrewCount = (lower.match(/andrew/g) || []).length;
-  if (stevenCount > andrewCount && stevenCount >= 2) return { name: 'Steven', srcTag: 'aloware-setters-2' };
-  if (andrewCount > stevenCount && andrewCount >= 2) return { name: 'Andrew', srcTag: 'aloware-setters' };
+  const maxCount = Math.max(anuragCount, stevenCount, andrewCount);
+  if (maxCount >= 2) {
+    if (anuragCount === maxCount) return { name: 'Anurag', srcTag: 'aloware-setters-3' };
+    if (stevenCount === maxCount) return { name: 'Steven', srcTag: 'aloware-setters-2' };
+    if (andrewCount === maxCount) return { name: 'Andrew', srcTag: 'aloware-setters' };
+  }
 
   // Default
-  return { name: 'Andrew', srcTag: 'aloware-setters' };
+  return { name: 'Unknown Setter', srcTag: 'aloware-setters' };
 }
 
 // ─── Fathom Rep Detection ────────────────────────────────────
