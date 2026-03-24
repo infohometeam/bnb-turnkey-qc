@@ -78,6 +78,7 @@ const stClr=s=>({SCORED:["#052e16","#22c55e","#166534"],NEW:["#0c1a3d","#60a5fa"
 const RC={"Matt":"#6366f1","Kevin":"#8b5cf6","Andrew":"#06b6d4","Steven":"#10b981"};
 const CATS=["discovery","qualification","pitch","objections","close_next_step"];
 const CL={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",objections:"Objections",close_next_step:"Close / Next Step"};
+const TEAM_NAMES=new Set(["matt","kevin","andrew","steven","anurag","sam","francis","agent","rep"]);
 
 // ── Small Components ────────────────────────────────────────
 function Badge({status}){const[bg,fg,bd]=stClr(status);return <span className="badge" style={{background:bg,color:fg,border:`1px solid ${bd}`}}>{status}</span>}
@@ -154,10 +155,17 @@ function CallsList({onSelect}){
 }
 
 // ── Call Detail ──────────────────────────────────────────────
-function CallDetail({call:c,onBack}){
+function CallDetail({call:initial,onBack}){
   const[rescoring,setRescoring]=useState(false);
+  const[showTranscript,setShowTranscript]=useState(false);
+  const{data:fullCall}=useApi(`/calls/${initial.id}`,[initial.id]);
+  const c=fullCall||initial;
   async function handleReqc(){setRescoring(true);await postApi(`/calls/${c.id}/reqc`);alert("Marked for re-score. Will process within 2 minutes.");setRescoring(false);}
   if(!c)return null;
+
+  // Parse transcript into styled lines
+  const transcriptLines=(c.transcript||'').split('\n').filter(l=>l.trim());
+
   return<div className="flex-col gap-20">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><button className="btn" onClick={onBack}>← Back</button><div style={{display:"flex",gap:8}}><button className="btn-green btn" onClick={handleReqc} disabled={rescoring}>{rescoring?"...":"↻ Re-score"}</button></div></div>
     <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
@@ -183,6 +191,32 @@ function CallDetail({call:c,onBack}){
     {c.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>🎯 Coaching Notes</div><p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7}}>{c.coaching_notes}</p></div>}
     {c.next_step_text&&<div className="card" style={{padding:16,background:"#0c1a3d",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,textTransform:"uppercase",letterSpacing:1,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
     {c.score_adjust_notes&&<div style={{fontSize:11,color:"#374151",marginTop:8}}>Score adjustments: {c.score_adjust_notes}</div>}
+
+    {/* Transcript Viewer */}
+    <div className="card" style={{overflow:"hidden"}}>
+      <button onClick={()=>setShowTranscript(!showTranscript)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",background:"transparent",border:"none",borderBottom:showTranscript?"1px solid #111520":"none",cursor:"pointer",color:"var(--t1)"}}>
+        <span className="section-head" style={{marginBottom:0}}>📝 Transcript {c.transcript_chars>0?`(${Math.round(c.transcript_chars/1000)}k chars)`:""}</span>
+        <span style={{fontSize:12,color:"#4b5563",fontFamily:"var(--m)"}}>{showTranscript?"▼ Hide":"▶ Show"}</span>
+      </button>
+      {showTranscript&&<div style={{maxHeight:500,overflowY:"auto",padding:"16px 20px"}}>
+        {transcriptLines.length===0&&<div style={{color:"#374151",fontSize:13,padding:20,textAlign:"center"}}>No transcript available for this call.</div>}
+        {transcriptLines.map((line,i)=>{
+          // Parse "[00:00] Speaker: text" format
+          const match=line.match(/^\[([^\]]*)\]\s*([^:]+):\s*(.*)/);
+          if(!match)return<div key={i} style={{fontSize:12,color:"#64748b",lineHeight:1.8,padding:"2px 0"}}>{line}</div>;
+          const[,ts,speaker,text]=match;
+          const spLower=speaker.toLowerCase().trim();
+          const isAgent=TEAM_NAMES.has(spLower)||spLower.includes('agent')||spLower.includes('rep');
+          return<div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:"1px solid #0a0e14"}}>
+            <span style={{fontSize:10,color:"#2a3040",fontFamily:"var(--m)",minWidth:42,flexShrink:0,paddingTop:2}}>{ts}</span>
+            <div style={{flex:1}}>
+              <span style={{fontSize:11,fontWeight:700,color:isAgent?"#60a5fa":"#34d399",marginRight:6}}>{speaker.trim()}</span>
+              <span style={{fontSize:12,color:"#94a3b8",lineHeight:1.7}}>{text}</span>
+            </div>
+          </div>;
+        })}
+      </div>}
+    </div>
   </div>
 }
 
