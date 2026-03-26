@@ -160,23 +160,27 @@ function extractTranscript(data, inner, baseSource) {
     }).join('\n');
   }
 
-  // Aloware: call_transcription (plain text) at inner level
+  // Aloware: plain text transcription
   if (inner?.call_transcription && typeof inner.call_transcription === 'string') {
     return inner.call_transcription;
   }
-
-  // Aloware: transcription object
   if (inner?.transcription?.text) {
     return inner.transcription.text;
   }
 
-  // Fathom: transcript array at top level
-  if (Array.isArray(data?.transcript)) {
-    return data.transcript.map(t => {
+  // Fathom: transcript array — check multiple possible locations
+  const transcriptArr = data?.transcript || data?.body?.transcript || inner?.transcript;
+  if (Array.isArray(transcriptArr) && transcriptArr.length > 0) {
+    return transcriptArr.map(t => {
       const ts = t.timestamp || '';
       const sp = t.speaker?.display_name || t.speaker?.name || 'Speaker';
       return `[${ts}] ${sp}: ${t.text || ''}`;
     }).join('\n');
+  }
+
+  // Fathom: sometimes transcript is a string
+  if (typeof data?.transcript === 'string' && data.transcript.length > 50) {
+    return data.transcript;
   }
 
   return '';
@@ -200,33 +204,82 @@ function extractMetrics(data, inner, baseSource, repHint) {
   }
 
   // Fathom
-  if (baseSource === 'Fathom' && data) {
-    if (!fin(dur) && data.recording_start_time && data.recording_end_time) {
-      const s = new Date(data.recording_start_time), e = new Date(data.recording_end_time);
-      if (!isNaN(s) && !isNaN(e)) dur = Math.max(0, Math.round((e - s) / 1000));
+  if (baseSource === 'Fathom') {
+    const fData = data?.body || data;
+
+    // Duration from recording times
+    if (!fin(dur) && fData?.recording_start_time && fData?.recording_end_time) {
+      const s = new Date(fData.recording_start_time), e = new Date(fData.recording_end_time);
+      if (!isNaN(s.getTime()) && !isNaN(e.getTime())) dur = Math.max(0, Math.round((e - s) / 1000));
     }
-    if (!fin(dur) && Array.isArray(data.transcript) && data.transcript.length > 0) {
-      const times = data.transcript.map(t => parseTsToSec(t.timestamp)).filter(fin);
+
+    // Duration from transcript timestamps
+    const transcriptArr = fData?.transcript || data?.transcript;
+    if (!fin(dur) && Array.isArray(transcriptArr) && transcriptArr.length > 0) {
+      const times = transcriptArr.map(t => parseTsToSec(t.timestamp)).filter(fin);
       if (times.length) dur = Math.max(...times);
     }
 
     // Talk % from Fathom word count
-    if ((!fin(agPct) || !fin(coPct)) && Array.isArray(data.transcript)) {
-      const intDom = data.recorded_by?.email_domain?.toLowerCase() || '';
-      const recEmail = data.recorded_by?.email?.toLowerCase() || '';
-      const recName = norm(data.recorded_by?.name);
-      const rep = norm(repHint || detectRepName(data));
-      let aw = 0, cw = 0;
-      for (const t of data.transcript) {
+    if (Array.isArray(transcriptArr) && transcriptArr.length > 0) {
+      // Gather all possible agent identifiers
+      const agentIdentifiers = new Set();
+
+      // From recorded_by
+      if (fData?.recorded_by?.email) agentIdentifiers.add(fData.recorded_by.email.toLowerCase());
+      if (fData?.recorded_by?.name) agentIdentifiers.add(norm(fData.recorded_by.name));
+      if (fData?.recorded_by?.email_domain) agentIdentifiers.add(fData.recorded_by.email_domain.toLowerCase());
+
+      // From host
+      if (fData?.host?.name) agentIdentifiers.add(norm(fData.host.name));
+      if (fData?.host?.email) agentIdentifiers.add(fData.host.email.toLowerCase());
+
+      // From the rep hint (already resolved from roster)
+      if (repHint) agentIdentifiers.add(norm(repHint));
+
+      // Known rep names
+      ['matt', 'kevin', 'matt snell'].forEach(n => agentIdentifiers.add(n));
+
+      // Internal domain for matching
+      const intDom = (fData?.recorded_by?.email_domain || '').toLowerCase();
+
+      let agentWords = 0, contactWords = 0;
+
+      for (const t of transcriptArr) {
         const sp = t.speaker || {};
-        const spE = (sp.matched_calendar_invitee_email || '').toLowerCase();
-        const spN = norm(sp.display_name || sp.name);
-        const w = (t.text || '').trim().split(/\s+/).length;
-        const isAg = (recEmail && spE === recEmail) || (intDom && spE?.endsWith('@'+intDom)) || (recName && spN && nameMatch(spN,recName)) || (rep && spN && nameMatch(spN,rep));
-        if (isAg) aw += w; else cw += w;
+        const spEmail = (sp.matched_calendar_invitee_email || sp.email || '').toLowerCase();
+        const spName = norm(sp.display_name || sp.name || '');
+        const words = (t.text || '').trim().split(/\s+/).filter(w => w).length;
+        if (!words) continue;
+
+        let isAgent = false;
+
+        // Check email match
+        if (spEmail && agentIdentifiers.has(spEmail)) isAgent = true;
+
+        // Check domain match (internal = agent)
+        if (!isAgent && intDom && spEmail && spEmail.endsWith('@' + intDom)) isAgent = true;
+
+        // Check name match against all known identifiers
+        if (!isAgent && spName) {
+          for (const id of agentIdentifiers) {
+            if (nameMatch(spName, id)) { isAgent = true; break; }
+          }
+        }
+
+        // Check if speaker is marked as is_external (Fathom field)
+        if (!isAgent && sp.is_external === false) isAgent = true;
+        if (!isAgent && sp.is_external === true) isAgent = false;
+
+        if (isAgent) agentWords += words;
+        else contactWords += words;
       }
-      const tot = aw + cw;
-      if (tot > 0) { agPct = Math.round(aw/tot*100); coPct = Math.round(cw/tot*100); }
+
+      const total = agentWords + contactWords;
+      if (total > 0) {
+        agPct = Math.round((agentWords / total) * 100);
+        coPct = Math.round((contactWords / total) * 100);
+      }
     }
   }
 
