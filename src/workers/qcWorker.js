@@ -56,7 +56,6 @@ function isFlagged(result, adj, dur, agPct) {
 
 async function processCall(row) {
   // Convert all numeric fields from BigInt to Number
-  const durSec = toNum(row.call_duration_sec);
   let durSec = toNum(row.call_duration_sec);
   const agTalk = toNum(row.agent_talk_pct);
   const coTalk = toNum(row.contact_talk_pct);
