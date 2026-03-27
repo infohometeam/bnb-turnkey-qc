@@ -68,25 +68,60 @@ function extractTranscript(data, inner) {
   return '';
 }
 
-function extractMetrics(data, inner, baseSource, repHint) {
+// ─── Duration from transcript timestamps ─────────────────────
+// Scans the transcript text for [MM:SS] or [H:MM:SS] patterns
+// Returns the highest timestamp found in seconds
+function estimateDurationFromTranscript(transcript) {
+  if (!transcript) return null;
+  let maxSec = 0;
+  // Match [00:00], [0:00], [00:00:00], [1:23:45] patterns
+  const regex = /\[(\d{1,2}:\d{2}(?::\d{2})?)\]/g;
+  let match;
+  while ((match = regex.exec(transcript)) !== null) {
+    const sec = parseTsSec(match[1]);
+    if (sec !== null && sec > maxSec) maxSec = sec;
+  }
+  return maxSec > 0 ? maxSec : null;
+}
+
+function extractMetrics(data, inner, baseSource, repHint, transcript) {
   let dur = null, agPct = null, coPct = null;
+
+  // ── Aloware duration ──
   if (baseSource === 'Aloware' && inner) {
-    if (fin(inner.duration)) dur = Number(inner.duration);
-    if (!fin(dur) && fin(inner.talk_time)) dur = Number(inner.talk_time);
+    // Primary: duration field (total call duration including wait/ring)
+    if (fin(inner.duration) && Number(inner.duration) > 0) dur = Number(inner.duration);
+    // Fallback: talk_time (actual conversation time)
+    if (!fin(dur) && fin(inner.talk_time) && Number(inner.talk_time) > 0) dur = Number(inner.talk_time);
+
+    // Talk % from parsed_transcription
     const tta = inner.parsed_transcription?.talk_time_analysis;
     if (tta) { if (fin(tta.AGENT)) agPct = +tta.AGENT; if (fin(tta.CONTACT)) coPct = +tta.CONTACT; }
   }
+
+  // ── Fathom duration + talk % ──
   if (baseSource === 'Fathom') {
     const fd = data?.body || data;
+
+    // Duration from recording times
     if (!fin(dur) && fd?.recording_start_time && fd?.recording_end_time) {
       const s = new Date(fd.recording_start_time), e = new Date(fd.recording_end_time);
       if (!isNaN(s.getTime()) && !isNaN(e.getTime())) dur = Math.max(0, Math.round((e - s) / 1000));
     }
+
+    // Duration from Fathom's duration field
+    if (!fin(dur) && fin(fd?.duration)) dur = Number(fd.duration);
+    if (!fin(dur) && fin(fd?.duration_seconds)) dur = Number(fd.duration_seconds);
+    if (!fin(dur) && fin(fd?.meeting?.duration)) dur = Number(fd.meeting.duration);
+
+    // Duration from transcript array timestamps
     const tarr = fd?.transcript || data?.transcript;
     if (!fin(dur) && Array.isArray(tarr) && tarr.length) {
       const times = tarr.map(t => parseTsSec(t.timestamp)).filter(fin);
       if (times.length) dur = Math.max(...times);
     }
+
+    // Talk % from Fathom word count
     if (Array.isArray(tarr) && tarr.length) {
       const agents = new Set();
       if (fd?.recorded_by?.name) agents.add(norm(fd.recorded_by.name));
@@ -111,6 +146,12 @@ function extractMetrics(data, inner, baseSource, repHint) {
       if (tot > 0) { agPct = Math.round(aw / tot * 100); coPct = Math.round(cw / tot * 100); }
     }
   }
+
+  // ── Universal fallback: estimate duration from transcript text timestamps ──
+  if (!fin(dur) && transcript) {
+    dur = estimateDurationFromTranscript(transcript);
+  }
+
   if (fin(agPct)) agPct = Math.max(0, Math.min(100, agPct));
   if (fin(coPct)) coPct = Math.max(0, Math.min(100, coPct));
   return { durationSec: dur, agentTalkPct: agPct, contactTalkPct: coPct };
@@ -136,7 +177,6 @@ function isVoicemail(inner, transcript, metrics) {
 }
 
 function redact(t) { return (t||'').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'[EMAIL]').replace(/\+?\d[\d\s().-]{7,}\d/g,'[PHONE]'); }
-
 function now() { return new Date().toISOString().replace('T',' ').slice(0,19); }
 
 async function ingestCall(rawPayload, srcTag) {
@@ -164,24 +204,60 @@ async function ingestCall(rawPayload, srcTag) {
   const clientName = detectClientName(data, inner);
   const callUrl = baseSource === 'Aloware' && inner?.id ? `aloware:call:${inner.id}` : (data?.share_url || data?.url || '');
   const audioUrl = baseSource === 'Aloware' ? (inner?.direct_recording_url || '') : (data?.share_url || '');
-  const metrics = extractMetrics(data, inner, baseSource, repName);
+  // Pass transcript to extractMetrics so it can estimate duration from timestamps
+  const metrics = extractMetrics(data, inner, baseSource, repName, transcript);
 
   // Aloware two-event linking
-  if (baseSource === 'Aloware' && inner?.id) {
-    const existing = await q("SELECT id, status, transcript_chars FROM calls WHERE base_source='Aloware' AND call_url=?", [`aloware:call:${inner.id}`]);
-    if (existing.rows.length) {
-      const ex = existing.rows[0];
-      if (event.toLowerCase().includes('transcription') && transcript && transcript.length > (ex.transcript_chars || 0)) {
-        if (isVoicemail(inner, transcript, metrics)) {
-          await q("UPDATE calls SET transcript=?, transcript_chars=?, status='SKIP_VOICEMAIL', error='Voicemail detected.' WHERE id=?", [transcript, transcript.length, ex.id]);
-          return { ok: true, duplicate: false, callId: ex.id, status: 'SKIP_VOICEMAIL', message: 'OK' };
-        }
-        const newStatus = transcript.length > 120 ? 'NEW' : 'SKIP_SHORT';
-        await q('UPDATE calls SET transcript=?, transcript_chars=?, call_duration_sec=COALESCE(?,call_duration_sec), agent_talk_pct=COALESCE(?,agent_talk_pct), contact_talk_pct=COALESCE(?,contact_talk_pct), status=?, error=? WHERE id=?',
-          [transcript, transcript.length, metrics.durationSec, metrics.agentTalkPct, metrics.contactTalkPct, newStatus, '', ex.id]);
-        return { ok: true, duplicate: false, callId: ex.id, status: 'UPDATED', message: 'OK' };
+  if (baseSource === 'Aloware' && inner) {
+    let existingRow = null;
+
+    // Strategy 1: Match by call_url (same body.id)
+    if (inner.id) {
+      const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND call_url=?", [`aloware:call:${inner.id}`]);
+      if (r.rows.length) existingRow = r.rows[0];
+    }
+
+    // Strategy 2: Match by contact phone + WAIT_TRANSCRIPT
+    if (!existingRow && inner.contact?.phone_number) {
+      const cn = detectClientName(data, inner);
+      if (cn) {
+        const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND status='WAIT_TRANSCRIPT' AND client_name=? ORDER BY received_at DESC LIMIT 1", [cn]);
+        if (r.rows.length) existingRow = r.rows[0];
       }
-      return { ok: true, duplicate: true, callId: ex.id, message: 'DUPLICATE_SKIPPED' };
+    }
+
+    // Strategy 3: Match any recent WAIT_TRANSCRIPT for same rep
+    if (!existingRow && repName) {
+      const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND status='WAIT_TRANSCRIPT' AND rep_name=? AND received_at >= datetime('now','-10 minutes') ORDER BY received_at DESC LIMIT 1", [repName]);
+      if (r.rows.length) existingRow = r.rows[0];
+    }
+
+    if (existingRow) {
+      const isTranscriptionEvent = event.toLowerCase().includes('transcription');
+
+      if (isTranscriptionEvent && transcript && transcript.length > (Number(existingRow.transcript_chars) || 0)) {
+        // Preserve duration from existing row if this event doesn't have one
+        const existingDur = existingRow.call_duration_sec !== null ? Number(existingRow.call_duration_sec) : null;
+        const bestDur = metrics.durationSec || existingDur;
+
+        if (isVoicemail(inner, transcript, { ...metrics, durationSec: bestDur })) {
+          await q("UPDATE calls SET transcript=?, transcript_chars=?, call_duration_sec=?, status='SKIP_VOICEMAIL', error='Voicemail detected.' WHERE id=?",
+            [transcript, transcript.length, bestDur, existingRow.id]);
+          return { ok: true, duplicate: false, callId: Number(existingRow.id), status: 'SKIP_VOICEMAIL', message: 'OK' };
+        }
+
+        const newStatus = transcript.length > 120 ? 'NEW' : 'SKIP_SHORT';
+        await q('UPDATE calls SET transcript=?, transcript_chars=?, call_duration_sec=?, agent_talk_pct=COALESCE(?,agent_talk_pct), contact_talk_pct=COALESCE(?,contact_talk_pct), audio_url=COALESCE(NULLIF(?,\'\'),audio_url), status=?, error=? WHERE id=?',
+          [transcript, transcript.length, bestDur, metrics.agentTalkPct, metrics.contactTalkPct, audioUrl, newStatus, '', existingRow.id]);
+        return { ok: true, duplicate: false, callId: Number(existingRow.id), status: 'UPDATED', message: 'OK' };
+      }
+
+      // Same call, no new transcript — but update duration if we have it and they don't
+      const existingDur = existingRow.call_duration_sec !== null ? Number(existingRow.call_duration_sec) : null;
+      if (metrics.durationSec && !existingDur) {
+        await q('UPDATE calls SET call_duration_sec=? WHERE id=?', [metrics.durationSec, existingRow.id]);
+      }
+      return { ok: true, duplicate: true, callId: Number(existingRow.id), message: 'DUPLICATE_SKIPPED' };
     }
   }
 
@@ -191,7 +267,7 @@ async function ingestCall(rawPayload, srcTag) {
   const extKey = rawKey.replace(/\|/g, '').trim() ? crypto.createHash('sha256').update(rawKey, 'utf8').digest('hex') : '';
   if (extKey) {
     const dup = await q('SELECT id FROM calls WHERE external_call_key=?', [extKey]);
-    if (dup.rows.length) return { ok: true, duplicate: true, callId: dup.rows[0].id, message: 'DUPLICATE_SKIPPED' };
+    if (dup.rows.length) return { ok: true, duplicate: true, callId: Number(dup.rows[0].id), message: 'DUPLICATE_SKIPPED' };
   }
 
   let status = 'NEW', error = '';
@@ -201,7 +277,7 @@ async function ingestCall(rawPayload, srcTag) {
   else if (transcript.trim().length < 120) { status = 'SKIP_SHORT'; error = 'Too short.'; }
 
   const team = role === 'Setter' ? 'Turnkey - Setters' : role === 'Closer' ? 'Turnkey - Closers' : 'Turnkey';
-  const dt = new Date(); const ws = getWeekStart(dt); const ts = now();
+  const ws = getWeekStart(new Date()); const ts = now();
 
   const res = await q('INSERT INTO calls (received_at,source,base_source,src_tag,rep_name,rep_id,role,team,client_name,call_url,audio_url,external_call_key,transcript,transcript_chars,call_duration_sec,agent_talk_pct,contact_talk_pct,status,error,weekstart,queued_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [ts,source,baseSource,resolvedSrcTag,repName,repId,role,team,clientName,callUrl,audioUrl,extKey,transcript,transcript.length,metrics.durationSec,metrics.agentTalkPct,metrics.contactTalkPct,status,error,ws,ts,ts]);
@@ -211,7 +287,7 @@ async function ingestCall(rawPayload, srcTag) {
 
 function safeParse(s) { if(!s)return null; try{return JSON.parse(s)}catch(e){} try{return JSON.parse(String(s).trim())}catch(e){} return null; }
 function parseTsSec(ts) { const p=String(ts||'').trim().split(':').map(Number); if(p.some(n=>!isFinite(n)))return null; return p.length===2?p[0]*60+p[1]:p.length===3?p[0]*3600+p[1]*60+p[2]:null; }
-function fin(v) { return typeof Number(v)==='number' && isFinite(Number(v)); }
+function fin(v) { const n = Number(v); return typeof n === 'number' && isFinite(n) && v !== null && v !== undefined && v !== ''; }
 function norm(s) { return (s||'').toLowerCase().replace(/[^\w\s]/g,' ').replace(/\s+/g,' ').trim(); }
 function nameMatch(a,b) { const x=norm(a),y=norm(b); if(!x||!y)return false; if(x===y)return true; for(const xi of x.split(' '))for(const yi of y.split(' '))if(xi.length>=3&&xi===yi)return true; return false; }
 function normUrl(u) { return String(u||'').trim().replace(/#.*$/,'').replace(/\?.*$/,'').replace(/\/+$/,'').toLowerCase(); }
