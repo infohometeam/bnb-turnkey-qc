@@ -5,12 +5,37 @@ const { buildSmartSlice, needsTwoPass, buildMiddleSummaryPrompt, buildQCPrompt }
 const MAX_RETRY = 5;
 function now() { return new Date().toISOString().replace('T',' ').slice(0,19); }
 
+// Turso/libsql returns INTEGER columns as BigInt — convert to Number safely
+function toNum(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'bigint') return Number(v);
+  const n = Number(v);
+  return isFinite(n) ? n : null;
+}
+
 function adjustScore(ai, dur, agPct) {
   const notes = [];
   if (typeof ai !== 'number' || !isFinite(ai)) return { adjusted: ai, notes: ['No score'] };
   let s = ai;
-  if (isFinite(dur)) { if (dur<60){s=Math.min(s,4);notes.push('Dur<60s→cap4')}else if(dur<180){s=Math.min(s,6);notes.push('Dur<3m→cap6')}else if(dur<300){s-=0.5;notes.push('Dur<5m→-0.5')} }
-  if (isFinite(agPct)) { if(agPct>90){s-=2;notes.push('Ag>90%→-2')}else if(agPct>80){s-=1;notes.push('Ag>80%→-1')} if(agPct<10){s-=2;notes.push('Ag<10%→-2')}else if(agPct<20){s-=1;notes.push('Ag<20%→-1')} }
+
+  // Duration adjustments — ONLY if we have a real positive duration
+  // null/undefined/0 means duration wasn't extracted, so DON'T penalize
+  if (dur !== null && dur !== undefined && dur > 0) {
+    if (dur < 60) { s = Math.min(s, 4); notes.push('Dur<60s→cap4'); }
+    else if (dur < 180) { s = Math.min(s, 6); notes.push('Dur<3m→cap6'); }
+    else if (dur < 300) { s -= 0.5; notes.push('Dur<5m→-0.5'); }
+  } else if (dur === null || dur === undefined) {
+    notes.push('Duration unknown — no duration adjustment');
+  }
+
+  // Agent talk % adjustments — ONLY if we have a real value
+  if (agPct !== null && agPct !== undefined && agPct > 0) {
+    if (agPct > 90) { s -= 2; notes.push('Ag>90%→-2'); }
+    else if (agPct > 80) { s -= 1; notes.push('Ag>80%→-1'); }
+    if (agPct < 10) { s -= 2; notes.push('Ag<10%→-2'); }
+    else if (agPct < 20) { s -= 1; notes.push('Ag<20%→-1'); }
+  }
+
   s = Math.max(0, Math.min(10, Math.round(s*10)/10));
   if (!notes.length) notes.push('No adjustments');
   return { adjusted: s, notes };
@@ -18,18 +43,27 @@ function adjustScore(ai, dur, agPct) {
 
 function isFlagged(result, adj, dur, agPct) {
   const cs = result.category_scores || {}, pf = result.pass_fail || {};
-  const ov = isFinite(adj) ? adj : result.overall_score;
-  if (isFinite(ov) && ov < 6) return true;
-  if (isFinite(dur) && dur < 90) return true;
-  if (isFinite(agPct) && (agPct > 85 || agPct < 15)) return true;
-  for (const v of Object.values(cs)) if (isFinite(v) && v < 5) return true;
+  const ov = (adj !== null && adj !== undefined && isFinite(adj)) ? adj : result.overall_score;
+  if (typeof ov === 'number' && isFinite(ov) && ov < 6) return true;
+  // Only flag short duration if we KNOW the duration
+  if (dur !== null && dur !== undefined && dur > 0 && dur < 90) return true;
+  // Only flag talk % if we KNOW it
+  if (agPct !== null && agPct !== undefined && agPct > 0 && (agPct > 85 || agPct < 15)) return true;
+  for (const v of Object.values(cs)) if (typeof v === 'number' && isFinite(v) && v < 5) return true;
   if (pf.explained_offer===false || pf.clear_next_step===false || pf.qualified_investor_fit===false) return true;
   return false;
 }
 
 async function processCall(row) {
-  console.log(`[QC] #${row.id} | ${row.rep_name} (${row.role}) | ${row.transcript_chars}ch`);
-  if (!row.transcript || row.transcript.trim().length < 50) throw new Error('NO_TRANSCRIPT: ' + (row.transcript_chars||0) + 'ch');
+  // Convert all numeric fields from BigInt to Number
+  const durSec = toNum(row.call_duration_sec);
+  const agTalk = toNum(row.agent_talk_pct);
+  const coTalk = toNum(row.contact_talk_pct);
+  const txChars = toNum(row.transcript_chars) || 0;
+
+  console.log(`[QC] #${row.id} | ${row.rep_name} (${row.role}) | ${txChars}ch | dur:${durSec}s | ag:${agTalk}%`);
+
+  if (!row.transcript || row.transcript.trim().length < 50) throw new Error('NO_TRANSCRIPT: ' + txChars + 'ch');
 
   const engine = process.env.AI_ENGINE || 'gemini';
   if (engine==='gemini' && !process.env.GEMINI_API_KEY) throw new Error('MISSING_GEMINI_API_KEY');
@@ -40,11 +74,16 @@ async function processCall(row) {
   if (!rubric.rows.length) throw new Error('NO_RUBRIC for ' + role);
 
   let slice = buildSmartSlice(row.transcript), midSummary = null;
-  if (needsTwoPass(row.transcript_chars, row.call_duration_sec)) {
+  if (needsTwoPass(txChars, durSec)) {
     try { const r = await callAI(buildMiddleSummaryPrompt(row.transcript), {maxTokens:800}); midSummary = r.text; } catch(e) { console.warn(`[QC] #${row.id} mid-summary skipped`); }
   }
 
-  const prompt = buildQCPrompt({ role, repName: row.rep_name||'Unknown', source: row.source||'Unknown', transcript: slice, rubricItems: rubric.rows, metrics: {durationSec:row.call_duration_sec, agentTalkPct:row.agent_talk_pct, contactTalkPct:row.contact_talk_pct}, middleSummary: midSummary });
+  const prompt = buildQCPrompt({
+    role, repName: row.rep_name||'Unknown', source: row.source||'Unknown',
+    transcript: slice, rubricItems: rubric.rows,
+    metrics: { durationSec: durSec, agentTalkPct: agTalk, contactTalkPct: coTalk },
+    middleSummary: midSummary,
+  });
 
   console.log(`[QC] #${row.id} calling ${engine} (${prompt.length}ch)...`);
   const { result, usage } = await callAIJson(prompt);
@@ -52,8 +91,8 @@ async function processCall(row) {
 
   console.log(`[QC] #${row.id} raw score: ${result.overall_score}`);
   const cost = estimateCost(usage);
-  const adj = adjustScore(result.overall_score, row.call_duration_sec, row.agent_talk_pct);
-  const flagged = isFlagged(result, adj.adjusted, row.call_duration_sec, row.agent_talk_pct);
+  const adj = adjustScore(result.overall_score, durSec, agTalk);
+  const flagged = isFlagged(result, adj.adjusted, durSec, agTalk);
   const ts = now();
 
   await q('UPDATE calls SET overall_score=?,overall_score_adj=?,score_adjust_notes=?,category_scores=?,pass_fail=?,coaching_notes=?,quick_summary=?,strengths=?,improvements=?,next_step_text=?,golden_moments=?,flagged=?,status=?,error=?,processed_at=?,model_used=?,transcript_slice=? WHERE id=?',
