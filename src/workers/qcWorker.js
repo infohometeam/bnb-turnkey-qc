@@ -57,9 +57,29 @@ function isFlagged(result, adj, dur, agPct) {
 async function processCall(row) {
   // Convert all numeric fields from BigInt to Number
   const durSec = toNum(row.call_duration_sec);
+  let durSec = toNum(row.call_duration_sec);
   const agTalk = toNum(row.agent_talk_pct);
   const coTalk = toNum(row.contact_talk_pct);
   const txChars = toNum(row.transcript_chars) || 0;
+
+  // If duration is still null, estimate from transcript timestamps
+  if (durSec === null && row.transcript) {
+    const regex = /\[(\d{1,2}:\d{2}(?::\d{2})?)\]/g;
+    let maxSec = 0, m;
+    while ((m = regex.exec(row.transcript)) !== null) {
+      const parts = m[1].split(':').map(Number);
+      let sec = 0;
+      if (parts.length === 2) sec = parts[0]*60 + parts[1];
+      else if (parts.length === 3) sec = parts[0]*3600 + parts[1]*60 + parts[2];
+      if (sec > maxSec) maxSec = sec;
+    }
+    if (maxSec > 0) {
+      durSec = maxSec;
+      console.log(`[QC] #${row.id} estimated duration from transcript: ${durSec}s`);
+      // Save it back to the database so it persists
+      await q('UPDATE calls SET call_duration_sec=? WHERE id=? AND call_duration_sec IS NULL', [durSec, row.id]);
+    }
+  }
 
   console.log(`[QC] #${row.id} | ${row.rep_name} (${row.role}) | ${txChars}ch | dur:${durSec}s | ag:${agTalk}%`);
 
