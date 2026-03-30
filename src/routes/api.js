@@ -34,8 +34,8 @@ router.get('/calls', async (req, res) => {
     const { status, rep, role, period, flagged, from, to, limit = 500, offset = 0, hideVm = 'true' } = req.query;
     let w = '1=1', p = [];
 
-    // Hide voicemails by default
-    if (hideVm === 'true') w += " AND status NOT IN ('SKIP_VOICEMAIL','SKIP_SHORT')";
+    // Hide non-sales calls by default (voicemails, reschedules, follow-ups, etc.)
+    if (hideVm === 'true') w += " AND status NOT IN ('SKIP_VOICEMAIL','SKIP_SHORT','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL')";
 
     if (status && status !== 'ALL') { w += ' AND status=?'; p.push(status); }
     if (rep) { w += ' AND rep_name=?'; p.push(rep); }
@@ -216,7 +216,7 @@ router.get('/queue/status', async (req, res) => {
   try {
     const dk = new Date().toISOString().slice(0, 10);
     const daily = await q('SELECT * FROM daily_counters WHERE date_key=?', [dk]);
-    const queue = await q("SELECT status, COUNT(*) as count FROM calls WHERE status NOT IN ('SCORED','SKIP_SHORT','SKIP_VOICEMAIL') GROUP BY status");
+    const queue = await q("SELECT status, COUNT(*) as count FROM calls WHERE status NOT IN ('SCORED','SKIP_SHORT','SKIP_VOICEMAIL','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL') GROUP BY status");
     // Also get actual scored count for today
     const scored = await q("SELECT COUNT(*) as c FROM calls WHERE status='SCORED' AND date(processed_at)=date('now')");
     const d = daily.rows[0] || { full_qc_used: 0, est_cost_usd: 0 };
@@ -252,7 +252,7 @@ router.get('/debug/webhooks', async (req, res) => {
 // ─── Health ──────────────────────────────────────────────────
 router.get('/health', async (req, res) => {
   try {
-    const h = await q("SELECT COUNT(*) as total, SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing, SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) as errors, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, SUM(CASE WHEN status='SKIP_VOICEMAIL' THEN 1 ELSE 0 END) as voicemails FROM calls");
+    const h = await q("SELECT COUNT(*) as total, SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing, SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) as errors, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, SUM(CASE WHEN status='SKIP_VOICEMAIL' THEN 1 ELSE 0 END) as voicemails, SUM(CASE WHEN status IN ('SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL') THEN 1 ELSE 0 END) as classified_skipped FROM calls");
     const r = h.rows[0]; const total = r.total || 1; const issues = (r.missing || 0) + (r.errors || 0);
     res.json({ healthScore: Math.round(((total - issues) / total) * 100), ...r });
   } catch (err) { res.status(500).json({ error: err.message }); }
