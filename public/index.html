@@ -49,8 +49,10 @@ function useApi(p,deps=[]){const[d,setD]=useState(null);const[l,setL]=useState(t
 async function postApi(p,b){return fetch(API+p,{method:"POST",headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined}).then(r=>r.json())}
 async function patchApi(p,b){return fetch(API+p,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(r=>r.json())}
 async function deleteApi(p){return fetch(API+p,{method:"DELETE"}).then(r=>r.json())}
-const fmt=d=>d?new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"—";
-const fmtF=d=>d?new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}):"—";
+const TZ="America/New_York";
+function toUTC(d){if(!d)return null;const s=String(d);return new Date(s.includes('Z')||s.includes('+')?s:s.replace(' ','T')+'Z');}
+const fmt=d=>{const dt=toUTC(d);return dt?dt.toLocaleDateString("en-US",{month:"short",day:"numeric",timeZone:TZ}):"—"};
+const fmtF=d=>{const dt=toUTC(d);return dt?dt.toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit",timeZone:TZ,timeZoneName:"short"}):"—"};
 const fmtD=s=>{if(!s&&s!==0)return"—";s=Number(s);if(!isFinite(s))return"—";const m=Math.floor(s/60);return`${m}m ${String(Math.round(s%60)).padStart(2,"0")}s`};
 const sClr=s=>{if(s==null)return"#4b5563";if(s>=8)return"#34d399";if(s>=6)return"#fbbf24";return"#ef4444"};
 const stClr=s=>({SCORED:["#052e16","#22c55e","#166534"],NEW:["#0c1a3d","#60a5fa","#1e40af"],REQC:["#1a0c3d","#a78bfa","#5b21b6"],ERROR:["#2a0a0a","#ef4444","#991b1b"],WAIT_RETRY_FULL:["#2a1a00","#f59e0b","#92400e"],WAIT_TRANSCRIPT:["#2a1a00","#f59e0b","#92400e"]}[s]||["#0c1a3d","#60a5fa","#1e40af"]);
