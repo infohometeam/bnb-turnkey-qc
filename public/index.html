@@ -12,18 +12,12 @@ body{font-family:var(--f);background:var(--bg);color:var(--t1);min-height:100vh}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#1a2030;border-radius:3px}
 button{font-family:var(--f)}input,select{font-family:var(--f)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px}
-.stat-card{padding:16px 20px}
-.stat-label{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:10px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:1px;font-family:var(--m)}
-.stat-value{font-size:26px;font-weight:900;font-family:var(--m)}
-.stat-sub{font-size:10px;color:var(--t4);margin-top:4px}
+.stat-card{padding:16px 20px}.stat-label{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:10px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:1px;font-family:var(--m)}.stat-value{font-size:26px;font-weight:900;font-family:var(--m)}.stat-sub{font-size:10px;color:var(--t4);margin-top:4px}
 .badge{display:inline-block;padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700;font-family:var(--m);letter-spacing:.5px}
 .section-head{font-size:11px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:1px;font-family:var(--m);margin-bottom:16px}
-.btn{padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--t2);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}
-.btn:hover{background:#111520;color:var(--t1)}.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn{padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--t2);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}.btn:hover{background:#111520;color:var(--t1)}.btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-primary{background:#6366f1;border-color:#6366f1;color:#fff}.btn-primary:hover{background:#4f46e5}
-.btn-green{background:#052e16;border-color:#166534;color:#22c55e}
-.btn-red{background:#2a0a0a;border-color:#991b1b;color:#ef4444}
-.btn-sm{padding:4px 10px;font-size:10px}
+.btn-green{background:#052e16;border-color:#166534;color:#22c55e}.btn-red{background:#2a0a0a;border-color:#991b1b;color:#ef4444}.btn-sm{padding:4px 10px;font-size:10px}
 .grid{display:grid;gap:12px}.grid-stats{grid-template-columns:repeat(auto-fit,minmax(155px,1fr))}
 .flex-col{display:flex;flex-direction:column}.gap-24{gap:24px}.gap-20{gap:20px}.gap-12{gap:12px}.gap-8{gap:8px}
 aside{width:220px;flex-shrink:0;background:#050910;border-right:1px solid #111520;display:flex;flex-direction:column}
@@ -49,338 +43,184 @@ select,input[type=date]{background:var(--card);border:1px solid var(--border);bo
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
 <script type="text/babel">
-const {useState,useEffect,useCallback,useMemo} = React;
-const API = "/api";
-
-function useApi(path, deps=[]) {
-  const [data,setData]=useState(null);
-  const [loading,setLoading]=useState(true);
-  const reload=useCallback(()=>{setLoading(true);fetch(API+path).then(r=>r.json()).then(setData).catch(e=>console.error(e)).finally(()=>setLoading(false));},[path]);
-  useEffect(()=>{reload()},[reload,...deps]);
-  return {data,loading,reload};
-}
-async function postApi(path,body){return fetch(API+path,{method:"POST",headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined}).then(r=>r.json());}
-async function patchApi(path,body){return fetch(API+path,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json());}
-async function deleteApi(path){return fetch(API+path,{method:"DELETE"}).then(r=>r.json());}
-
+const {useState,useEffect,useCallback} = React;
+const API="/api";
+function useApi(p,deps=[]){const[d,setD]=useState(null);const[l,setL]=useState(true);const reload=useCallback(()=>{setL(true);fetch(API+p).then(r=>r.json()).then(setD).catch(e=>console.error(e)).finally(()=>setL(false))},[p]);useEffect(()=>{reload()},[reload,...deps]);return{data:d,loading:l,reload}}
+async function postApi(p,b){return fetch(API+p,{method:"POST",headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined}).then(r=>r.json())}
+async function patchApi(p,b){return fetch(API+p,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(r=>r.json())}
+async function deleteApi(p){return fetch(API+p,{method:"DELETE"}).then(r=>r.json())}
 const fmt=d=>d?new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"—";
 const fmtF=d=>d?new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}):"—";
 const fmtD=s=>{if(!s&&s!==0)return"—";s=Number(s);if(!isFinite(s))return"—";const m=Math.floor(s/60);return`${m}m ${String(Math.round(s%60)).padStart(2,"0")}s`};
 const sClr=s=>{if(s==null)return"#4b5563";if(s>=8)return"#34d399";if(s>=6)return"#fbbf24";return"#ef4444"};
-const stClr=s=>({SCORED:["#052e16","#22c55e","#166534"],NEW:["#0c1a3d","#60a5fa","#1e40af"],REQC:["#1a0c3d","#a78bfa","#5b21b6"],ERROR:["#2a0a0a","#ef4444","#991b1b"],WAIT_RETRY_FULL:["#2a1a00","#f59e0b","#92400e"],WAIT_TRANSCRIPT:["#2a1a00","#f59e0b","#92400e"],PAUSED_DAILY_LIMIT:["#111","#6b7280","#374151"]}[s]||["#0c1a3d","#60a5fa","#1e40af"]);
+const stClr=s=>({SCORED:["#052e16","#22c55e","#166534"],NEW:["#0c1a3d","#60a5fa","#1e40af"],REQC:["#1a0c3d","#a78bfa","#5b21b6"],ERROR:["#2a0a0a","#ef4444","#991b1b"],WAIT_RETRY_FULL:["#2a1a00","#f59e0b","#92400e"],WAIT_TRANSCRIPT:["#2a1a00","#f59e0b","#92400e"]}[s]||["#0c1a3d","#60a5fa","#1e40af"]);
 const RC={"Matt":"#6366f1","Kevin":"#8b5cf6","Andrew":"#06b6d4","Steven":"#10b981","Anurag":"#f59e0b"};
 const CATS=["discovery","qualification","pitch","objections","close_next_step"];
 const CL={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",objections:"Objections",close_next_step:"Close / Next Step"};
 const TEAM_NAMES=new Set(["matt","kevin","andrew","steven","anurag","sam","francis","agent","rep"]);
+const RECORD_LABELS={SKIP_VOICEMAIL:"📵 Voicemail",SKIP_SHORT:"📏 Too Short",SKIP_RESCHEDULE:"📅 Reschedule",SKIP_FOLLOWUP:"🔄 Follow-up",SKIP_WRONG_NUMBER:"❌ Wrong Number",SKIP_INTERNAL:"🏢 Internal"};
 
-function Badge({status}){const[bg,fg,bd]=stClr(status);return <span className="badge" style={{background:bg,color:fg,border:`1px solid ${bd}`}}>{status}</span>}
-function ScoreRing({value,size=44,sw=3}){const c=sClr(value),r=(size-sw)/2,ci=2*Math.PI*r,p=value!=null?(value/10)*ci:0;return<svg width={size} height={size} style={{transform:"rotate(-90deg)",flexShrink:0}}><circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1e293b" strokeWidth={sw}/>{value!=null&&<circle cx={size/2} cy={size/2} r={r} fill="none" stroke={c} strokeWidth={sw} strokeDasharray={ci} strokeDashoffset={ci-p} strokeLinecap="round" style={{transition:"stroke-dashoffset .7s"}}/>}<text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central" style={{transform:"rotate(90deg)",transformOrigin:"center",fontSize:size*.3,fontWeight:800,fill:c,fontFamily:"var(--m)"}}>{value!=null?value:"—"}</text></svg>}
-function MiniBar({value,max=10}){const c=sClr(value);return<div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:5,background:"#1e293b",borderRadius:3,overflow:"hidden"}}><div style={{width:`${((value||0)/max)*100}%`,height:"100%",background:c,borderRadius:3,transition:"width .5s"}}/></div><span style={{fontSize:11,fontWeight:700,color:c,fontFamily:"var(--m)",minWidth:28,textAlign:"right"}}>{value||"—"}</span></div>}
+function Badge({status}){const[bg,fg,bd]=stClr(status);return<span className="badge" style={{background:bg,color:fg,border:`1px solid ${bd}`}}>{status}</span>}
+function ScoreRing({value,size=44,sw=3}){const c=sClr(value),r=(size-sw)/2,ci=2*Math.PI*r,p=value!=null?(value/10)*ci:0;return<svg width={size} height={size} style={{transform:"rotate(-90deg)",flexShrink:0}}><circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1e293b" strokeWidth={sw}/>{value!=null&&<circle cx={size/2} cy={size/2} r={r} fill="none" stroke={c} strokeWidth={sw} strokeDasharray={ci} strokeDashoffset={ci-p} strokeLinecap="round"/>}<text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central" style={{transform:"rotate(90deg)",transformOrigin:"center",fontSize:size*.3,fontWeight:800,fill:c,fontFamily:"var(--m)"}}>{value!=null?value:"—"}</text></svg>}
+function MiniBar({value,max=10}){const c=sClr(value);return<div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:5,background:"#1e293b",borderRadius:3,overflow:"hidden"}}><div style={{width:`${((value||0)/max)*100}%`,height:"100%",background:c,borderRadius:3}}/></div><span style={{fontSize:11,fontWeight:700,color:c,fontFamily:"var(--m)",minWidth:28,textAlign:"right"}}>{value||"—"}</span></div>}
 function Pill({label,ok}){return<span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 10px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"var(--m)",background:ok?"#052e16":"#2a0a0a",color:ok?"#34d399":"#ef4444",border:`1px solid ${ok?"#166534":"#991b1b"}`}}>{ok?"✓":"✗"} {label}</span>}
-
-// ── Date Range Filter ───────────────────────────────────────
-function DateFilter({period,setPeriod,from,setFrom,to,setTo}) {
-  return <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-    <div className="period-toggle">{["day","week","month","all"].map(p=><button key={p} className={period===p&&!from?"active":""} onClick={()=>{setPeriod(p);setFrom('');setTo('');}}>{p==="day"?"Today":p==="week"?"7 Days":p==="month"?"30 Days":"All"}</button>)}</div>
-    <span style={{fontSize:10,color:"#374151"}}>or</span>
-    <input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPeriod('')}} style={{fontSize:11}}/>
-    <span style={{fontSize:10,color:"#374151"}}>to</span>
-    <input type="date" value={to} onChange={e=>{setTo(e.target.value);setPeriod('')}} style={{fontSize:11}}/>
-    {(from||to)&&<button className="btn btn-sm" onClick={()=>{setFrom('');setTo('');setPeriod('week')}}>✕ Clear</button>}
-  </div>
-}
-function buildDateQ(period,from,to){if(from||to){let s='';if(from)s+=`&from=${from}`;if(to)s+=`&to=${to}`;return s;}if(period&&period!=='all')return`&period=${period}`;return'';}
+function DateFilter({period,setPeriod,from,setFrom,to,setTo}){return<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><div className="period-toggle">{["day","week","month","all"].map(p=><button key={p} className={period===p&&!from?"active":""} onClick={()=>{setPeriod(p);setFrom('');setTo('')}}>{p==="day"?"Today":p==="week"?"7 Days":p==="month"?"30 Days":"All"}</button>)}</div><span style={{fontSize:10,color:"#374151"}}>or</span><input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPeriod('')}}/><span style={{fontSize:10,color:"#374151"}}>to</span><input type="date" value={to} onChange={e=>{setTo(e.target.value);setPeriod('')}}/>{(from||to)&&<button className="btn btn-sm" onClick={()=>{setFrom('');setTo('');setPeriod('week')}}>✕</button>}</div>}
+function buildDQ(p,f,t){if(f||t){let s='';if(f)s+=`&from=${f}`;if(t)s+=`&to=${t}`;return s}if(p&&p!=='all')return`&period=${p}`;return''}
 
 // ── Dashboard ───────────────────────────────────────────────
-function Dashboard(){
-  const[period,setPeriod]=useState("week");const[from,setFrom]=useState('');const[to,setTo]=useState('');
-  const dq=buildDateQ(period,from,to);
-  const{data}=useApi(`/analytics?_=1${dq}`,[period,from,to]);
-  const{data:qd}=useApi("/queue/status");
-  const{data:fd}=useApi(`/calls?flagged=true&limit=5${dq}`,[period,from,to]);
-  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
-  const s=data.stats||{};
-  return<div className="flex-col gap-24">
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
-      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"} engine</p></div>
-      <DateFilter {...{period,setPeriod,from,setFrom,to,setTo}}/>
-    </div>
-    <div className="grid grid-stats">
-      <div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div>
-      <div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div></div>
-      <div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div>
-      <div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Duration</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div>
-      <div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div>
-    </div>
-    {data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}
-    {fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Recent Flagged</div>{fd.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid #111520"}}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}
-    {(!data.repStats||!data.repStats.length)&&!s.scored&&<div className="card" style={{padding:40,textAlign:"center"}}><div style={{fontSize:40,marginBottom:16}}>📞</div><div style={{fontSize:16,fontWeight:700,color:"#64748b"}}>No scored calls yet</div><div style={{fontSize:13,color:"#374151",marginTop:8,lineHeight:1.6}}>Calls will appear here as they come in from Fathom and Aloware. The queue processes every 2 minutes.</div></div>}
-  </div>
-}
+function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:qd}=useApi("/queue/status");const{data:fd}=useApi(`/calls?flagged=true&limit=5${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"}</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div><div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div><div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div></div>{data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}{fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Flagged</div>{fd.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid #111520"}}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}</div>}
 
 // ── Calls List ──────────────────────────────────────────────
-function CallsList({onSelect}){
-  const[statusF,setStatusF]=useState("ALL");const[repF,setRepF]=useState("ALL");
-  const[period,setPeriod]=useState("");const[from,setFrom]=useState('');const[to,setTo]=useState('');
-  const[page,setPage]=useState(0);const PER=50;
-  const dq=buildDateQ(period,from,to);
-  const statusQ=statusF!=="ALL"?`&status=${statusF}`:"";const repQ=repF!=="ALL"?`&rep=${repF}`:"";
-  const{data,reload}=useApi(`/calls?limit=${PER}&offset=${page*PER}${statusQ}${repQ}${dq}&hideVm=true`,[statusF,repF,period,from,to,page]);
-  const{data:reps}=useApi("/reps");
-  const[selected,setSelected]=useState(new Set());
-  const[deleting,setDeleting]=useState(false);
+function CallsList({onSelect}){const[sf,sSf]=useState("ALL");const[rf,sRf]=useState("ALL");const[p,sP]=useState("");const[f,sF]=useState('');const[t,sT]=useState('');const[pg,sPg]=useState(0);const PER=50;const dq=buildDQ(p,f,t);const sQ=sf!=="ALL"?`&status=${sf}`:"";const rQ=rf!=="ALL"?`&rep=${rf}`:"";const{data,reload}=useApi(`/calls?limit=${PER}&offset=${pg*PER}${sQ}${rQ}${dq}&hideVm=true`,[sf,rf,p,f,t,pg]);const{data:reps}=useApi("/reps");const[sel,setSel]=useState(new Set());const[del,setDel]=useState(false);
+  async function bulkDel(){if(!sel.size||!confirm(`Delete ${sel.size} calls?`))return;setDel(true);await postApi('/calls/bulk-delete',{ids:[...sel]});setSel(new Set());reload();setDel(false)}
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const tp=Math.ceil(data.total/PER);
+  return<div className="flex-col gap-20"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Calls</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{data.total} calls</p></div><div className="flex-col gap-8"><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><select value={sf} onChange={e=>{sSf(e.target.value);sPg(0)}}><option value="ALL">All Status</option>{["SCORED","NEW","REQC","ERROR","WAIT_RETRY_FULL","WAIT_TRANSCRIPT"].map(s=><option key={s}>{s}</option>)}</select><select value={rf} onChange={e=>{sRf(e.target.value);sPg(0)}}><option value="ALL">All Reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select><button className="btn btn-sm" onClick={()=>{reload();setSel(new Set())}}>↻</button>{sel.size>0&&<button className="btn btn-red btn-sm" onClick={bulkDel} disabled={del}>🗑 {sel.size}</button>}</div></div></div>
+    <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:600,overflowY:"auto"}}>{data.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #060a10",background:sel.has(c.id)?"#111520":c.flagged?"rgba(245,158,11,.03)":"transparent"}} onClick={()=>onSelect(c)}><input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1"}}/><ScoreRing value={c.overall_score_adj} size={32} sw={2}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name||"?"}{c.flagged&&<span style={{color:"#f59e0b",marginLeft:6,fontSize:10}}>⚠</span>}</div><div style={{fontSize:10,color:"#2a3040",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.source}</div></div><div style={{textAlign:"right",flexShrink:0}}><Badge status={c.status}/><div style={{fontSize:10,color:"#2a3040",marginTop:4}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</div></div></div>)}{!data.calls.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>No calls</div>}</div></div>
+    {tp>1&&<div style={{display:"flex",justifyContent:"center",gap:6,alignItems:"center"}}><button className="btn btn-sm" disabled={pg===0} onClick={()=>sPg(x=>x-1)}>← Prev</button><span style={{fontSize:11,color:"#4b5563",fontFamily:"var(--m)"}}>{pg+1}/{tp}</span><button className="btn btn-sm" disabled={pg>=tp-1} onClick={()=>sPg(x=>x+1)}>Next →</button></div>}
+  </div>}
 
-  async function handleBulkDelete(){if(!selected.size)return;if(!confirm(`Delete ${selected.size} calls permanently?`))return;setDeleting(true);await postApi('/calls/bulk-delete',{ids:[...selected]});setSelected(new Set());reload();setDeleting(false);}
-
-  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
-  const totalPages=Math.ceil(data.total/PER);
-
+// ── Call Detail ──────────────────────────────────────────────
+function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const[stx,setStx]=useState(false);const[ed,setEd]=useState(false);const{data:fc,reload}=useApi(`/calls/${initial.id}`,[initial.id]);const c=fc||initial;
+  async function reqc(){setRs(true);await postApi(`/calls/${c.id}/reqc`);alert("Queued for re-score.");reload();setRs(false)}
+  async function del(){if(!confirm("Delete permanently?"))return;await deleteApi(`/calls/${c.id}`);onBack()}
+  const lines=(c.transcript||'').split('\n').filter(l=>l.trim());
   return<div className="flex-col gap-20">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}><button className="btn" onClick={onBack}>← Back</button><div style={{display:"flex",gap:6}}><button className="btn" onClick={()=>setEd(true)}>✏ Edit</button><button className="btn btn-green" onClick={reqc} disabled={rs}>{rs?"...":"↻ Re-score"}</button><button className="btn btn-red btn-sm" onClick={del}>🗑</button></div></div>
+    <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}><ScoreRing value={c.overall_score_adj} size={72} sw={4.5}/><div><h2 style={{fontSize:22,fontWeight:900,margin:0}}>{c.rep_name} → {c.client_name||"?"}</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{fmtF(c.received_at)} · {c.source} · {fmtD(c.call_duration_sec)}</p><div style={{display:"flex",gap:8,marginTop:8}}><Badge status={c.status}/>{c.flagged&&<span className="badge" style={{background:"#2a1a00",color:"#f59e0b",border:"1px solid #92400e"}}>⚠ FLAGGED</span>}</div></div></div>
+    {c.audio_url&&c.audio_url.startsWith('http')&&<div className="card" style={{padding:16}}><a href={c.audio_url} target="_blank" rel="noopener" className="btn btn-primary" style={{textDecoration:"none"}}>▶ Recording</a></div>}
+    {c.quick_summary&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>Summary</div><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.7}}>{c.quick_summary}</p></div>}
+    <div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>⏱</span> Duration</div><div className="stat-value" style={{fontSize:20}}>{fmtD(c.call_duration_sec)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent</div><div className="stat-value" style={{fontSize:20,color:c.agent_talk_pct>75||c.agent_talk_pct<20?"#ef4444":"#22c55e"}}>{c.agent_talk_pct!=null?c.agent_talk_pct+"%":"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>👤</span> Contact</div><div className="stat-value" style={{fontSize:20}}>{c.contact_talk_pct!=null?c.contact_talk_pct+"%":"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>◉</span> Raw</div><div className="stat-value" style={{fontSize:20,color:sClr(c.overall_score)}}>{c.overall_score??"—"}</div></div></div>
+    {c.category_scores&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:14}}>Categories</div>{CATS.map(cat=><div key={cat} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontSize:11,color:"#64748b",fontWeight:600,width:100}}>{CL[cat]}</span><div style={{flex:1}}><MiniBar value={c.category_scores[cat]}/></div></div>)}</div>}
+    {c.pass_fail&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}><Pill label="Next Step" ok={c.pass_fail.clear_next_step}/><Pill label="Offer" ok={c.pass_fail.explained_offer}/><Pill label="Qualified" ok={c.pass_fail.qualified_investor_fit}/></div>}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{c.strengths?.length>0&&<div className="card" style={{padding:18,background:"#041a0e",borderColor:"#166534"}}><div style={{fontSize:10,fontWeight:700,color:"#22c55e",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>✦ Strengths</div>{c.strengths.map((s,i)=><div key={i} style={{fontSize:12,color:"#a7f3d0",lineHeight:1.7}}>• {s}</div>)}</div>}{c.improvements?.length>0&&<div className="card" style={{padding:18,background:"#1a0a0a",borderColor:"#991b1b"}}><div style={{fontSize:10,fontWeight:700,color:"#ef4444",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>△ Improve</div>{c.improvements.map((s,i)=><div key={i} style={{fontSize:12,color:"#fca5a5",lineHeight:1.7}}>• {s}</div>)}</div>}</div>
+    {c.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>🎯 Coaching</div><p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{c.coaching_notes}</p></div>}
+    {c.next_step_text&&<div className="card" style={{padding:16,background:"#0c1a3d",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
+    {c.score_adjust_notes&&<div style={{fontSize:11,color:"#374151",marginTop:4}}>Adjustments: {c.score_adjust_notes}</div>}
+    <div className="card" style={{overflow:"hidden"}}><button onClick={()=>setStx(!stx)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",background:"transparent",border:"none",cursor:"pointer",color:"var(--t1)"}}><span className="section-head" style={{marginBottom:0}}>📝 Transcript</span><span style={{fontSize:12,color:"#4b5563",fontFamily:"var(--m)"}}>{stx?"▼":"▶"}</span></button>{stx&&<div style={{maxHeight:500,overflowY:"auto",padding:"16px 20px",borderTop:"1px solid #111520"}}>{!lines.length&&<div style={{color:"#374151",textAlign:"center",padding:20}}>No transcript</div>}{lines.map((line,i)=>{const m=line.match(/^\[([^\]]*)\]\s*([^:]+):\s*(.*)/);if(!m)return<div key={i} style={{fontSize:12,color:"#64748b",lineHeight:1.8}}>{line}</div>;const[,ts,sp,tx]=m;const isAg=TEAM_NAMES.has(sp.toLowerCase().trim());return<div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:"1px solid #0a0e14"}}><span style={{fontSize:10,color:"#2a3040",fontFamily:"var(--m)",minWidth:42}}>{ts}</span><div><span style={{fontSize:11,fontWeight:700,color:isAg?"#60a5fa":"#34d399",marginRight:6}}>{sp.trim()}</span><span style={{fontSize:12,color:"#94a3b8"}}>{tx}</span></div></div>})}</div>}</div>
+    {ed&&<EditModal call={c} onClose={()=>setEd(false)} onSave={()=>{setEd(false);reload()}}/>}
+  </div>}
+
+function EditModal({call,onClose,onSave}){const[fm,setFm]=useState({rep_name:call.rep_name||'',client_name:call.client_name||'',role:call.role||'',call_duration_sec:call.call_duration_sec||'',agent_talk_pct:call.agent_talk_pct||'',contact_talk_pct:call.contact_talk_pct||''});const set=(k,v)=>setFm(f=>({...f,[k]:v}));async function save(){await patchApi(`/calls/${call.id}`,{...fm,call_duration_sec:fm.call_duration_sec?Number(fm.call_duration_sec):null,agent_talk_pct:fm.agent_talk_pct?Number(fm.agent_talk_pct):null,contact_talk_pct:fm.contact_talk_pct?Number(fm.contact_talk_pct):null});onSave()}return<div className="modal-overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}><h3 style={{fontSize:16,fontWeight:800,marginBottom:20}}>Edit Call</h3><label>Rep</label><input value={fm.rep_name} onChange={e=>set('rep_name',e.target.value)}/><label>Client</label><input value={fm.client_name} onChange={e=>set('client_name',e.target.value)}/><label>Role</label><select value={fm.role} onChange={e=>set('role',e.target.value)}><option>Setter</option><option>Closer</option></select><label>Duration (sec)</label><input type="number" value={fm.call_duration_sec} onChange={e=>set('call_duration_sec',e.target.value)}/><label>Agent Talk %</label><input type="number" value={fm.agent_talk_pct} onChange={e=>set('agent_talk_pct',e.target.value)}/><label>Contact Talk %</label><input type="number" value={fm.contact_talk_pct} onChange={e=>set('contact_talk_pct',e.target.value)}/><div style={{display:"flex",gap:8,marginTop:8}}><button className="btn btn-primary" onClick={save}>Save</button><button className="btn" onClick={onClose}>Cancel</button></div></div></div>}
+
+// ── Records (Voicemails, Reschedules, etc.) ─────────────────
+function RecordsPage(){
+  const[typeF,setTypeF]=useState("ALL");const[repF,setRepF]=useState("ALL");const[p,sP]=useState("");const[f,sF]=useState('');const[t,sT]=useState('');
+  const dq=buildDQ(p,f,t);const tQ=typeF!=="ALL"?`&type=${typeF}`:"";const rQ=repF!=="ALL"?`&rep=${repF}`:"";
+  const{data,reload}=useApi(`/records?limit=200${tQ}${rQ}${dq}`,[typeF,repF,p,f,t]);
+  const{data:reps}=useApi("/reps");
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  const bd=data.breakdown||[];
+  return<div className="flex-col gap-24">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
-      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>All Calls</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{data.total} calls{statusF!=="ALL"?` (${statusF})`:""}</p></div>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Records</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>Voicemails, reschedules, follow-ups, and other non-scored calls — {data.total} total</p></div>
       <div className="flex-col gap-8">
-        <DateFilter {...{period,setPeriod,from,setFrom,to,setTo}}/>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <select value={statusF} onChange={e=>{setStatusF(e.target.value);setPage(0)}}><option value="ALL">All Status</option>{["SCORED","NEW","REQC","ERROR","WAIT_RETRY_FULL","WAIT_TRANSCRIPT"].map(s=><option key={s}>{s}</option>)}</select>
-          <select value={repF} onChange={e=>{setRepF(e.target.value);setPage(0)}}><option value="ALL">All Reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name} ({r.role})</option>)}</select>
-          <button className="btn" onClick={()=>{reload();setSelected(new Set())}}>↻</button>
-          {selected.size>0&&<button className="btn btn-red btn-sm" onClick={handleBulkDelete} disabled={deleting}>🗑 Delete {selected.size}</button>}
+        <DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/>
+        <div style={{display:"flex",gap:8}}>
+          <select value={typeF} onChange={e=>setTypeF(e.target.value)}><option value="ALL">All Types</option><option value="SKIP_VOICEMAIL">Voicemails</option><option value="SKIP_RESCHEDULE">Reschedules</option><option value="SKIP_FOLLOWUP">Follow-ups</option><option value="SKIP_SHORT">Too Short</option><option value="SKIP_WRONG_NUMBER">Wrong Number</option><option value="SKIP_INTERNAL">Internal</option></select>
+          <select value={repF} onChange={e=>setRepF(e.target.value)}><option value="ALL">All Reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
         </div>
       </div>
     </div>
-    <div className="card" style={{overflow:"hidden"}}>
-      <div style={{maxHeight:600,overflowY:"auto"}}>
-        {data.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #060a10",background:selected.has(c.id)?"#111520":c.flagged?"rgba(245,158,11,.03)":"transparent",transition:"background .1s"}} onClick={()=>onSelect(c)}>
-          <input type="checkbox" checked={selected.has(c.id)} onChange={e=>{e.stopPropagation();const s=new Set(selected);s.has(c.id)?s.delete(c.id):s.add(c.id);setSelected(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1"}}/>
-          <ScoreRing value={c.overall_score_adj} size={32} sw={2}/>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} <span style={{color:"#1e293b"}}>→</span> {c.client_name||"Unknown"}{c.flagged&&<span style={{color:"#f59e0b",marginLeft:6,fontSize:10}}>⚠</span>}</div>
-            <div style={{fontSize:10,color:"#2a3040",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.source}</div>
-          </div>
-          <div style={{textAlign:"right",flexShrink:0}}>
-            <Badge status={c.status}/>
-            <div style={{fontSize:10,color:"#2a3040",marginTop:4}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</div>
-          </div>
-        </div>)}
-        {!data.calls.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>No calls match filters</div>}
-      </div>
+    {/* Type breakdown cards */}
+    <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))"}}>
+      {bd.map(b=><div key={b.status} className="card stat-card"><div className="stat-label">{RECORD_LABELS[b.status]?.split(' ')[0]||"?"} <span>{RECORD_LABELS[b.status]?.split(' ').slice(1).join(' ')||b.status}</span></div><div className="stat-value" style={{color:"#64748b"}}>{Number(b.count)}</div></div>)}
     </div>
-    {totalPages>1&&<div style={{display:"flex",justifyContent:"center",gap:6,alignItems:"center"}}>
-      <button className="btn btn-sm" disabled={page===0} onClick={()=>setPage(p=>p-1)}>← Prev</button>
-      <span style={{fontSize:11,color:"#4b5563",fontFamily:"var(--m)"}}>{page+1} of {totalPages}</span>
-      <button className="btn btn-sm" disabled={page>=totalPages-1} onClick={()=>setPage(p=>p+1)}>Next →</button>
-    </div>}
+    {/* Records list */}
+    <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:600,overflowY:"auto"}}>
+      {data.records.map(r=><div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid #060a10"}}>
+        <span style={{fontSize:16,width:28,textAlign:"center"}}>{RECORD_LABELS[r.status]?.split(' ')[0]||"?"}</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name||"Unknown"} → {r.client_name||"Unknown"}</div>
+          <div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.quick_summary||r.error||r.status}</div>
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{fontSize:10,color:"#4b5563",fontFamily:"var(--m)"}}>{fmtD(r.call_duration_sec)}</div>
+          <div style={{fontSize:10,color:"#2a3040",marginTop:2}}>{fmt(r.received_at)}</div>
+        </div>
+        {r.audio_url&&r.audio_url.startsWith('http')&&<a href={r.audio_url} target="_blank" rel="noopener" style={{fontSize:10,color:"#60a5fa",textDecoration:"none"}}>▶</a>}
+      </div>)}
+      {!data.records.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>No records match filters</div>}
+    </div></div>
   </div>
-}
-
-// ── Call Detail ──────────────────────────────────────────────
-function CallDetail({call:initial,onBack,onReload}){
-  const[rescoring,setRescoring]=useState(false);const[showTx,setShowTx]=useState(false);const[editing,setEditing]=useState(false);
-  const{data:fullCall,reload}=useApi(`/calls/${initial.id}`,[initial.id]);
-  const c=fullCall||initial;
-  async function handleReqc(){setRescoring(true);await postApi(`/calls/${c.id}/reqc`);alert("Queued for re-score.");reload();setRescoring(false);}
-  async function handleDelete(){if(!confirm("Delete this call permanently?"))return;await deleteApi(`/calls/${c.id}`);onBack();}
-  const lines=(c.transcript||'').split('\n').filter(l=>l.trim());
-  return<div className="flex-col gap-20">
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-      <button className="btn" onClick={onBack}>← Back</button>
-      <div style={{display:"flex",gap:6}}>
-        <button className="btn" onClick={()=>setEditing(true)}>✏ Edit</button>
-        <button className="btn btn-green" onClick={handleReqc} disabled={rescoring}>{rescoring?"...":"↻ Re-score"}</button>
-        <button className="btn btn-red btn-sm" onClick={handleDelete}>🗑</button>
-      </div>
-    </div>
-    <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-      <ScoreRing value={c.overall_score_adj} size={72} sw={4.5}/>
-      <div><h2 style={{fontSize:22,fontWeight:900,margin:0}}>{c.rep_name} → {c.client_name||"Unknown"}</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{fmtF(c.received_at)} · {c.source} · {fmtD(c.call_duration_sec)}</p>
-        <div style={{display:"flex",gap:8,marginTop:8}}><Badge status={c.status}/>{c.flagged&&<span className="badge" style={{background:"#2a1a00",color:"#f59e0b",border:"1px solid #92400e"}}>⚠ FLAGGED</span>}</div>
-      </div>
-    </div>
-    {c.audio_url&&c.audio_url.startsWith('http')&&<div className="card" style={{padding:16}}><a href={c.audio_url} target="_blank" rel="noopener" className="btn btn-primary" style={{textDecoration:"none"}}>▶ Open Recording</a><span style={{fontSize:11,color:"#374151",marginLeft:12}}>Opens in Fathom/Aloware</span></div>}
-    {c.quick_summary&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>Summary</div><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.7}}>{c.quick_summary}</p></div>}
-    <div className="grid grid-stats">
-      <div className="card stat-card"><div className="stat-label"><span>⏱</span> Duration</div><div className="stat-value" style={{fontSize:20}}>{fmtD(c.call_duration_sec)}</div></div>
-      <div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{fontSize:20,color:c.agent_talk_pct>75||c.agent_talk_pct<20?"#ef4444":"#22c55e"}}>{c.agent_talk_pct!=null?c.agent_talk_pct+"%":"—"}</div></div>
-      <div className="card stat-card"><div className="stat-label"><span>👤</span> Contact Talk</div><div className="stat-value" style={{fontSize:20}}>{c.contact_talk_pct!=null?c.contact_talk_pct+"%":"—"}</div></div>
-      <div className="card stat-card"><div className="stat-label"><span>◉</span> Raw Score</div><div className="stat-value" style={{fontSize:20,color:sClr(c.overall_score)}}>{c.overall_score??"—"}</div></div>
-    </div>
-    {c.category_scores&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:14}}>Category Scores</div>{CATS.map(cat=><div key={cat} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontSize:11,color:"#64748b",fontWeight:600,width:100}}>{CL[cat]}</span><div style={{flex:1}}><MiniBar value={c.category_scores[cat]}/></div></div>)}</div>}
-    {c.pass_fail&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}><Pill label="Next Step" ok={c.pass_fail.clear_next_step}/><Pill label="Offer Explained" ok={c.pass_fail.explained_offer}/><Pill label="Qualified Fit" ok={c.pass_fail.qualified_investor_fit}/></div>}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-      {c.strengths?.length>0&&<div className="card" style={{padding:18,background:"#041a0e",borderColor:"#166534"}}><div style={{fontSize:10,fontWeight:700,color:"#22c55e",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>✦ Strengths</div>{c.strengths.map((s,i)=><div key={i} style={{fontSize:12,color:"#a7f3d0",lineHeight:1.7}}>• {s}</div>)}</div>}
-      {c.improvements?.length>0&&<div className="card" style={{padding:18,background:"#1a0a0a",borderColor:"#991b1b"}}><div style={{fontSize:10,fontWeight:700,color:"#ef4444",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>△ Improvements</div>{c.improvements.map((s,i)=><div key={i} style={{fontSize:12,color:"#fca5a5",lineHeight:1.7}}>• {s}</div>)}</div>}
-    </div>
-    {c.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>🎯 Coaching Notes</div><p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{c.coaching_notes}</p></div>}
-    {c.next_step_text&&<div className="card" style={{padding:16,background:"#0c1a3d",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,textTransform:"uppercase",letterSpacing:1,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
-    {c.score_adjust_notes&&<div style={{fontSize:11,color:"#374151",marginTop:4}}>Adjustments: {c.score_adjust_notes}</div>}
-    <div className="card" style={{overflow:"hidden"}}>
-      <button onClick={()=>setShowTx(!showTx)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",background:"transparent",border:"none",cursor:"pointer",color:"var(--t1)"}}>
-        <span className="section-head" style={{marginBottom:0}}>📝 Transcript {c.transcript_chars>0?`(${Math.round(Number(c.transcript_chars)/1000)}k chars)`:""}</span>
-        <span style={{fontSize:12,color:"#4b5563",fontFamily:"var(--m)"}}>{showTx?"▼ Hide":"▶ Show"}</span>
-      </button>
-      {showTx&&<div style={{maxHeight:500,overflowY:"auto",padding:"16px 20px",borderTop:"1px solid #111520"}}>
-        {!lines.length&&<div style={{color:"#374151",fontSize:13,textAlign:"center",padding:20}}>No transcript</div>}
-        {lines.map((line,i)=>{const m=line.match(/^\[([^\]]*)\]\s*([^:]+):\s*(.*)/);if(!m)return<div key={i} style={{fontSize:12,color:"#64748b",lineHeight:1.8,padding:"2px 0"}}>{line}</div>;const[,ts,sp,tx]=m;const isAg=TEAM_NAMES.has(sp.toLowerCase().trim());return<div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:"1px solid #0a0e14"}}><span style={{fontSize:10,color:"#2a3040",fontFamily:"var(--m)",minWidth:42,flexShrink:0,paddingTop:2}}>{ts}</span><div style={{flex:1}}><span style={{fontSize:11,fontWeight:700,color:isAg?"#60a5fa":"#34d399",marginRight:6}}>{sp.trim()}</span><span style={{fontSize:12,color:"#94a3b8",lineHeight:1.7}}>{tx}</span></div></div>})}
-      </div>}
-    </div>
-    {editing&&<EditModal call={c} onClose={()=>setEditing(false)} onSave={()=>{setEditing(false);reload()}}/>}
-  </div>
-}
-
-// ── Edit Modal ──────────────────────────────────────────────
-function EditModal({call,onClose,onSave}){
-  const[form,setForm]=useState({rep_name:call.rep_name||'',client_name:call.client_name||'',role:call.role||'',call_duration_sec:call.call_duration_sec||'',agent_talk_pct:call.agent_talk_pct||'',contact_talk_pct:call.contact_talk_pct||''});
-  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-  async function save(){await patchApi(`/calls/${call.id}`,{...form,call_duration_sec:form.call_duration_sec?Number(form.call_duration_sec):null,agent_talk_pct:form.agent_talk_pct?Number(form.agent_talk_pct):null,contact_talk_pct:form.contact_talk_pct?Number(form.contact_talk_pct):null});onSave();}
-  return<div className="modal-overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
-    <h3 style={{fontSize:16,fontWeight:800,marginBottom:20}}>Edit Call Details</h3>
-    <label>Rep Name</label><input value={form.rep_name} onChange={e=>set('rep_name',e.target.value)}/>
-    <label>Client Name</label><input value={form.client_name} onChange={e=>set('client_name',e.target.value)}/>
-    <label>Role</label><select value={form.role} onChange={e=>set('role',e.target.value)}><option>Setter</option><option>Closer</option></select>
-    <label>Duration (seconds)</label><input type="number" value={form.call_duration_sec} onChange={e=>set('call_duration_sec',e.target.value)}/>
-    <label>Agent Talk %</label><input type="number" value={form.agent_talk_pct} onChange={e=>set('agent_talk_pct',e.target.value)}/>
-    <label>Contact Talk %</label><input type="number" value={form.contact_talk_pct} onChange={e=>set('contact_talk_pct',e.target.value)}/>
-    <div style={{display:"flex",gap:8,marginTop:8}}><button className="btn btn-primary" onClick={save}>Save</button><button className="btn" onClick={onClose}>Cancel</button></div>
-  </div></div>
 }
 
 // ── Analytics ────────────────────────────────────────────────
-function AnalyticsPage(){
-  const[period,setPeriod]=useState("week");const[from,setFrom]=useState('');const[to,setTo]=useState('');
-  const dq=buildDateQ(period,from,to);
-  const{data}=useApi(`/analytics?_=1${dq}`,[period,from,to]);
-  const{data:trends}=useApi(`/analytics/trends?days=30`);
-  const{data:dist}=useApi(`/analytics/distribution?_=1${dq}`,[period,from,to]);
-  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
-  const s=data.stats||{};
-  const maxTrend=Math.max(...(trends?.trends||[]).map(t=>t.scored||0),1);
-  return<div className="flex-col gap-24">
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
-      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Analytics</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{s.scored||0} scored calls</p></div>
-      <DateFilter {...{period,setPeriod,from,setFrom,to,setTo}}/>
-    </div>
-    <div className="grid grid-stats">
-      <div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div></div>
-      <div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Duration</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div>
-      <div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div>
-      <div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div>
-      <div className="card stat-card"><div className="stat-label"><span>✗</span> Errors</div><div className="stat-value" style={{color:"#ef4444"}}>{s.errors||0}</div></div>
-    </div>
-    {/* Score Trend Chart */}
-    {trends?.trends?.length>1&&<div className="card" style={{padding:24}}><div className="section-head">Daily Trend (30 Days)</div>
-      <div style={{display:"flex",alignItems:"flex-end",gap:3,height:120}}>
-        {trends.trends.map((t,i)=>{const h=t.scored?(t.scored/maxTrend)*100:2;return<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-          <span style={{fontSize:9,color:sClr(t.avg_score),fontFamily:"var(--m)",fontWeight:700}}>{t.avg_score||""}</span>
-          <div style={{width:"100%",height:h,background:t.avg_score>=8?"#22c55e":t.avg_score>=6?"#f59e0b":"#ef4444",borderRadius:3,opacity:t.scored?1:.2,transition:"height .3s"}} title={`${t.period_date}: ${t.scored} calls, avg ${t.avg_score}`}/>
-          {i%5===0&&<span style={{fontSize:8,color:"#2a3040",transform:"rotate(-45deg)",whiteSpace:"nowrap"}}>{t.period_date?.slice(5)}</span>}
-        </div>})}
-      </div>
-    </div>}
-    {/* Score Distribution */}
-    {dist?.distribution?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Score Distribution</div>
-      <div style={{display:"flex",alignItems:"flex-end",gap:8,height:100}}>
-        {[0,1,2,3,4,5,6,7,8,9,10].map(b=>{const d=dist.distribution.find(x=>Number(x.score_bucket)===b);const ct=d?Number(d.count):0;const mx=Math.max(...dist.distribution.map(x=>Number(x.count)),1);return<div key={b} style={{flex:1,textAlign:"center"}}>
-          <div style={{fontSize:9,color:"#4b5563",fontFamily:"var(--m)",marginBottom:4}}>{ct||""}</div>
-          <div style={{height:`${ct?(ct/mx)*80:2}px`,background:sClr(b),borderRadius:3,transition:"height .3s"}}/>
-          <div style={{fontSize:10,color:"#374151",marginTop:4,fontFamily:"var(--m)"}}>{b}</div>
-        </div>})}
-      </div>
-    </div>}
-    {/* Rep Comparison Table */}
-    {data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Comparison</div><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Rep","Role","Calls","Avg","Dur","Agent%","Flagged"].map(h=><th key={h} style={{textAlign:"left",padding:"8px 10px",fontSize:10,color:"#2a3040",fontWeight:700,textTransform:"uppercase",borderBottom:"1px solid #111520",fontFamily:"var(--m)"}}>{h}</th>)}</tr></thead><tbody>{data.repStats.map(r=><tr key={r.rep_name}><td style={{padding:10,fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:RC[r.rep_name],marginRight:8}}/>{r.rep_name}</td><td style={{padding:10,fontSize:12,color:"#4b5563"}}>{r.role}</td><td style={{padding:10,fontFamily:"var(--m)",color:"#4b5563"}}>{r.call_count}</td><td style={{padding:10,fontSize:14,fontWeight:800,color:sClr(r.avg_score),fontFamily:"var(--m)"}}>{r.avg_score}</td><td style={{padding:10,fontFamily:"var(--m)",color:"#4b5563"}}>{fmtD(r.avg_duration)}</td><td style={{padding:10,fontFamily:"var(--m)",color:r.avg_agent_talk>70?"#ef4444":"#4b5563"}}>{r.avg_agent_talk?r.avg_agent_talk+"%":"—"}</td><td style={{padding:10,color:"#f59e0b",fontFamily:"var(--m)"}}>{r.flagged_count||0}</td></tr>)}</tbody></table></div></div>}
-    {/* Category Averages per Rep */}
+function AnalyticsPage(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:trends}=useApi('/analytics/trends?days=30');const{data:dist}=useApi(`/analytics/distribution?_=1${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};const mx=Math.max(...(trends?.trends||[]).map(t=>t.scored||0),1);
+  return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Analytics</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{s.scored||0} scored</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div>
+    <div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div></div>
+    {trends?.trends?.length>1&&<div className="card" style={{padding:24}}><div className="section-head">30-Day Trend</div><div style={{display:"flex",alignItems:"flex-end",gap:3,height:120}}>{trends.trends.map((tt,i)=>{const h=tt.scored?(tt.scored/mx)*100:2;return<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}><span style={{fontSize:9,color:sClr(tt.avg_score),fontFamily:"var(--m)",fontWeight:700}}>{tt.avg_score||""}</span><div style={{width:"100%",height:h,background:tt.avg_score>=8?"#22c55e":tt.avg_score>=6?"#f59e0b":"#ef4444",borderRadius:3,opacity:tt.scored?1:.2}} title={`${tt.period_date}: ${tt.scored} calls, avg ${tt.avg_score}`}/>{i%5===0&&<span style={{fontSize:8,color:"#2a3040",transform:"rotate(-45deg)",whiteSpace:"nowrap"}}>{tt.period_date?.slice(5)}</span>}</div>})}</div></div>}
+    {dist?.distribution?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Score Distribution</div><div style={{display:"flex",alignItems:"flex-end",gap:8,height:100}}>{[0,1,2,3,4,5,6,7,8,9,10].map(b=>{const d=dist.distribution.find(x=>Number(x.score_bucket)===b);const ct=d?Number(d.count):0;const mxx=Math.max(...dist.distribution.map(x=>Number(x.count)),1);return<div key={b} style={{flex:1,textAlign:"center"}}><div style={{fontSize:9,color:"#4b5563",fontFamily:"var(--m)",marginBottom:4}}>{ct||""}</div><div style={{height:`${ct?(ct/mxx)*80:2}px`,background:sClr(b),borderRadius:3}}/><div style={{fontSize:10,color:"#374151",marginTop:4,fontFamily:"var(--m)"}}>{b}</div></div>})}</div></div>}
+    {data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Comparison</div><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Rep","Role","Calls","Avg","Dur","Ag%","Flag"].map(h=><th key={h} style={{textAlign:"left",padding:"8px 10px",fontSize:10,color:"#2a3040",fontWeight:700,borderBottom:"1px solid #111520",fontFamily:"var(--m)"}}>{h}</th>)}</tr></thead><tbody>{data.repStats.map(r=><tr key={r.rep_name}><td style={{padding:10,fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:RC[r.rep_name],marginRight:8}}/>{r.rep_name}</td><td style={{padding:10,color:"#4b5563"}}>{r.role}</td><td style={{padding:10,fontFamily:"var(--m)",color:"#4b5563"}}>{r.call_count}</td><td style={{padding:10,fontWeight:800,color:sClr(r.avg_score),fontFamily:"var(--m)"}}>{r.avg_score}</td><td style={{padding:10,fontFamily:"var(--m)",color:"#4b5563"}}>{fmtD(r.avg_duration)}</td><td style={{padding:10,fontFamily:"var(--m)",color:r.avg_agent_talk>70?"#ef4444":"#4b5563"}}>{r.avg_agent_talk?r.avg_agent_talk+"%":"—"}</td><td style={{padding:10,color:"#f59e0b",fontFamily:"var(--m)"}}>{r.flagged_count||0}</td></tr>)}</tbody></table></div></div>}
     {data.categoryAvgs&&Object.keys(data.categoryAvgs).length>0&&<div className="card" style={{padding:24}}><div className="section-head">Category Averages by Rep</div>{Object.entries(data.categoryAvgs).map(([rep,cats])=><div key={rep} style={{marginBottom:20}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9",marginBottom:8}}><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:RC[rep],marginRight:8}}/>{rep}</div>{CATS.map(cat=><div key={cat} style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}><span style={{fontSize:10,color:"#4b5563",width:90}}>{CL[cat]}</span><div style={{flex:1}}><MiniBar value={cats[cat]}/></div></div>)}</div>)}</div>}
-  </div>
-}
+  </div>}
 
 // ── Queue ────────────────────────────────────────────────────
-function QueuePage(){
-  const{data,reload}=useApi("/queue/status");
-  const{data:errors}=useApi("/calls?status=ERROR&limit=20&hideVm=false");
-  const[processing,setProcessing]=useState(false);const[retrying,setRetrying]=useState(false);
-  async function handleProcess(){setProcessing(true);const r=await postApi("/queue/process?max=5");const scored=r.processed||0;const classified=r.classified||0;const errors=r.results?.filter(x=>x.status==='ERROR'||x.status==='RETRY').length||0;alert(`Done: ${scored} scored, ${classified} classified (skipped), ${errors} errors`);reload();setProcessing(false);}
-  async function handleRetryAll(){setRetrying(true);const r=await postApi("/queue/retry-all");alert(`Retried ${r.retriedCount||0} calls`);reload();setRetrying(false);}
-  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
-  const d=data.daily||{};
-  return<div className="flex-col gap-24">
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
-      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Queue Monitor</h2></div>
-      <div style={{display:"flex",gap:8}}><button className="btn btn-primary" onClick={handleProcess} disabled={processing}>{processing?"Processing...":"▶ Process Now"}</button><button className="btn btn-green" onClick={handleRetryAll} disabled={retrying}>{retrying?"...":"↻ Retry All"}</button></div>
-    </div>
-    <div className="card" style={{padding:"16px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
-      <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:10,height:10,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 10px #22c55e55"}}/><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{data.engine?.toUpperCase()} Engine</span></div>
-      <div style={{display:"flex",gap:24}}>
-        <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:"#22c55e",fontFamily:"var(--m)"}}>{d.scored_today||0}</div><div style={{fontSize:9,color:"#374151",textTransform:"uppercase"}}>Scored Today</div></div>
-        <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:"#60a5fa",fontFamily:"var(--m)"}}>{d.full_qc_used||0}</div><div style={{fontSize:9,color:"#374151",textTransform:"uppercase"}}>API Calls</div></div>
-        <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:"#f59e0b",fontFamily:"var(--m)"}}>${Number(d.est_cost_usd||0).toFixed(3)}</div><div style={{fontSize:9,color:"#374151",textTransform:"uppercase"}}>Est. Cost</div></div>
-      </div>
-    </div>
+function QueuePage(){const{data,reload}=useApi("/queue/status");const{data:errors}=useApi("/calls?status=ERROR&limit=20&hideVm=false");const[pr,setPr]=useState(false);const[rt,setRt]=useState(false);
+  async function proc(){setPr(true);const r=await postApi("/queue/process?max=5");const sc=r.processed||0;const cl=r.classified||0;alert(`${sc} scored, ${cl} classified, ${(r.results||[]).filter(x=>x.status==='ERROR'||x.status==='RETRY').length} errors`);reload();setPr(false)}
+  async function retry(){setRt(true);await postApi("/queue/retry-all");reload();setRt(false)}
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const d=data.daily||{};
+  return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap"}}><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Queue</h2><div style={{display:"flex",gap:8}}><button className="btn btn-primary" onClick={proc} disabled={pr}>{pr?"...":"▶ Process"}</button><button className="btn btn-green" onClick={retry} disabled={rt}>↻ Retry</button></div></div>
+    <div className="card" style={{padding:"16px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:10,height:10,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 10px #22c55e55"}}/><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{data.engine?.toUpperCase()}</span></div><div style={{display:"flex",gap:24}}><div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:"#22c55e",fontFamily:"var(--m)"}}>{d.scored_today||0}</div><div style={{fontSize:9,color:"#374151"}}>SCORED TODAY</div></div><div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:"#60a5fa",fontFamily:"var(--m)"}}>{d.full_qc_used||0}</div><div style={{fontSize:9,color:"#374151"}}>API CALLS</div></div><div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:"#f59e0b",fontFamily:"var(--m)"}}>${Number(d.est_cost_usd||0).toFixed(3)}</div><div style={{fontSize:9,color:"#374151"}}>COST</div></div></div></div>
     <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))"}}>
-      {(data.queue||[]).map(qq=>{const[bg,fg,bd]=stClr(qq.status);return<div key={qq.status} style={{background:bg,border:`1px solid ${bd}`,borderRadius:10,padding:"14px 12px",textAlign:"center"}}><div style={{fontSize:22,fontWeight:900,color:fg,fontFamily:"var(--m)"}}>{Number(qq.count)}</div><div style={{fontSize:9,color:fg,opacity:.7,fontWeight:600,fontFamily:"var(--m)"}}>{qq.status.replace(/_/g," ")}</div></div>})}
+      {(data.queue||[]).map(qq=>{const[bg,fg,bd]=stClr(qq.status);return<div key={qq.status} style={{background:bg,border:`1px solid ${bd}`,borderRadius:10,padding:"14px 12px",textAlign:"center"}}><div style={{fontSize:22,fontWeight:900,color:fg,fontFamily:"var(--m)"}}>{Number(qq.count)}</div><div style={{fontSize:9,color:fg,opacity:.7,fontFamily:"var(--m)"}}>{qq.status.replace(/_/g," ")}</div></div>})}
     </div>
-    {errors?.calls?.length>0&&<div className="card" style={{overflow:"hidden"}}><div style={{padding:"14px 20px",borderBottom:"1px solid #111520"}}><span className="section-head" style={{marginBottom:0}}>Errors ({errors.calls.length})</span></div><div style={{maxHeight:300,overflowY:"auto"}}>{errors.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 20px",borderBottom:"1px solid #060a10"}}><Badge status={c.status}/><span style={{fontSize:12,fontWeight:600,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name||"?"}</span><span style={{flex:1,fontSize:10,color:"#ef4444",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={c.error}>{c.error?.slice(0,80)}</span></div>)}</div></div>}
-  </div>
-}
+    {errors?.calls?.length>0&&<div className="card" style={{overflow:"hidden"}}><div style={{padding:"14px 20px",borderBottom:"1px solid #111520"}}><span className="section-head" style={{marginBottom:0}}>Errors ({errors.calls.length})</span></div><div style={{maxHeight:300,overflowY:"auto"}}>{errors.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 20px",borderBottom:"1px solid #060a10"}}><Badge status={c.status}/><span style={{fontSize:12,fontWeight:600,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name||"?"}</span><span style={{flex:1,fontSize:10,color:"#ef4444",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.error?.slice(0,80)}</span></div>)}</div></div>}
+  </div>}
+
+// ── Health (detailed) ───────────────────────────────────────
+function HealthPage(){const{data,reload}=useApi("/health");const[rt,setRt]=useState(false);
+  async function retry(){setRt(true);await postApi("/queue/retry-all");reload();setRt(false)}
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  return<div className="flex-col gap-24">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><h2 style={{fontSize:24,fontWeight:900,margin:0}}>System Health</h2><button className="btn btn-green" onClick={retry} disabled={rt}>↻ Retry All</button></div>
+    <div className="grid grid-stats">
+      <div className="card stat-card"><div className="stat-label"><span>♥</span> Health</div><div className="stat-value" style={{color:data.healthScore>90?"#22c55e":data.healthScore>70?"#f59e0b":"#ef4444"}}>{data.healthScore}%</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>📊</span> Total Calls</div><div className="stat-value">{data.total||0}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>✓</span> Scored</div><div className="stat-value" style={{color:"#22c55e"}}>{data.scored||0}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>✗</span> Errors</div><div className="stat-value" style={{color:data.errors>0?"#ef4444":"#22c55e"}}>{data.errors||0}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>📵</span> Voicemails</div><div className="stat-value" style={{color:"#64748b"}}>{data.voicemails||0}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>↩</span> Classified</div><div className="stat-value" style={{color:"#94a3b8"}}>{data.classified_skipped||0}</div><div className="stat-sub">Reschedules, follow-ups</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>📏</span> Too Short</div><div className="stat-value" style={{color:"#64748b"}}>{data.too_short||0}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>⏳</span> In Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{data.in_queue||0}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>🔄</span> Retrying</div><div className="stat-value" style={{color:"#f59e0b"}}>{data.retrying||0}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>⚙</span> Engine</div><div className="stat-value" style={{fontSize:16,color:"#818cf8"}}>{data.engine?.toUpperCase()}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>💰</span> Total Cost</div><div className="stat-value" style={{fontSize:18,color:"#f59e0b"}}>${Number(data.totalCost||0).toFixed(2)}</div></div>
+    </div>
+    {/* Daily Processing Stats */}
+    {data.dailyStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Daily Processing (Last 7 Days)</div><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Date","API Calls","Cost"].map(h=><th key={h} style={{textAlign:"left",padding:"8px 10px",fontSize:10,color:"#2a3040",fontWeight:700,borderBottom:"1px solid #111520",fontFamily:"var(--m)"}}>{h}</th>)}</tr></thead><tbody>{data.dailyStats.map(d=><tr key={d.date_key}><td style={{padding:10,fontSize:12,color:"#c9d1d9",fontFamily:"var(--m)"}}>{d.date_key}</td><td style={{padding:10,fontSize:12,color:"#60a5fa",fontFamily:"var(--m)"}}>{Number(d.full_qc_used)}</td><td style={{padding:10,fontSize:12,color:"#f59e0b",fontFamily:"var(--m)"}}>${Number(d.est_cost_usd).toFixed(4)}</td></tr>)}</tbody></table></div>}
+    {/* Recent Errors */}
+    {data.recentErrors?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Recent Errors</div>{data.recentErrors.map(e=><div key={e.id} style={{padding:"12px 16px",background:"#1a0a0a",borderRadius:8,border:"1px solid #991b1b",marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,fontWeight:700,color:"#fca5a5"}}>{e.rep_name} → {e.client_name||"?"}</span><span style={{fontSize:10,color:"#2a3040"}}>{fmt(e.received_at)}</span></div><div style={{fontSize:11,color:"#ef4444",wordBreak:"break-all"}}>{e.error}</div></div>)}</div>}
+    {/* Safeguards */}
+    <div className="card" style={{padding:24}}><div className="section-head">Safeguards</div>{[
+      {n:"Call Classification",d:"Reschedules, follow-ups, and wrong numbers auto-detected and skipped",i:"🏷"},
+      {n:"Voicemail Detection",d:"6 methods: Aloware flags, short+outbound, transcript phrases, single speaker",i:"📵"},
+      {n:"Duplicate Prevention",d:"SHA-256 hash + Aloware call ID linking",i:"🛡"},
+      {n:"Auto-Retry",d:"Failed calls retried every 2 minutes with backoff",i:"🔄"},
+      {n:"Persistent Database",d:"Turso cloud — no data loss on deploys or restarts",i:"💾"},
+    ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#060a10",borderRadius:10,border:"1px solid #111520",marginBottom:8}}><span style={{fontSize:20}}>{s.i}</span><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{s.n}</div><div style={{fontSize:11,color:"#374151"}}>{s.d}</div></div><span style={{fontSize:10,fontWeight:700,color:"#22c55e",fontFamily:"var(--m)",padding:"3px 10px",background:"#052e16",borderRadius:5,border:"1px solid #166534"}}>ACTIVE</span></div>)}</div>
+  </div>}
 
 // ── Coaching ─────────────────────────────────────────────────
-function CoachingPage(){
-  const[period,setPeriod]=useState("week");const[from,setFrom]=useState('');const[to,setTo]=useState('');
-  const{data:reps}=useApi("/reps");const[tab,setTab]=useState("team");
-  const roleFilter=tab==="closers"?"&role=Closer":tab==="setters"?"&role=Setter":tab.startsWith("rep:")?`&rep=${tab.split(":")[1]}`:"";
-  const dq=buildDateQ(period,from,to);
-  const{data}=useApi(`/calls?status=SCORED&limit=100${roleFilter}${dq}`,[period,from,to,tab]);
-  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
-  const calls=data.calls||[];
-  const avg=arr=>{const f=arr.filter(v=>v!=null&&isFinite(v));return f.length?+(f.reduce((a,b)=>a+b,0)/f.length).toFixed(1):0};
-  const catAvgs=Object.fromEntries(CATS.map(cat=>[cat,avg(calls.map(c=>c.category_scores?.[cat]))]));
-  const sorted=Object.entries(catAvgs).sort((a,b)=>a[1]-b[1]);
-  const weakest=sorted[0],strongest=sorted[sorted.length-1];
-  const impFreq={};calls.forEach(c=>(c.improvements||[]).forEach(i=>{impFreq[i]=(impFreq[i]||0)+1}));
-  const topImps=Object.entries(impFreq).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const TABS=[{id:"team",label:"Team"},{id:"closers",label:"Closers"},{id:"setters",label:"Setters"},...(reps||[]).map(r=>({id:`rep:${r.name}`,label:r.name}))];
-  return<div className="flex-col gap-24">
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
-      <h2 style={{fontSize:24,fontWeight:900,margin:0}}>Coaching</h2>
-      <DateFilter {...{period,setPeriod,from,setFrom,to,setTo}}/>
-    </div>
-    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{TABS.map(t=><button key={t.id} className={`tab-btn${tab===t.id?" active":""}`} onClick={()=>setTab(t.id)} style={tab===t.id?{background:RC[t.label]||"#f59e0b",borderColor:RC[t.label]||"#f59e0b"}:{}}>{t.label}</button>)}</div>
-    <div className="grid" style={{gridTemplateColumns:"1fr 1fr 1fr"}}>
-      <div className="card stat-card"><div className="stat-label"><span>📊</span> Scored</div><div className="stat-value" style={{color:"#60a5fa"}}>{calls.length}</div></div>
-      {weakest&&weakest[1]>0&&<div className="card stat-card" style={{background:"#1a0a0a",borderColor:"#991b1b"}}><div style={{fontSize:10,color:"#ef4444",fontWeight:700,textTransform:"uppercase",letterSpacing:1,fontFamily:"var(--m)",marginBottom:4}}>Focus Area</div><div style={{fontSize:20,fontWeight:900,color:"#fca5a5"}}>{CL[weakest[0]]}</div><div style={{fontSize:12,color:"#ef4444",opacity:.7}}>Avg: {weakest[1]}</div></div>}
-      {strongest&&strongest[1]>0&&<div className="card stat-card" style={{background:"#041a0e",borderColor:"#166534"}}><div style={{fontSize:10,color:"#22c55e",fontWeight:700,textTransform:"uppercase",letterSpacing:1,fontFamily:"var(--m)",marginBottom:4}}>Strongest</div><div style={{fontSize:20,fontWeight:900,color:"#a7f3d0"}}>{CL[strongest[0]]}</div><div style={{fontSize:12,color:"#22c55e",opacity:.7}}>Avg: {strongest[1]}</div></div>}
-    </div>
+function CoachingPage(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const{data:reps}=useApi("/reps");const[tab,setTab]=useState("team");const roleF=tab==="closers"?"&role=Closer":tab==="setters"?"&role=Setter":tab.startsWith("rep:")?`&rep=${tab.split(":")[1]}`:"";const dq=buildDQ(p,f,t);const{data}=useApi(`/calls?status=SCORED&limit=100${roleF}${dq}`,[p,f,t,tab]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const calls=data.calls||[];const av=arr=>{const ff=arr.filter(v=>v!=null&&isFinite(v));return ff.length?+(ff.reduce((a,b)=>a+b,0)/ff.length).toFixed(1):0};const catAvgs=Object.fromEntries(CATS.map(c=>[c,av(calls.map(x=>x.category_scores?.[c]))]));const sorted=Object.entries(catAvgs).sort((a,b)=>a[1]-b[1]);const impFreq={};calls.forEach(c=>(c.improvements||[]).forEach(i=>{impFreq[i]=(impFreq[i]||0)+1}));const topImps=Object.entries(impFreq).sort((a,b)=>b[1]-a[1]).slice(0,5);const TABS=[{id:"team",l:"Team"},{id:"closers",l:"Closers"},{id:"setters",l:"Setters"},...(reps||[]).map(r=>({id:`rep:${r.name}`,l:r.name}))];
+  return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Coaching</h2><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{TABS.map(tt=><button key={tt.id} className={`tab-btn${tab===tt.id?" active":""}`} onClick={()=>setTab(tt.id)} style={tab===tt.id?{background:RC[tt.l]||"#f59e0b",borderColor:RC[tt.l]||"#f59e0b"}:{}}>{tt.l}</button>)}</div>
+    <div className="grid" style={{gridTemplateColumns:"1fr 1fr 1fr"}}><div className="card stat-card"><div className="stat-label">Scored</div><div className="stat-value" style={{color:"#60a5fa"}}>{calls.length}</div></div>{sorted[0]&&sorted[0][1]>0&&<div className="card stat-card" style={{background:"#1a0a0a",borderColor:"#991b1b"}}><div style={{fontSize:10,color:"#ef4444",fontWeight:700,fontFamily:"var(--m)",marginBottom:4}}>FOCUS</div><div style={{fontSize:20,fontWeight:900,color:"#fca5a5"}}>{CL[sorted[0][0]]}</div><div style={{fontSize:12,color:"#ef4444",opacity:.7}}>Avg: {sorted[0][1]}</div></div>}{sorted.length>0&&sorted[sorted.length-1][1]>0&&<div className="card stat-card" style={{background:"#041a0e",borderColor:"#166534"}}><div style={{fontSize:10,color:"#22c55e",fontWeight:700,fontFamily:"var(--m)",marginBottom:4}}>STRONGEST</div><div style={{fontSize:20,fontWeight:900,color:"#a7f3d0"}}>{CL[sorted[sorted.length-1][0]]}</div><div style={{fontSize:12,color:"#22c55e",opacity:.7}}>Avg: {sorted[sorted.length-1][1]}</div></div>}</div>
     {calls.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Category Averages</div>{CATS.map(cat=><div key={cat} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontSize:11,color:"#64748b",fontWeight:600,width:100}}>{CL[cat]}</span><div style={{flex:1}}><MiniBar value={catAvgs[cat]}/></div></div>)}</div>}
     {topImps.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Recurring Improvements</div>{topImps.map(([imp,ct],i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#060a10",borderRadius:8,border:"1px solid #111520",marginBottom:8}}><span style={{fontSize:18,fontWeight:900,color:"#ef4444",fontFamily:"var(--m)",width:28,textAlign:"center",opacity:.5}}>{ct}×</span><span style={{fontSize:13,color:"#94a3b8"}}>{imp}</span></div>)}</div>}
-    {calls.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Recent Coaching Notes</div>{calls.slice(0,8).filter(c=>c.coaching_notes).map(c=><div key={c.id} style={{padding:"14px 16px",background:"#060a10",borderRadius:10,border:"1px solid #111520",marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:"#64748b"}}>{c.rep_name} → {c.client_name||"?"}</span><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span><ScoreRing value={c.overall_score_adj} size={26} sw={2}/></div></div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{c.coaching_notes}</div></div>)}</div>}
-  </div>
-}
+    {calls.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Coaching Notes</div>{calls.slice(0,8).filter(c=>c.coaching_notes).map(c=><div key={c.id} style={{padding:"14px 16px",background:"#060a10",borderRadius:10,border:"1px solid #111520",marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:"#64748b"}}>{c.rep_name} → {c.client_name||"?"}</span><ScoreRing value={c.overall_score_adj} size={26} sw={2}/></div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{c.coaching_notes}</div></div>)}</div>}
+  </div>}
 
-// ── Health + Export + About (compact) ────────────────────────
-function HealthPage(){const{data,reload}=useApi("/health");const[r,setR]=useState(false);async function retry(){setR(true);await postApi("/queue/retry-all");reload();setR(false);}if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Health</h2><button className="btn btn-green" onClick={retry} disabled={r}>↻ Retry All</button></div><div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>♥</span> Health</div><div className="stat-value" style={{color:data.healthScore>90?"#22c55e":"#f59e0b"}}>{data.healthScore}%</div></div><div className="card stat-card"><div className="stat-label"><span>◉</span> Scored</div><div className="stat-value" style={{color:"#22c55e"}}>{data.scored||0}</div></div><div className="card stat-card"><div className="stat-label"><span>✗</span> Errors</div><div className="stat-value" style={{color:"#ef4444"}}>{data.errors||0}</div></div><div className="card stat-card"><div className="stat-label"><span>📵</span> Voicemails</div><div className="stat-value" style={{color:"#4b5563"}}>{data.voicemails||0}</div></div><div className="card stat-card"><div className="stat-label"><span>↩</span> Classified</div><div className="stat-value" style={{color:"#94a3b8"}}>{data.classified_skipped||0}</div><div className="stat-sub">Reschedules, follow-ups, etc.</div></div></div></div>}
+function ExportPage(){const[sc,setSc]=useState("team");const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const{data:reps}=useApi("/reps");const dq=buildDQ(p,f,t);const rQ=sc==="closers"?"&role=Closer":sc==="setters"?"&role=Setter":sc.startsWith("rep:")?`&rep=${sc.split(":")[1]}`:"";const{data}=useApi(`/analytics?_=1${dq}${rQ}`,[p,f,t,sc]);const{data:cd}=useApi(`/calls?status=SCORED&limit=500${dq}${rQ}`,[p,f,t,sc]);
+  function gen(){if(!data||!cd)return;const s=data.stats||{};const lines=["BNB TURNKEY QC REPORT","The Rise Collective","","Scope: "+sc,"Period: "+(f?`${f} to ${t||"now"}`:(p||"all")),"Generated: "+new Date().toLocaleString(),"","Scored: "+(s.scored||0),"Avg Score: "+(s.avg_score||"—")+"/10","Flagged: "+(s.flagged||0),""];if(data.repStats?.length){lines.push("── REPS ──");data.repStats.forEach(r=>lines.push(`${r.rep_name} (${r.role}): ${r.avg_score}/10 | ${r.call_count} calls`));lines.push("")}if(cd?.calls?.length){lines.push("── CALLS ──");cd.calls.forEach(c=>{lines.push(`\n${c.rep_name} → ${c.client_name||"?"} | ${fmtF(c.received_at)} | ${c.overall_score_adj??"-"}/10 | ${fmtD(c.call_duration_sec)}`);if(c.quick_summary)lines.push("  "+c.quick_summary);if(c.strengths?.length)lines.push("  ✦ "+c.strengths.join("; "));if(c.improvements?.length)lines.push("  △ "+c.improvements.join("; "))})}const b=new Blob([lines.join("\n")],{type:"text/plain"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`QC_Report_${sc}_${new Date().toISOString().slice(0,10)}.txt`;a.click()}
+  return<div className="flex-col gap-24"><h2 style={{fontSize:24,fontWeight:900}}>Export</h2><div className="card" style={{padding:24}}><div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:16}}><div><label style={{fontSize:11,color:"#4b5563",display:"block",marginBottom:4}}>Scope</label><select value={sc} onChange={e=>setSc(e.target.value)}><option value="team">Team</option><option value="closers">Closers</option><option value="setters">Setters</option>{(reps||[]).map(r=><option key={r.id} value={`rep:${r.name}`}>{r.name}</option>)}</select></div></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/><button className="btn btn-primary" onClick={gen} style={{marginTop:16,padding:"12px 32px"}}>📥 Download</button></div></div>}
 
-function ExportPage(){const[scope,setScope]=useState("team");const[period,setPeriod]=useState("week");const[from,setFrom]=useState('');const[to,setTo]=useState('');const{data:reps}=useApi("/reps");const dq=buildDateQ(period,from,to);const roleQ=scope==="closers"?"&role=Closer":scope==="setters"?"&role=Setter":scope.startsWith("rep:")?`&rep=${scope.split(":")[1]}`:"";const{data}=useApi(`/analytics?_=1${dq}${roleQ}`,[period,from,to,scope]);const{data:cd}=useApi(`/calls?status=SCORED&limit=500${dq}${roleQ}`,[period,from,to,scope]);
-  function gen(){if(!data||!cd)return;const s=data.stats||{};const lines=["BNB TURNKEY QC REPORT","The Rise Collective","","Scope: "+scope,"Period: "+(from?`${from} to ${to||"now"}`:(period||"all")),"Generated: "+new Date().toLocaleString(),"","── SUMMARY ──",`Scored: ${s.scored||0}`,`Avg Score: ${s.avg_score||"—"}/10`,`Avg Duration: ${fmtD(s.avg_duration)}`,`Flagged: ${s.flagged||0}`,""];if(data.repStats?.length){lines.push("── REPS ──");data.repStats.forEach(r=>lines.push(`${r.rep_name} (${r.role}): ${r.avg_score}/10 | ${r.call_count} calls`));lines.push("");}if(cd?.calls?.length){lines.push("── CALLS ──");cd.calls.forEach(c=>{lines.push(`\n${c.rep_name} → ${c.client_name||"?"} | ${fmtF(c.received_at)} | Score: ${c.overall_score_adj??"-"}/10 | ${fmtD(c.call_duration_sec)}`);if(c.quick_summary)lines.push("  "+c.quick_summary);if(c.strengths?.length)lines.push("  Strengths: "+c.strengths.join("; "));if(c.improvements?.length)lines.push("  Improve: "+c.improvements.join("; "));});}const b=new Blob([lines.join("\n")],{type:"text/plain"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`QC_Report_${scope}_${new Date().toISOString().slice(0,10)}.txt`;a.click();}
-  return<div className="flex-col gap-24"><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Export</h2><div className="card" style={{padding:24}}><div className="section-head">Settings</div><div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:16}}><div><label style={{fontSize:11,color:"#4b5563",display:"block",marginBottom:4}}>Scope</label><select value={scope} onChange={e=>setScope(e.target.value)}><option value="team">Team</option><option value="closers">Closers</option><option value="setters">Setters</option>{(reps||[]).map(r=><option key={r.id} value={`rep:${r.name}`}>{r.name}</option>)}</select></div></div><DateFilter {...{period,setPeriod,from,setFrom,to,setTo}}/><button className="btn btn-primary" onClick={gen} style={{marginTop:16,fontSize:14,padding:"12px 32px"}}>📥 Download</button></div></div>}
+function AboutPage(){return<div className="flex-col gap-24" style={{maxWidth:800}}><h2 style={{fontSize:24,fontWeight:900}}>About / SOP</h2><div className="card" style={{padding:24}}><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.8}}>BNB Turnkey QC scores every sales call against a custom rubric. Calls are classified first (sales call vs reschedule/voicemail/follow-up), then only genuine sales calls get full rubric scoring.</p></div><div className="card" style={{padding:24}}><div className="section-head">Team</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{[{n:"Matt",r:"Closer",s:"Fathom"},{n:"Kevin",r:"Closer",s:"Fathom"},{n:"Andrew",r:"Setter",s:"Aloware"},{n:"Steven",r:"Setter",s:"Aloware"},{n:"Anurag",r:"Setter",s:"Aloware"}].map(x=><div key={x.n} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#060a10",borderRadius:10,border:"1px solid #111520"}}><div style={{width:36,height:36,borderRadius:10,background:RC[x.n],display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{x.n[0]}</div><div><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{x.n}</div><div style={{fontSize:11,color:"#374151"}}>{x.r} · {x.s}</div></div></div>)}</div></div></div>}
 
-function AboutPage(){return<div className="flex-col gap-24" style={{maxWidth:800}}><h2 style={{fontSize:24,fontWeight:900}}>About / SOP</h2><div className="card" style={{padding:24}}><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.8}}>BNB Turnkey QC scores every call from setters (Aloware) and closers (Fathom) against our sales rubric — Discovery, Qualification, Pitch, Objection Handling, and Close/Next Step. Calls are processed automatically every 2 minutes.</p></div><div className="card" style={{padding:24}}><div className="section-head">Team</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{[{n:"Matt",r:"Closer",s:"Fathom"},{n:"Kevin",r:"Closer",s:"Fathom"},{n:"Andrew",r:"Setter",s:"Aloware"},{n:"Steven",r:"Setter",s:"Aloware"},{n:"Anurag",r:"Setter",s:"Aloware"}].map(x=><div key={x.n} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#060a10",borderRadius:10,border:"1px solid #111520"}}><div style={{width:36,height:36,borderRadius:10,background:RC[x.n],display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{x.n[0]}</div><div><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{x.n}</div><div style={{fontSize:11,color:"#374151"}}>{x.r} · {x.s}</div></div></div>)}</div></div><div className="card" style={{padding:24}}><div className="section-head">Daily SOP — Francis</div><p style={{fontSize:13,color:"#94a3b8",lineHeight:1.8}}>Morning: Check Dashboard + Queue. If errors, hit Retry All on Health page. Review flagged calls. End of day: check Analytics — flag reps averaging below 6.</p></div><div className="card" style={{padding:24}}><div className="section-head">Weekly SOP — Sam</div><p style={{fontSize:13,color:"#94a3b8",lineHeight:1.8}}>Analytics → 7-day view. Compare rep scores. Coaching page per rep. Use recurring improvements for 1:1s. Pick 2-3 random calls, listen, compare your score to the bot's.</p></div></div>}
+const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"records",icon:"📋",label:"Records",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"export",icon:"📥",label:"Export",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
 
-// ── App Shell ───────────────────────────────────────────────
-const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"export",icon:"📥",label:"Export",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#94a3b8"}];
-
-function App(){
-  const[page,setPage]=useState("dashboard");const[detail,setDetail]=useState(null);
-  return<>
-    <aside>
-      <div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #111520"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff",flexShrink:0}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div>
-      <nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>{NAV.map(n=><button key={n.id} className={page===n.id?"active":""} onClick={()=>{setPage(n.id);setDetail(null)}} style={page===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}><span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>)}</nav>
-      <div style={{padding:"14px 16px",borderTop:"1px solid #111520"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontWeight:600,fontFamily:"var(--m)"}}>ADMIN</div></div>
-    </aside>
-    <main><div className="max-w">
-      {detail?<CallDetail call={detail} onBack={()=>setDetail(null)}/>:
-        page==="dashboard"?<Dashboard/>:page==="analytics"?<AnalyticsPage/>:page==="coaching"?<CoachingPage/>:page==="calls"?<CallsList onSelect={setDetail}/>:page==="queue"?<QueuePage/>:page==="health"?<HealthPage/>:page==="export"?<ExportPage/>:page==="about"?<AboutPage/>:null}
-    </div></main>
-  </>;
-}
+function App(){const[pg,sPg]=useState("dashboard");const[dt,sDt]=useState(null);
+  return<><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #111520"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>{NAV.map(n=><button key={n.id} className={pg===n.id?"active":""} onClick={()=>{sPg(n.id);sDt(null)}} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}><span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>)}</nav><div style={{padding:"14px 16px",borderTop:"1px solid #111520"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
+    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
