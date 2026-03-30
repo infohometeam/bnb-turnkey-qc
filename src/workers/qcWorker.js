@@ -5,7 +5,6 @@ const { buildSmartSlice, needsTwoPass, buildMiddleSummaryPrompt, buildQCPrompt }
 const MAX_RETRY = 5;
 function now() { return new Date().toISOString().replace('T',' ').slice(0,19); }
 
-// ── BigInt → Number (Turso returns BigInt for INTEGER columns) ──
 function toNum(v) {
   if (v === null || v === undefined || v === '') return null;
   if (typeof v === 'bigint') return Number(v);
@@ -13,24 +12,23 @@ function toNum(v) {
   return isFinite(n) ? n : null;
 }
 
-// ── Score Adjustments ────────────────────────────────────────
+// Score adjustments — ONLY talk % imbalance, NO duration caps
+// Duration caps removed: if a call is classified as a real sales call,
+// the AI rubric score stands on its own. A rep who books a closer
+// in 2 minutes shouldn't be penalized for being efficient.
 function adjustScore(ai, dur, agPct) {
   const notes = [];
   if (typeof ai !== 'number' || !isFinite(ai)) return { adjusted: ai, notes: ['No score'] };
   let s = ai;
-  if (dur !== null && dur !== undefined && dur > 0) {
-    if (dur < 60) { s = Math.min(s, 4); notes.push('Dur<60s→cap4'); }
-    else if (dur < 180) { s = Math.min(s, 6); notes.push('Dur<3m→cap6'); }
-    else if (dur < 300) { s -= 0.5; notes.push('Dur<5m→-0.5'); }
-  } else if (dur === null || dur === undefined) {
-    notes.push('Duration unknown — no duration adjustment');
-  }
+
+  // Talk % adjustments only — extreme imbalance is a real quality issue
   if (agPct !== null && agPct !== undefined && agPct > 0) {
     if (agPct > 90) { s -= 2; notes.push('Ag>90%→-2'); }
     else if (agPct > 80) { s -= 1; notes.push('Ag>80%→-1'); }
     if (agPct < 10) { s -= 2; notes.push('Ag<10%→-2'); }
     else if (agPct < 20) { s -= 1; notes.push('Ag<20%→-1'); }
   }
+
   s = Math.max(0, Math.min(10, Math.round(s*10)/10));
   if (!notes.length) notes.push('No adjustments');
   return { adjusted: s, notes };
@@ -40,7 +38,6 @@ function isFlagged(result, adj, dur, agPct) {
   const cs = result.category_scores || {}, pf = result.pass_fail || {};
   const ov = (adj !== null && adj !== undefined && isFinite(adj)) ? adj : result.overall_score;
   if (typeof ov === 'number' && isFinite(ov) && ov < 6) return true;
-  if (dur !== null && dur !== undefined && dur > 0 && dur < 90) return true;
   if (agPct !== null && agPct !== undefined && agPct > 0 && (agPct > 85 || agPct < 15)) return true;
   for (const v of Object.values(cs)) if (typeof v === 'number' && isFinite(v) && v < 5) return true;
   if (pf.explained_offer===false || pf.clear_next_step===false || pf.qualified_investor_fit===false) return true;
@@ -48,10 +45,6 @@ function isFlagged(result, adj, dur, agPct) {
 }
 
 // ── Call Classification ──────────────────────────────────────
-// Reads the first ~2000 chars of transcript and classifies the call type
-// before running the full (expensive) scoring prompt.
-// Non-sales calls get tagged with a summary but skip rubric scoring.
-
 const CLASSIFY_PROMPT = `You are a call classifier for a real estate investment sales team (BNB Turnkey / The Rise Collective).
 
 Read this transcript excerpt and classify the call into ONE of these types:
@@ -75,7 +68,6 @@ Transcript excerpt:
 `;
 
 async function classifyCall(transcript) {
-  // Use first ~2000 chars for classification (cheap, fast)
   const excerpt = transcript.slice(0, 2000);
   try {
     const { result, usage } = await callAIJson(CLASSIFY_PROMPT + excerpt, { maxTokens: 100 });
@@ -90,7 +82,6 @@ async function classifyCall(transcript) {
   }
 }
 
-// Status for classified non-sales calls
 const SKIP_STATUSES = {
   reschedule: 'SKIP_RESCHEDULE',
   follow_up: 'SKIP_FOLLOWUP',
@@ -118,51 +109,44 @@ async function processCall(row) {
     }
     if (maxSec > 0) {
       durSec = maxSec;
-      console.log(`[QC] #${row.id} estimated duration from transcript: ${durSec}s`);
+      console.log(`[QC] #${row.id} estimated duration: ${durSec}s`);
       await q('UPDATE calls SET call_duration_sec=? WHERE id=? AND call_duration_sec IS NULL', [durSec, row.id]);
     }
   }
 
   console.log(`[QC] #${row.id} | ${row.rep_name} (${row.role}) | ${txChars}ch | dur:${durSec}s | ag:${agTalk}%`);
-
   if (!row.transcript || row.transcript.trim().length < 50) throw new Error('NO_TRANSCRIPT: ' + txChars + 'ch');
 
   const engine = process.env.AI_ENGINE || 'gemini';
   if (engine==='gemini' && !process.env.GEMINI_API_KEY) throw new Error('MISSING_GEMINI_API_KEY');
   if (engine==='claude' && !process.env.ANTHROPIC_API_KEY) throw new Error('MISSING_ANTHROPIC_API_KEY');
 
-  // ── STEP 1: Classify the call ──
+  // STEP 1: Classify
   const classification = await classifyCall(row.transcript);
   const ts = now();
 
   if (classification.callType !== 'full_sales_call') {
-    // Non-sales call — tag it, store summary, skip rubric scoring
     const skipStatus = SKIP_STATUSES[classification.callType] || 'SKIP_SHORT';
     const summary = `${classification.callType.replace(/_/g, ' ')} — ${classification.reason}`;
-
-    console.log(`[QC] #${row.id} classified as ${classification.callType}, skipping rubric scoring`);
-
+    console.log(`[QC] #${row.id} → ${skipStatus}`);
     await q('UPDATE calls SET status=?, quick_summary=?, error=?, processed_at=?, model_used=?, call_duration_sec=COALESCE(?,call_duration_sec) WHERE id=?',
       [skipStatus, summary, `Classified: ${classification.callType}`, ts, 'classifier', durSec, row.id]);
-
-    // Track the classification AI cost
     if (classification.cost > 0) {
       const dk = ts.slice(0,10);
       await q('INSERT INTO daily_counters (date_key,full_qc_used,est_cost_usd,updated_at) VALUES (?,0,?,?) ON CONFLICT(date_key) DO UPDATE SET est_cost_usd=est_cost_usd+?, updated_at=?',
         [dk, classification.cost, ts, classification.cost, ts]);
     }
-
-    return { callId: row.id, score: null, flagged: false, cost: classification.cost, summary: `#${row.id} → ${skipStatus}`, classified: classification.callType };
+    return { callId: row.id, score: null, flagged: false, cost: classification.cost, classified: classification.callType };
   }
 
-  // ── STEP 2: Full rubric scoring (only for sales calls) ──
+  // STEP 2: Full scoring
   const role = row.role || 'Setter';
   const rubric = await q('SELECT * FROM rubric_items WHERE version=1 AND role=? ORDER BY weight DESC', [role]);
   if (!rubric.rows.length) throw new Error('NO_RUBRIC for ' + role);
 
   let slice = buildSmartSlice(row.transcript), midSummary = null;
   if (needsTwoPass(txChars, durSec)) {
-    try { const r = await callAI(buildMiddleSummaryPrompt(row.transcript), {maxTokens:800}); midSummary = r.text; } catch(e) { console.warn(`[QC] #${row.id} mid-summary skipped`); }
+    try { const r = await callAI(buildMiddleSummaryPrompt(row.transcript), {maxTokens:800}); midSummary = r.text; } catch(e) {}
   }
 
   const prompt = buildQCPrompt({
@@ -172,11 +156,10 @@ async function processCall(row) {
     middleSummary: midSummary,
   });
 
-  console.log(`[QC] #${row.id} calling ${engine} for full scoring (${prompt.length}ch)...`);
+  console.log(`[QC] #${row.id} scoring (${prompt.length}ch)...`);
   const { result, usage } = await callAIJson(prompt);
   if (!result || result.overall_score === undefined) throw new Error('INVALID_RESPONSE: ' + JSON.stringify(result).slice(0,300));
 
-  console.log(`[QC] #${row.id} raw score: ${result.overall_score}`);
   const scoringCost = estimateCost(usage);
   const totalCost = scoringCost + (classification.cost || 0);
   const adj = adjustScore(result.overall_score, durSec, agTalk);
@@ -188,35 +171,25 @@ async function processCall(row) {
   const dk = ts.slice(0,10);
   await q('INSERT INTO daily_counters (date_key,full_qc_used,est_cost_usd,updated_at) VALUES (?,1,?,?) ON CONFLICT(date_key) DO UPDATE SET full_qc_used=full_qc_used+1, est_cost_usd=est_cost_usd+?, updated_at=?', [dk,totalCost,ts,totalCost,ts]);
 
-  const summary = `#${row.id} → ${adj.adjusted}/10 (raw ${result.overall_score}) ${flagged?'FLAGGED':'OK'} $${totalCost.toFixed(4)}`;
-  console.log(`[QC] ✓ ${summary}`);
-  return { callId: row.id, score: adj.adjusted, flagged, cost: totalCost, summary };
+  console.log(`[QC] ✓ #${row.id} → ${adj.adjusted}/10 $${totalCost.toFixed(4)}`);
+  return { callId: row.id, score: adj.adjusted, flagged, cost: totalCost };
 }
 
-// ── Queue Processor ──────────────────────────────────────────
 async function processQueue(max = 3) {
   const batch = await q('SELECT * FROM calls WHERE status IN (?,?,?) AND retry_count < ? ORDER BY CASE status WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END, received_at ASC LIMIT ?',
     ['NEW','REQC','WAIT_RETRY_FULL', MAX_RETRY, 'REQC','NEW', max]);
-
   if (!batch.rows.length) return { processed: 0, total: 0, reason: 'QUEUE_EMPTY', results: [] };
   console.log(`[QC] Found ${batch.rows.length} calls`);
-
   const ts = now();
   for (const row of batch.rows) await q('UPDATE calls SET last_tried_at=?, retry_count=retry_count+1 WHERE id=?', [ts, row.id]);
 
   let processed = 0, classified = 0;
   const results = [];
-
   for (const row of batch.rows) {
     try {
       const r = await processCall(row);
-      if (r.classified) {
-        classified++;
-        results.push({ id: row.id, rep: row.rep_name, client: row.client_name, status: r.classified.toUpperCase(), score: null });
-      } else {
-        processed++;
-        results.push({ id: row.id, rep: row.rep_name, client: row.client_name, status: 'SCORED', score: r.score });
-      }
+      if (r.classified) { classified++; results.push({ id: row.id, rep: row.rep_name, client: row.client_name, status: r.classified.toUpperCase() }); }
+      else { processed++; results.push({ id: row.id, rep: row.rep_name, client: row.client_name, status: 'SCORED', score: r.score }); }
     } catch (err) {
       const msg = String(err?.message || err);
       console.error(`[QC] #${row.id} FAILED: ${msg}`);
@@ -225,8 +198,7 @@ async function processQueue(max = 3) {
       results.push({ id: row.id, rep: row.rep_name, status: retry?'RETRY':'ERROR', error: msg.slice(0,200) });
     }
   }
-
-  console.log(`[QC] Done: ${processed} scored, ${classified} classified (skipped), ${batch.rows.length - processed - classified} errors`);
+  console.log(`[QC] Done: ${processed} scored, ${classified} classified`);
   return { processed, classified, total: batch.rows.length, results };
 }
 
