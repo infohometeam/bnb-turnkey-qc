@@ -89,10 +89,12 @@ function extractMetrics(data, inner, baseSource, repHint, transcript) {
 
   // ── Aloware duration ──
   if (baseSource === 'Aloware' && inner) {
-    // Primary: duration field (total call duration including wait/ring)
+    // Primary: duration field (top level or in communication object)
     if (fin(inner.duration) && Number(inner.duration) > 0) dur = Number(inner.duration);
+    else if (fin(inner.communication?.duration) && Number(inner.communication.duration) > 0) dur = Number(inner.communication.duration);
     // Fallback: talk_time (actual conversation time)
     if (!fin(dur) && fin(inner.talk_time) && Number(inner.talk_time) > 0) dur = Number(inner.talk_time);
+    else if (!fin(dur) && fin(inner.communication?.talk_time) && Number(inner.communication.talk_time) > 0) dur = Number(inner.communication.talk_time);
 
     // Talk % from parsed_transcription
     const tta = inner.parsed_transcription?.talk_time_analysis;
@@ -159,9 +161,11 @@ function extractMetrics(data, inner, baseSource, repHint, transcript) {
 
 function isVoicemail(inner, transcript, metrics) {
   if (!inner) return false;
-  if (inner.has_voicemail === true || Number(inner.voicemail_duration || 0) > 0 || inner.has_recording === false) return true;
-  const dur = metrics?.durationSec || inner.duration || 0;
-  if (inner.direction === 2 && dur > 0 && dur <= 90) {
+  const comm = inner.communication || inner;
+  if (comm.has_voicemail === true || Number(comm.voicemail_duration || 0) > 0 || comm.has_recording === false) return true;
+  const dur = metrics?.durationSec || comm.duration || inner.duration || 0;
+  const dir = comm.direction || inner.direction;
+  if (dir === 2 && dur > 0 && dur <= 90) {
     if ((!metrics?.agentTalkPct && !metrics?.contactTalkPct) || (metrics?.agentTalkPct === 0 && metrics?.contactTalkPct === 0)) return true;
   }
   if (transcript) {
@@ -202,8 +206,9 @@ async function ingestCall(rawPayload, srcTag) {
 
   const source = resolvedSrcTag ? `${baseSource} (${resolvedSrcTag})` : baseSource;
   const clientName = detectClientName(data, inner);
-  const callUrl = baseSource === 'Aloware' && inner?.id ? `aloware:call:${inner.id}` : (data?.share_url || data?.url || '');
-  const audioUrl = baseSource === 'Aloware' ? (inner?.direct_recording_url || '') : (data?.share_url || '');
+  const alowareCallId = inner?.id || inner?.communication?.id;
+  const callUrl = baseSource === 'Aloware' && alowareCallId ? `aloware:call:${alowareCallId}` : (data?.share_url || data?.url || '');
+  const audioUrl = baseSource === 'Aloware' ? (inner?.direct_recording_url || inner?.communication?.recording_url || '') : (data?.share_url || '');
   // Pass transcript to extractMetrics so it can estimate duration from timestamps
   const metrics = extractMetrics(data, inner, baseSource, repName, transcript);
 
@@ -211,9 +216,9 @@ async function ingestCall(rawPayload, srcTag) {
   if (baseSource === 'Aloware' && inner) {
     let existingRow = null;
 
-    // Strategy 1: Match by call_url (same body.id)
-    if (inner.id) {
-      const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND call_url=?", [`aloware:call:${inner.id}`]);
+    // Strategy 1: Match by call_url (same communication ID)
+    if (alowareCallId) {
+      const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND call_url=?", [`aloware:call:${alowareCallId}`]);
       if (r.rows.length) existingRow = r.rows[0];
     }
 
@@ -228,7 +233,7 @@ async function ingestCall(rawPayload, srcTag) {
 
     // Strategy 3: Match any recent WAIT_TRANSCRIPT for same rep
     if (!existingRow && repName) {
-      const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND status='WAIT_TRANSCRIPT' AND rep_name=? AND received_at >= datetime('now','-10 minutes') ORDER BY received_at DESC LIMIT 1", [repName]);
+      const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND status='WAIT_TRANSCRIPT' AND rep_name=? AND received_at >= datetime('now','-2 hours') ORDER BY received_at DESC LIMIT 1", [repName]);
       if (r.rows.length) existingRow = r.rows[0];
     }
 
@@ -262,7 +267,7 @@ async function ingestCall(rawPayload, srcTag) {
   }
 
   // Standard dedup
-  const sid = baseSource === 'Aloware' ? (inner?.id || '') : (data?.meeting?.id || data?.id || '');
+  const sid = baseSource === 'Aloware' ? (alowareCallId || '') : (data?.meeting?.id || data?.id || '');
   const rawKey = [baseSource, resolvedSrcTag, String(sid), normUrl(callUrl), (transcript || '').slice(0, 500)].join('|');
   const extKey = rawKey.replace(/\|/g, '').trim() ? crypto.createHash('sha256').update(rawKey, 'utf8').digest('hex') : '';
   if (extKey) {
