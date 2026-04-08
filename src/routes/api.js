@@ -102,6 +102,62 @@ router.post('/calls/:id/override', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Rescue False Voicemails ────────────────────────────────
+// Finds calls flagged as voicemail that are obviously real conversations
+// (duration >5 min OR multi-speaker transcript with 10+ turns)
+router.get('/calls/false-voicemails', async (req, res) => {
+  try {
+    const r = await q("SELECT id,received_at,rep_name,client_name,call_duration_sec,transcript_chars,transcript,source FROM calls WHERE status='SKIP_VOICEMAIL' ORDER BY received_at DESC LIMIT 200");
+    const suspects = [];
+    for (const c of r.rows) {
+      const dur = Number(c.call_duration_sec) || 0;
+      const txChars = Number(c.transcript_chars) || 0;
+      let isFalsePositive = false;
+      let reason = '';
+      if (dur > 300) { isFalsePositive = true; reason = `Duration ${Math.floor(dur/60)}m > 5min`; }
+      else if (txChars > 500 && c.transcript) {
+        const lines = String(c.transcript).split('\n').filter(l => l.trim());
+        const speakers = new Set();
+        lines.forEach(l => { const m = l.match(/\]\s*([^:]+):/); if (m) speakers.add(m[1].trim().toLowerCase()); });
+        if (speakers.size >= 2 && lines.length >= 10) {
+          isFalsePositive = true;
+          reason = `Multi-speaker conversation (${speakers.size} speakers, ${lines.length} turns)`;
+        }
+      }
+      if (isFalsePositive) suspects.push({ id: Number(c.id), received_at: c.received_at, rep: c.rep_name, client: c.client_name, duration: dur, transcript_chars: txChars, reason });
+    }
+    res.json({ suspects, total: suspects.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/calls/rescue-false-voicemails', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Provide ids array' });
+    let rescued = 0;
+    for (const id of ids) {
+      const r = await q("UPDATE calls SET status='NEW', error='Rescued from false voicemail flag' WHERE id=? AND status='SKIP_VOICEMAIL' AND transcript_chars>120", [id]);
+      if (r.rowsAffected || r.changes) rescued++;
+    }
+    res.json({ ok: true, rescued });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Transcript Search ──────────────────────────────────────
+router.get('/calls/search', async (req, res) => {
+  try {
+    const { q: query, rep, role, limit = 50 } = req.query;
+    if (!query || query.trim().length < 2) return res.status(400).json({ error: 'Query must be at least 2 characters' });
+    const term = `%${query.trim()}%`;
+    let w = "(transcript LIKE ? OR quick_summary LIKE ? OR coaching_notes LIKE ? OR client_name LIKE ?)", p = [term, term, term, term];
+    if (rep) { w += ' AND rep_name=?'; p.push(rep); }
+    if (role) { w += ' AND role=?'; p.push(role); }
+    const r = await q(`SELECT id,received_at,source,rep_name,role,client_name,call_duration_sec,overall_score_adj,quick_summary,status,flagged FROM calls WHERE ${w} AND status='SCORED' ORDER BY received_at DESC LIMIT ?`, [...p, Number(limit)]);
+    const cnt = await q(`SELECT COUNT(*) as c FROM calls WHERE ${w} AND status='SCORED'`, p);
+    res.json({ calls: r.rows, total: Number(cnt.rows[0].c), query: query.trim() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Records (voicemails, reschedules, follow-ups, etc.) ────
 router.get('/records', async (req, res) => {
   try {
@@ -234,6 +290,20 @@ router.get('/health', async (req, res) => {
     // Total cost
     const totalCost = await q("SELECT SUM(est_cost_usd) as total FROM daily_counters");
 
+    // Webhook health monitor — last webhook per source
+    const webhookHealth = await q("SELECT base_source, MAX(received_at) as last_received, COUNT(*) as total_received FROM webhook_debug GROUP BY base_source");
+    // Check for stale sources (no webhook in 24h during business hours)
+    const webhookAlerts = [];
+    for (const wh of webhookHealth.rows) {
+      if (wh.last_received) {
+        const lastTime = new Date(wh.last_received + 'Z');
+        const hoursSince = (Date.now() - lastTime.getTime()) / (1000 * 60 * 60);
+        if (hoursSince > 24) {
+          webhookAlerts.push({ source: wh.base_source, lastReceived: wh.last_received, hoursSince: Math.round(hoursSince) });
+        }
+      }
+    }
+
     const r = h.rows[0];
     const total = Number(r.total) || 1;
     const issues = (Number(r.missing) || 0) + (Number(r.errors) || 0);
@@ -252,6 +322,8 @@ router.get('/health', async (req, res) => {
       dailyStats: dailyStats.rows,
       totalCost: Number(totalCost.rows[0]?.total || 0),
       engine: process.env.AI_ENGINE || 'gemini',
+      webhookHealth: webhookHealth.rows,
+      webhookAlerts,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
