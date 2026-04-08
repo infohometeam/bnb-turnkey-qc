@@ -76,7 +76,7 @@ function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const
 
 // ── Calls List ──────────────────────────────────────────────
 function CallsList({onSelect}){const[sf,sSf]=useState("ALL");const[rf,sRf]=useState("ALL");const[p,sP]=useState("");const[f,sF]=useState('');const[t,sT]=useState('');const[pg,sPg]=useState(0);const[sq,sSq]=useState('');const[searching,setSearching]=useState(false);const[searchResults,setSearchResults]=useState(null);const PER=50;const dq=buildDQ(p,f,t);const sQ=sf!=="ALL"?`&status=${sf}`:"";const rQ=rf!=="ALL"?`&rep=${rf}`:"";const{data,reload}=useApi(`/calls?limit=${PER}&offset=${pg*PER}${sQ}${rQ}${dq}&hideVm=true`,[sf,rf,p,f,t,pg]);const{data:reps}=useApi("/reps");const[sel,setSel]=useState(new Set());const[del,setDel]=useState(false);
-  async function doSearch(){if(!sq.trim())return setSearchResults(null);setSearching(true);const r=await fetch(`${API}/calls/search?q=${encodeURIComponent(sq.trim())}${rQ}`).then(r=>r.json());setSearchResults(r);setSearching(false);}
+  async function doSearch(){if(!sq.trim())return setSearchResults(null);setSearching(true);const r=await fetch(`${API}/search-calls?q=${encodeURIComponent(sq.trim())}${rQ}`).then(r=>r.json());setSearchResults(r);setSearching(false);}
   function clearSearch(){sSq('');setSearchResults(null);}
   async function bulkDel(){if(!sel.size||!confirm(`Delete ${sel.size} calls?`))return;setDel(true);await postApi('/calls/bulk-delete',{ids:[...sel]});setSel(new Set());reload();setDel(false)}
   async function bulkRescore(){if(!sel.size)return;const est=(sel.size*0.006).toFixed(3);if(!confirm(`Re-score ${sel.size} calls?\n\nEstimated cost: $${est}\nCurrent scores will be archived before re-scoring.\n\nProceed?`))return;const r=await fetch(`${API}/calls/rescore-selected`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[...sel]})}).then(r=>r.json());alert(`✓ ${r.queued} calls queued for re-score. They'll process on the next worker cycles.`);setSel(new Set());reload();}
@@ -248,7 +248,7 @@ function RubricPage(){
   const[scope,setScope]=useState('all');const[days,setDays]=useState(30);
   const[estimate,setEstimate]=useState(null);const[running,setRunning]=useState(false);
   async function loadData(){setLoading(true);const r=await fetch(`${API}/rubric-comparison`).then(r=>r.json()).catch(()=>null);setData(r);setLoading(false);}
-  async function loadEstimate(){const qs=scope==='recent'?`?scope=recent&days=${days}`:'?scope=all';const r=await fetch(`${API}/calls/rescore-estimate${qs}`).then(r=>r.json()).catch(()=>null);setEstimate(r);}
+  async function loadEstimate(){const qs=scope==='recent'?`?scope=recent&days=${days}`:'?scope=all';const r=await fetch(`${API}/rescore-estimate${qs}`).then(r=>r.json()).catch(()=>null);setEstimate(r);}
   React.useEffect(()=>{loadData()},[]);
   React.useEffect(()=>{loadEstimate()},[scope,days]);
   async function rescore(){
