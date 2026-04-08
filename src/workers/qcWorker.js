@@ -16,22 +16,55 @@ function toNum(v) {
 // Duration caps removed: if a call is classified as a real sales call,
 // the AI rubric score stands on its own. A rep who books a closer
 // in 2 minutes shouldn't be penalized for being efficient.
-function adjustScore(ai, dur, agPct) {
-  const notes = [];
-  if (typeof ai !== 'number' || !isFinite(ai)) return { adjusted: ai, notes: ['No score'] };
+//
+// Sam's rules are now DEDUCTIONS not caps — you see the AI's honest score
+// with transparent point deductions labeled with what triggered them.
+// Each deduction is also available as a structured flag for filtering.
+function adjustScore(ai, dur, agPct, result) {
+  const deductions = []; // structured: [{rule, label, points, severity}]
+  if (typeof ai !== 'number' || !isFinite(ai)) return { adjusted: ai, notes: ['No score'], deductions: [] };
   let s = ai;
 
-  // Talk % adjustments only — extreme imbalance is a real quality issue
+  // Sam's philosophy rules — deductions instead of caps
+  const pf = result?.pass_fail || {};
+  if (pf.has_discovery === false) {
+    s -= 3;
+    deductions.push({ rule: 'no_discovery', label: 'Failed: No Discovery', points: -3, severity: 'critical', source: "Sam's philosophy" });
+  }
+  if (pf.financial_qualification === false) {
+    s -= 2;
+    deductions.push({ rule: 'no_financial_qual', label: 'Failed: No Financial Qualification', points: -2, severity: 'critical', source: "Sam's philosophy" });
+  }
+  if (pf.handled_objections === false) {
+    s -= 2;
+    deductions.push({ rule: 'no_objection_handling', label: 'Failed: No Objection Handling', points: -2, severity: 'critical', source: "Sam's philosophy" });
+  }
+  if (pf.tailored_pitch === false) {
+    s -= 1;
+    deductions.push({ rule: 'untailored_pitch', label: 'Untailored Pitch', points: -1, severity: 'warning', source: "Sam's philosophy" });
+  }
+
+  // Talk % adjustments — call mechanics, kept as-is
   if (agPct !== null && agPct !== undefined && agPct > 0) {
-    if (agPct > 90) { s -= 2; notes.push('Ag>90%→-2'); }
-    else if (agPct > 80) { s -= 1; notes.push('Ag>80%→-1'); }
-    if (agPct < 10) { s -= 2; notes.push('Ag<10%→-2'); }
-    else if (agPct < 20) { s -= 1; notes.push('Ag<20%→-1'); }
+    if (agPct > 90) {
+      s -= 2;
+      deductions.push({ rule: 'agent_talk_too_high', label: `Agent talk ${agPct}% (>90%)`, points: -2, severity: 'warning', source: 'Call mechanics' });
+    } else if (agPct > 80) {
+      s -= 1;
+      deductions.push({ rule: 'agent_talk_high', label: `Agent talk ${agPct}% (>80%)`, points: -1, severity: 'warning', source: 'Call mechanics' });
+    }
+    if (agPct < 10) {
+      s -= 2;
+      deductions.push({ rule: 'agent_talk_too_low', label: `Agent talk ${agPct}% (<10%)`, points: -2, severity: 'warning', source: 'Call mechanics' });
+    } else if (agPct < 20) {
+      s -= 1;
+      deductions.push({ rule: 'agent_talk_low', label: `Agent talk ${agPct}% (<20%)`, points: -1, severity: 'warning', source: 'Call mechanics' });
+    }
   }
 
   s = Math.max(0, Math.min(10, Math.round(s*10)/10));
-  if (!notes.length) notes.push('No adjustments');
-  return { adjusted: s, notes };
+  const notes = deductions.length ? deductions.map(d => `${d.label} (${d.points})`) : ['No adjustments'];
+  return { adjusted: s, notes, deductions };
 }
 
 function isFlagged(result, adj, dur, agPct) {
@@ -40,7 +73,9 @@ function isFlagged(result, adj, dur, agPct) {
   if (typeof ov === 'number' && isFinite(ov) && ov < 6) return true;
   if (agPct !== null && agPct !== undefined && agPct > 0 && (agPct > 85 || agPct < 15)) return true;
   for (const v of Object.values(cs)) if (typeof v === 'number' && isFinite(v) && v < 5) return true;
-  if (pf.explained_offer===false || pf.clear_next_step===false || pf.qualified_investor_fit===false) return true;
+  // Sam's non-negotiables
+  if (pf.has_discovery === false || pf.financial_qualification === false || pf.handled_objections === false) return true;
+  if (pf.explained_offer === false || pf.clear_next_step === false || pf.qualified_investor_fit === false) return true;
   return false;
 }
 
@@ -139,9 +174,12 @@ async function processCall(row) {
     return { callId: row.id, score: null, flagged: false, cost: classification.cost, classified: classification.callType };
   }
 
-  // STEP 2: Full scoring
+  // STEP 2: Full scoring — prefer rubric v2 (Sam's philosophy), fallback to v1
   const role = row.role || 'Setter';
-  const rubric = await q('SELECT * FROM rubric_items WHERE version=1 AND role=? ORDER BY weight DESC', [role]);
+  let rubric = await q('SELECT * FROM rubric_items WHERE version=2 AND role=? ORDER BY weight DESC', [role]);
+  if (!rubric.rows.length) {
+    rubric = await q('SELECT * FROM rubric_items WHERE version=1 AND role=? ORDER BY weight DESC', [role]);
+  }
   if (!rubric.rows.length) throw new Error('NO_RUBRIC for ' + role);
 
   let slice = buildSmartSlice(row.transcript), midSummary = null;
@@ -162,11 +200,57 @@ async function processCall(row) {
 
   const scoringCost = estimateCost(usage);
   const totalCost = scoringCost + (classification.cost || 0);
-  const adj = adjustScore(result.overall_score, durSec, agTalk);
+  const adj = adjustScore(result.overall_score, durSec, agTalk, result);
   const flagged = isFlagged(result, adj.adjusted, durSec, agTalk);
 
-  await q('UPDATE calls SET overall_score=?,overall_score_adj=?,score_adjust_notes=?,category_scores=?,pass_fail=?,coaching_notes=?,quick_summary=?,strengths=?,improvements=?,next_step_text=?,golden_moments=?,flagged=?,status=?,error=?,processed_at=?,model_used=?,transcript_slice=?,call_duration_sec=COALESCE(?,call_duration_sec) WHERE id=?',
-    [result.overall_score, adj.adjusted, adj.notes.join(' | '), JSON.stringify(result.category_scores||{}), JSON.stringify(result.pass_fail||{}), result.coaching_notes||'', result.quick_summary||'', JSON.stringify(result.strengths||[]), JSON.stringify(result.improvements||[]), result.next_step_text||'', JSON.stringify(result.golden_moments||[]), flagged?1:0, 'SCORED', '', ts, usage.model||'unknown', slice, durSec, row.id]);
+  // Append confidence to adjustment notes
+  const confidence = result.confidence || 'unknown';
+  const confReason = result.confidence_reason || '';
+  const adjustNotes = [adj.notes.join(' | '), `Confidence: ${confidence}${confReason ? ' — ' + confReason : ''}`].join(' | ');
+
+  // Determine which rubric version we're using
+  const rubricVersion = rubric.rows[0]?.version || 1;
+
+  // If this call was previously scored (re-scoring), snapshot the old scores into score_history
+  if (row.overall_score !== null && row.overall_score !== undefined && row.overall_score !== '') {
+    try {
+      const snapshot = {
+        call_id: row.id,
+        snapshot_at: ts,
+        rubric_version: row.rubric_version || 1,
+        overall_score: row.overall_score,
+        overall_score_adj: row.overall_score_adj,
+        category_scores: row.category_scores,
+        pass_fail: row.pass_fail,
+        score_adjust_notes: row.score_adjust_notes,
+        quick_summary: row.quick_summary,
+        coaching_notes: row.coaching_notes,
+        strengths: row.strengths,
+        improvements: row.improvements,
+        model_used: row.model_used,
+      };
+      await q(
+        'INSERT INTO score_history (call_id, snapshot_at, rubric_version, overall_score, overall_score_adj, category_scores, pass_fail, score_adjust_notes, quick_summary, coaching_notes, strengths, improvements, model_used) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [snapshot.call_id, snapshot.snapshot_at, snapshot.rubric_version, snapshot.overall_score, snapshot.overall_score_adj, snapshot.category_scores, snapshot.pass_fail, snapshot.score_adjust_notes, snapshot.quick_summary, snapshot.coaching_notes, snapshot.strengths, snapshot.improvements, snapshot.model_used]
+      );
+      console.log(`[QC] #${row.id} snapshot saved (v${snapshot.rubric_version})`);
+    } catch (snapErr) {
+      console.error(`[QC] #${row.id} snapshot failed: ${snapErr.message} — continuing with scoring`);
+    }
+  }
+
+  // Merge Sam's philosophy fields AND deductions into pass_fail so no schema change is needed
+  const enrichedPassFail = {
+    ...(result.pass_fail || {}),
+    beliefs_covered: result.beliefs_covered || null,
+    frame_assessment: result.frame_assessment || null,
+    temperature_check: result.temperature_check || null,
+    deductions: adj.deductions || [],
+    rubric_version: rubricVersion,
+  };
+
+  await q('UPDATE calls SET overall_score=?,overall_score_adj=?,score_adjust_notes=?,category_scores=?,pass_fail=?,coaching_notes=?,quick_summary=?,strengths=?,improvements=?,next_step_text=?,golden_moments=?,flagged=?,status=?,error=?,processed_at=?,model_used=?,transcript_slice=?,rubric_version=?,call_duration_sec=COALESCE(?,call_duration_sec) WHERE id=?',
+    [result.overall_score, adj.adjusted, adjustNotes, JSON.stringify(result.category_scores||{}), JSON.stringify(enrichedPassFail), result.coaching_notes||'', result.quick_summary||'', JSON.stringify(result.strengths||[]), JSON.stringify(result.improvements||[]), result.next_step_text||'', JSON.stringify(result.golden_moments||[]), flagged?1:0, 'SCORED', '', ts, usage.model||'unknown', slice, rubricVersion, durSec, row.id]);
 
   const dk = ts.slice(0,10);
   await q('INSERT INTO daily_counters (date_key,full_qc_used,est_cost_usd,updated_at) VALUES (?,1,?,?) ON CONFLICT(date_key) DO UPDATE SET full_qc_used=full_qc_used+1, est_cost_usd=est_cost_usd+?, updated_at=?', [dk,totalCost,ts,totalCost,ts]);
@@ -193,8 +277,13 @@ async function processQueue(max = 3) {
     } catch (err) {
       const msg = String(err?.message || err);
       console.error(`[QC] #${row.id} FAILED: ${msg}`);
-      const retry = /429|503|529|JSON_PARSE|EMPTY|TIMEOUT|ECONNRESET|MAX_RETRIES|fetch|network|GEMINI_HTTP/i.test(msg);
-      await q('UPDATE calls SET status=?, error=? WHERE id=?', [retry?'WAIT_RETRY_FULL':'ERROR', (retry?'RETRYABLE: ':'')+msg.slice(0,500), row.id]);
+      // Smart retry: only retry recoverable errors
+      const isTimeout = /429|503|529|TIMEOUT|ECONNRESET|fetch|network/i.test(msg);
+      const isParseError = /JSON_PARSE|EMPTY|INVALID_RESPONSE/i.test(msg);
+      const isPermanent = /NO_TRANSCRIPT|NO_RUBRIC|MISSING.*KEY/i.test(msg);
+      const retry = !isPermanent && (isTimeout || isParseError);
+      const errPrefix = isPermanent ? 'PERMANENT: ' : isTimeout ? 'RETRYABLE_NETWORK: ' : isParseError ? 'RETRYABLE_PARSE: ' : 'ERROR: ';
+      await q('UPDATE calls SET status=?, error=? WHERE id=?', [retry?'WAIT_RETRY_FULL':'ERROR', errPrefix+msg.slice(0,500), row.id]);
       results.push({ id: row.id, rep: row.rep_name, status: retry?'RETRY':'ERROR', error: msg.slice(0,200) });
     }
   }
