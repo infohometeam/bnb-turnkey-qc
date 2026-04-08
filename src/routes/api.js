@@ -286,7 +286,7 @@ router.post('/calls/rescore-selected', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.get('/calls/rescore-estimate', async (req, res) => {
+router.get('/rescore-estimate', async (req, res) => {
   try {
     const scope = String(req.query.scope || 'all');
     const days = Number(req.query.days || 30);
@@ -351,7 +351,7 @@ router.get('/rubric-comparison', async (req, res) => {
 // ─── Rescue False Voicemails ────────────────────────────────
 // Finds calls flagged as voicemail that are obviously real conversations
 // (duration >5 min OR multi-speaker transcript with 10+ turns)
-router.get('/calls/false-voicemails', async (req, res) => {
+router.get('/false-voicemails', async (req, res) => {
   try {
     const r = await q("SELECT id,received_at,rep_name,client_name,call_duration_sec,transcript_chars,transcript,source FROM calls WHERE status='SKIP_VOICEMAIL' ORDER BY received_at DESC LIMIT 200");
     const suspects = [];
@@ -390,7 +390,7 @@ router.post('/calls/rescue-false-voicemails', async (req, res) => {
 });
 
 // ─── Transcript Search ──────────────────────────────────────
-router.get('/calls/search', async (req, res) => {
+router.get('/search-calls', async (req, res) => {
   try {
     const { q: query, rep, role, limit = 50 } = req.query;
     if (!query || query.trim().length < 2) return res.status(400).json({ error: 'Query must be at least 2 characters' });
