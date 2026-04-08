@@ -90,6 +90,156 @@ router.post('/calls/:id/reqc', async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Bulk Re-score Endpoints ────────────────────────────────
+// Estimated cost per call: Claude Haiku scoring ~$0.006 avg (~$0.37 for 62 calls)
+const RESCORE_COST_PER_CALL = 0.006;
+
+// Preview what would be re-scored (shows counts + cost estimate without doing anything)
+router.get('/rescore/preview', async (req, res) => {
+  try {
+    const { scope = 'all', days, ids } = req.query;
+    let where = "status='SCORED'";
+    let params = [];
+    if (scope === 'recent' && days) {
+      where += ` AND received_at >= datetime('now','-${Number(days)} days')`;
+    } else if (scope === 'selected' && ids) {
+      const idList = String(ids).split(',').map(Number).filter(Boolean);
+      if (!idList.length) return res.status(400).json({ error: 'No valid IDs' });
+      where += ` AND id IN (${idList.map(()=>'?').join(',')})`;
+      params = idList;
+    }
+    const r = await q(`SELECT COUNT(*) as count FROM calls WHERE ${where}`, params);
+    const count = Number(r.rows[0]?.count || 0);
+    const breakdown = await q(`SELECT role, COUNT(*) as count FROM calls WHERE ${where} GROUP BY role`, params);
+    res.json({
+      scope, days, count,
+      estimatedCostUsd: +(count * RESCORE_COST_PER_CALL).toFixed(3),
+      breakdown: breakdown.rows.map(r => ({ role: r.role, count: Number(r.count) })),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Execute the re-score (flags calls as REQC so the worker picks them up on next cycle)
+router.post('/rescore/execute', async (req, res) => {
+  try {
+    const { scope = 'all', days, ids } = req.body || {};
+    let where = "status='SCORED'";
+    let params = [];
+    if (scope === 'recent' && days) {
+      where += ` AND received_at >= datetime('now','-${Number(days)} days')`;
+    } else if (scope === 'selected') {
+      if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Provide ids array for scope=selected' });
+      where += ` AND id IN (${ids.map(()=>'?').join(',')})`;
+      params = ids;
+    } else if (scope !== 'all') {
+      return res.status(400).json({ error: 'Invalid scope. Use: all, recent, selected' });
+    }
+    const r = await q(`UPDATE calls SET status='REQC', error='', retry_count=0 WHERE ${where}`, params);
+    const affected = r.rowsAffected || r.changes || 0;
+    res.json({ ok: true, queued: affected, scope, message: `${affected} calls queued for re-scoring. Worker will process on next cycle.` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Score History ──────────────────────────────────────────
+// Returns all archived score snapshots for a specific call
+router.get('/calls/:id/history', async (req, res) => {
+  try {
+    const r = await q('SELECT * FROM score_history WHERE call_id=? ORDER BY snapshot_at DESC', [req.params.id]);
+    const rows = r.rows.map(row => {
+      try { row.category_scores = JSON.parse(row.category_scores || '{}'); } catch(e) {}
+      try { row.pass_fail = JSON.parse(row.pass_fail || '{}'); } catch(e) {}
+      try { row.strengths = JSON.parse(row.strengths || '[]'); } catch(e) {}
+      try { row.improvements = JSON.parse(row.improvements || '[]'); } catch(e) {}
+      return row;
+    });
+    res.json({ history: rows, count: rows.length });
+  } catch (err) {
+    // Table may not exist yet
+    if (/no such table/i.test(err.message)) return res.json({ history: [], count: 0, note: 'score_history table not yet created' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Rubric Comparison ──────────────────────────────────────
+// Aggregates scores by rubric version. Shows avg overall, category avgs, flag rates.
+router.get('/rubric-comparison', async (req, res) => {
+  try {
+    // Get all unique rubric versions that have been used
+    const versions = await q('SELECT DISTINCT rubric_version FROM calls WHERE rubric_version IS NOT NULL AND status=?', ['SCORED']);
+    const activeVersions = versions.rows.map(r => Number(r.rubric_version)).filter(Boolean);
+
+    // Also check history table
+    let historyVersions = [];
+    try {
+      const h = await q('SELECT DISTINCT rubric_version FROM score_history');
+      historyVersions = h.rows.map(r => Number(r.rubric_version)).filter(Boolean);
+    } catch(e) {}
+
+    const allVersions = [...new Set([...activeVersions, ...historyVersions])].sort();
+    const comparison = {};
+
+    for (const v of allVersions) {
+      // Current scores on this version
+      const current = await q('SELECT overall_score_adj, category_scores, pass_fail, flagged, role FROM calls WHERE rubric_version=? AND status=?', [v, 'SCORED']);
+      // Historical scores on this version
+      let historical = { rows: [] };
+      try {
+        historical = await q('SELECT overall_score_adj, category_scores, pass_fail FROM score_history WHERE rubric_version=?', [v]);
+      } catch(e) {}
+
+      const allRows = [...current.rows, ...historical.rows];
+      if (!allRows.length) continue;
+
+      const scores = allRows.map(r => Number(r.overall_score_adj)).filter(n => isFinite(n));
+      const avgScore = scores.length ? +(scores.reduce((a,b)=>a+b,0) / scores.length).toFixed(2) : 0;
+
+      // Category averages
+      const catTotals = {}, catCounts = {};
+      for (const row of allRows) {
+        try {
+          const cs = typeof row.category_scores === 'string' ? JSON.parse(row.category_scores) : (row.category_scores || {});
+          for (const [k, v] of Object.entries(cs)) {
+            if (typeof v === 'number' && isFinite(v)) {
+              catTotals[k] = (catTotals[k] || 0) + v;
+              catCounts[k] = (catCounts[k] || 0) + 1;
+            }
+          }
+        } catch(e) {}
+      }
+      const categoryAvgs = {};
+      for (const k of Object.keys(catTotals)) categoryAvgs[k] = +(catTotals[k] / catCounts[k]).toFixed(2);
+
+      // Pass/fail flag rates (from Sam's rules)
+      const failCounts = { has_discovery: 0, financial_qualification: 0, handled_objections: 0, tailored_pitch: 0 };
+      for (const row of allRows) {
+        try {
+          const pf = typeof row.pass_fail === 'string' ? JSON.parse(row.pass_fail) : (row.pass_fail || {});
+          if (pf.has_discovery === false) failCounts.has_discovery++;
+          if (pf.financial_qualification === false) failCounts.financial_qualification++;
+          if (pf.handled_objections === false) failCounts.handled_objections++;
+          if (pf.tailored_pitch === false) failCounts.tailored_pitch++;
+        } catch(e) {}
+      }
+      const failRates = {};
+      for (const k of Object.keys(failCounts)) failRates[k] = +(failCounts[k] / allRows.length * 100).toFixed(1);
+
+      comparison[`v${v}`] = {
+        version: v,
+        total_calls: allRows.length,
+        current_calls: current.rows.length,
+        historical_calls: historical.rows.length,
+        avg_score: avgScore,
+        category_avgs: categoryAvgs,
+        fail_rates: failRates,
+      };
+    }
+
+    res.json({ versions: allVersions, comparison });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── End bulk rescore / history / comparison ────────────────
+
 router.post('/calls/:id/override', async (req, res) => {
   try {
     const { override_score, reason, override_by = 'Sam' } = req.body;
@@ -99,6 +249,102 @@ router.post('/calls/:id/override', async (req, res) => {
     await q('INSERT INTO score_overrides (call_id,override_by,original_score,override_score,reason,created_at) VALUES (?,?,?,?,?,?)',
       [req.params.id, override_by, c.rows[0].overall_score_adj, override_score, reason, now]);
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Bulk Re-score ──────────────────────────────────────────
+// Tags calls as REQC so the worker re-processes them with current rubric.
+// Old scores are auto-archived into score_history by the worker before re-scoring.
+router.post('/calls/rescore-all', async (req, res) => {
+  try {
+    const r = await q("UPDATE calls SET status='REQC', error='Queued for re-score (bulk)', retry_count=0 WHERE status='SCORED'");
+    const affected = r.rowsAffected || r.changes || 0;
+    res.json({ ok: true, queued: affected, message: `${affected} calls queued for re-score` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/calls/rescore-recent', async (req, res) => {
+  try {
+    const days = Number(req.body?.days || 30);
+    if (days < 1 || days > 365) return res.status(400).json({ error: 'days must be 1-365' });
+    const r = await q("UPDATE calls SET status='REQC', error='Queued for re-score (recent)', retry_count=0 WHERE status='SCORED' AND received_at >= datetime('now', ?)", [`-${days} days`]);
+    const affected = r.rowsAffected || r.changes || 0;
+    res.json({ ok: true, queued: affected, days, message: `${affected} calls from last ${days} days queued for re-score` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/calls/rescore-selected', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Provide ids array' });
+    let queued = 0;
+    for (const id of ids) {
+      const r = await q("UPDATE calls SET status='REQC', error='Queued for re-score (selected)', retry_count=0 WHERE id=? AND status='SCORED'", [id]);
+      if (r.rowsAffected || r.changes) queued++;
+    }
+    res.json({ ok: true, queued });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/calls/rescore-estimate', async (req, res) => {
+  try {
+    const scope = String(req.query.scope || 'all');
+    const days = Number(req.query.days || 30);
+    let sql, params = [];
+    if (scope === 'recent') {
+      sql = "SELECT COUNT(*) as count FROM calls WHERE status='SCORED' AND received_at >= datetime('now', ?)";
+      params = [`-${days} days`];
+    } else {
+      sql = "SELECT COUNT(*) as count FROM calls WHERE status='SCORED'";
+    }
+    const r = await q(sql, params);
+    const count = Number(r.rows[0]?.count || 0);
+    // Claude Haiku estimated cost: ~$0.006 per scoring call (input + output)
+    const estCost = count * 0.006;
+    res.json({ count, estimatedCost: estCost.toFixed(3) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Score History (v1 vs v2 comparison) ────────────────────
+router.get('/calls/:id/history', async (req, res) => {
+  try {
+    const r = await q('SELECT * FROM score_history WHERE call_id=? ORDER BY snapshot_at DESC', [req.params.id]);
+    const history = r.rows.map(h => {
+      try { h.category_scores = JSON.parse(h.category_scores); } catch(e) { h.category_scores = null; }
+      try { h.pass_fail = JSON.parse(h.pass_fail); } catch(e) { h.pass_fail = null; }
+      try { h.strengths = JSON.parse(h.strengths); } catch(e) { h.strengths = []; }
+      try { h.improvements = JSON.parse(h.improvements); } catch(e) { h.improvements = []; }
+      return h;
+    });
+    res.json({ history });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/rubric-comparison', async (req, res) => {
+  try {
+    // Compare average scores between rubric versions
+    const currentAvg = await q("SELECT rubric_version, COUNT(*) as count, AVG(overall_score_adj) as avg_score, AVG(CASE WHEN category_scores IS NOT NULL THEN json_extract(category_scores, '$.discovery') END) as avg_discovery, AVG(CASE WHEN category_scores IS NOT NULL THEN json_extract(category_scores, '$.qualification') END) as avg_qual, AVG(CASE WHEN category_scores IS NOT NULL THEN json_extract(category_scores, '$.pitch') END) as avg_pitch FROM calls WHERE status='SCORED' GROUP BY rubric_version");
+
+    // Also pull historical snapshots grouped by rubric version
+    const histAvg = await q("SELECT rubric_version, COUNT(*) as count, AVG(overall_score_adj) as avg_score FROM score_history GROUP BY rubric_version");
+
+    // Direct per-call comparisons: where we have both v1 snapshot and current v2 score
+    const comparisons = await q(`
+      SELECT c.id, c.rep_name, c.client_name, c.received_at,
+             c.overall_score_adj as current_score, c.rubric_version as current_version,
+             h.overall_score_adj as previous_score, h.rubric_version as previous_version,
+             (c.overall_score_adj - h.overall_score_adj) as delta
+      FROM calls c
+      INNER JOIN score_history h ON h.call_id = c.id
+      WHERE c.status='SCORED' AND c.rubric_version != h.rubric_version
+      ORDER BY c.received_at DESC LIMIT 100
+    `);
+
+    res.json({
+      current: currentAvg.rows,
+      historical: histAvg.rows,
+      perCallComparisons: comparisons.rows,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
