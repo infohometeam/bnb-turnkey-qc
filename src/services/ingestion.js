@@ -162,13 +162,31 @@ function extractMetrics(data, inner, baseSource, repHint, transcript) {
 function isVoicemail(inner, transcript, metrics) {
   if (!inner) return false;
   const comm = inner.communication || inner;
-  if (comm.has_voicemail === true || Number(comm.voicemail_duration || 0) > 0 || comm.has_recording === false) return true;
   const dur = metrics?.durationSec || comm.duration || inner.duration || 0;
+
+  // HARD SANITY CHECKS — these override all other signals
+  // 1. Any call over 5 minutes is never a voicemail
+  if (dur > 300) return false;
+
+  // 2. Transcript with multiple speaker turns is a real conversation, not a voicemail
+  if (transcript) {
+    const lines = transcript.split('\n').filter(l => l.trim());
+    const speakers = new Set();
+    lines.forEach(l => { const m = l.match(/\]\s*([^:]+):/); if (m) speakers.add(m[1].trim().toLowerCase()); });
+    // Multi-speaker with 10+ turns = real conversation
+    if (speakers.size >= 2 && lines.length >= 10) return false;
+  }
+
+  // Now check actual voicemail signals
+  if (comm.has_voicemail === true || Number(comm.voicemail_duration || 0) > 0 || comm.has_recording === false) return true;
+
   const dir = comm.direction || inner.direction;
   if (dir === 2 && dur > 0 && dur <= 90) {
     if ((!metrics?.agentTalkPct && !metrics?.contactTalkPct) || (metrics?.agentTalkPct === 0 && metrics?.contactTalkPct === 0)) return true;
   }
-  if (transcript) {
+
+  // Only check VM phrases on SHORT calls. Real conversations naturally contain these words.
+  if (transcript && dur <= 180) {
     const low = transcript.toLowerCase();
     for (const p of VM_PHRASES) if (low.includes(p)) return true;
     const lines = transcript.split('\n').filter(l => l.trim());
