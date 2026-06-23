@@ -251,7 +251,7 @@ async function ingestCall(rawPayload, srcTag) {
 
     // Strategy 3: Match any recent WAIT_TRANSCRIPT for same rep
     if (!existingRow && repName) {
-      const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND status='WAIT_TRANSCRIPT' AND rep_name=? AND received_at >= datetime('now','-2 hours') ORDER BY received_at DESC LIMIT 1", [repName]);
+      const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND status='WAIT_TRANSCRIPT' AND rep_name=? AND received_at >= to_char(NOW() - INTERVAL '2 hours','YYYY-MM-DD HH24:MI:SS') ORDER BY received_at DESC LIMIT 1", [repName]);
       if (r.rows.length) existingRow = r.rows[0];
     }
 
