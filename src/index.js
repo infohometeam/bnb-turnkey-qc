@@ -24,7 +24,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok', service: 'BNB Turnkey QC', company: 'The Rise Collective',
     engine: process.env.AI_ENGINE || 'gemini', version: '1.1.0',
-    db: process.env.TURSO_URL ? 'turso (persistent)' : 'local sqlite (ephemeral)',
+    db: process.env.DATABASE_URL ? 'supabase (postgres)' : 'NOT CONFIGURED',
     uptime: Math.round(process.uptime()), timestamp: new Date().toISOString(),
   });
 });
@@ -53,7 +53,7 @@ async function start() {
       console.log('  ╔═════════════════════════════════════════════════╗');
       console.log('  ║   BNB Turnkey QC — The Rise Collective          ║');
       console.log(`  ║   Port: ${PORT} | Engine: ${(process.env.AI_ENGINE||'gemini').toUpperCase().padEnd(23)}║`);
-      console.log(`  ║   DB: ${process.env.TURSO_URL ? 'Turso (persistent)' : 'Local SQLite (ephemeral)'}${' '.repeat(Math.max(0, 25 - (process.env.TURSO_URL ? 18 : 26)))}║`);
+      console.log(`  ║   DB: ${process.env.DATABASE_URL ? 'Supabase (Postgres)' : 'NOT CONFIGURED'}`.padEnd(52) + '║');
       console.log('  ╚═════════════════════════════════════════════════╝');
       console.log(`\n  Dashboard: http://localhost:${PORT}`);
       console.log(`  Health:    http://localhost:${PORT}/health\n`);
