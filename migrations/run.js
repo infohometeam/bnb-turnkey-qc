@@ -1,46 +1,149 @@
-const { createClient } = require('@libsql/client');
-let _client = null;
+// ═══════════════════════════════════════════════════════════════
+// Database layer — Postgres (Supabase) via node-postgres (pg)
+// Converted from Turso/libSQL. Public interface unchanged:
+//   q(sql, args) -> { rows, lastInsertRowid }
+//   migrate()    -> ensures schema exists (safe no-op if already built)
+//   getClient()  -> the pg Pool
+//
+// KEY COMPAT SHIMS (so callers don't change):
+//  1. `?` placeholders are auto-translated to `$1,$2,...`
+//  2. INSERT statements auto-get `RETURNING id`, and the new id is
+//     exposed as `res.lastInsertRowid` (matches old libSQL behavior)
+//  3. pg already returns { rows: [...] }, matching libSQL result shape
+// ═══════════════════════════════════════════════════════════════
+
+const { Pool } = require('pg');
+let _pool = null;
 
 function getClient() {
-  if (_client) return _client;
-  if (process.env.TURSO_URL) {
-    console.log('[DB] Connecting to Turso (persistent)');
-    _client = createClient({ url: process.env.TURSO_URL, authToken: process.env.TURSO_AUTH_TOKEN });
-  } else {
-    console.log('[DB] Using local SQLite (ephemeral)');
-    const path = require('path'), fs = require('fs');
-    const dir = path.join(__dirname, '..', 'data');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    _client = createClient({ url: 'file:' + path.join(dir, 'qc.db') });
+  if (_pool) return _pool;
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error('MISSING_DATABASE_URL — set your Supabase Postgres connection string in env');
   }
-  return _client;
+  console.log('[DB] Connecting to Supabase (Postgres)');
+  _pool = new Pool({
+    connectionString,
+    ssl: { rejectUnauthorized: false },
+    max: 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 15000,
+  });
+  _pool.on('error', (err) => console.error('[DB] idle client error:', err.message));
+  return _pool;
 }
 
-async function q(sql, args = []) { return getClient().execute({ sql, args }); }
+// ─── Placeholder translator: `?` → `$1, $2, ...` ────────────────
+function translatePlaceholders(sql) {
+  let out = '';
+  let n = 0;
+  let inString = false;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (ch === "'") {
+      if (inString && sql[i + 1] === "'") { out += "''"; i++; continue; }
+      inString = !inString;
+      out += ch;
+    } else if (ch === '?' && !inString) {
+      out += '$' + (++n);
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
 
-async function migrate() {
-  const c = getClient();
-  const stmts = [
-    "CREATE TABLE IF NOT EXISTS rep_roster (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, role TEXT NOT NULL, team TEXT NOT NULL, src_tag TEXT UNIQUE, color TEXT DEFAULT '#6366f1', active INTEGER DEFAULT 1)",
-    "CREATE TABLE IF NOT EXISTS rubric_items (id INTEGER PRIMARY KEY AUTOINCREMENT, version INTEGER DEFAULT 1, role TEXT NOT NULL, category TEXT NOT NULL, weight INTEGER DEFAULT 20, good TEXT NOT NULL, bad TEXT NOT NULL, score_10 TEXT, score_5 TEXT, score_1 TEXT)",
-    "CREATE TABLE IF NOT EXISTS calls (id INTEGER PRIMARY KEY AUTOINCREMENT, received_at TEXT, source TEXT, base_source TEXT, src_tag TEXT, rep_name TEXT, rep_id INTEGER, role TEXT, team TEXT, client_name TEXT, call_url TEXT, audio_url TEXT, external_call_key TEXT UNIQUE, transcript TEXT, transcript_chars INTEGER DEFAULT 0, transcript_slice TEXT, call_duration_sec INTEGER, agent_talk_pct REAL, contact_talk_pct REAL, overall_score REAL, overall_score_adj REAL, score_adjust_notes TEXT, category_scores TEXT, pass_fail TEXT, coaching_notes TEXT, quick_summary TEXT, strengths TEXT, improvements TEXT, next_step_text TEXT, golden_moments TEXT, status TEXT DEFAULT 'NEW', flagged INTEGER DEFAULT 0, error TEXT DEFAULT '', retry_count INTEGER DEFAULT 0, queued_at TEXT, last_tried_at TEXT, processed_at TEXT, model_used TEXT, rubric_version INTEGER DEFAULT 1, weekstart TEXT, created_at TEXT)",
-    "CREATE TABLE IF NOT EXISTS webhook_debug (id INTEGER PRIMARY KEY AUTOINCREMENT, received_at TEXT, src_tag TEXT, base_source TEXT, raw_payload TEXT)",
-    "CREATE TABLE IF NOT EXISTS daily_counters (date_key TEXT PRIMARY KEY, full_qc_used INTEGER DEFAULT 0, est_cost_usd REAL DEFAULT 0, updated_at TEXT)",
-    "CREATE TABLE IF NOT EXISTS score_overrides (id INTEGER PRIMARY KEY AUTOINCREMENT, call_id INTEGER, override_by TEXT DEFAULT 'Sam', original_score REAL, override_score REAL, reason TEXT, created_at TEXT)",
-    "CREATE INDEX IF NOT EXISTS idx_calls_status ON calls(status)",
-    "CREATE INDEX IF NOT EXISTS idx_calls_rep ON calls(rep_name)",
-    "CREATE INDEX IF NOT EXISTS idx_calls_received ON calls(received_at)",
-    "CREATE INDEX IF NOT EXISTS idx_calls_extkey ON calls(external_call_key)",
-  ];
-  for (const sql of stmts) await c.execute(sql);
+function isInsert(sql) { return /^\s*insert\s/i.test(sql); }
+function alreadyReturning(sql) { return /returning\s/i.test(sql); }
 
-  // Seed reps
-  for (const [n,r,t,s,cl] of [['Matt','Closer','Turnkey - Closers','fathom-closers-1','#6366f1'],['Kevin','Closer','Turnkey - Closers','fathom-closers-2','#8b5cf6'],['Andrew','Setter','Turnkey - Setters','aloware-setters','#06b6d4'],['Steven','Setter','Turnkey - Setters','aloware-setters-2','#10b981'],['Anurag','Setter','Turnkey - Setters','aloware-setters-3','#f59e0b']]) {
-    await c.execute({ sql: 'INSERT OR IGNORE INTO rep_roster (name,role,team,src_tag,color) VALUES (?,?,?,?,?)', args: [n,r,t,s,cl] });
+// ─── The universal query function (unchanged signature) ─────────
+async function q(sql, args = []) {
+  const pool = getClient();
+  let text = translatePlaceholders(sql);
+
+  let wantsId = false;
+  if (isInsert(text) && !alreadyReturning(text)) {
+    text = text + ' RETURNING id';
+    wantsId = true;
   }
 
-  // Seed rubric
-  const rc = await c.execute('SELECT COUNT(*) as c FROM rubric_items');
+  const res = await pool.query(text, args);
+  let lastInsertRowid;
+  if (wantsId && res.rows && res.rows.length) {
+    lastInsertRowid = res.rows[0].id;
+  }
+  return { rows: res.rows || [], rowCount: res.rowCount, lastInsertRowid };
+}
+
+// ─── Schema (Postgres). Safe to run repeatedly. ────────────────
+async function migrate() {
+  const stmts = [
+    `CREATE TABLE IF NOT EXISTS rep_roster (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      name text NOT NULL, role text NOT NULL, team text NOT NULL,
+      src_tag text, aloware_user_id text,
+      color text DEFAULT '#6366f1', active integer DEFAULT 1)`,
+    `CREATE TABLE IF NOT EXISTS rubric_items (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      version integer DEFAULT 1, role text NOT NULL, category text NOT NULL,
+      weight integer DEFAULT 20, good text NOT NULL, bad text NOT NULL,
+      score_10 text, score_5 text, score_1 text)`,
+    `CREATE TABLE IF NOT EXISTS calls (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      received_at text, source text, base_source text, src_tag text,
+      rep_name text, rep_id integer, role text, team text, client_name text,
+      call_url text, audio_url text, external_call_key text UNIQUE,
+      transcript text, transcript_chars integer DEFAULT 0, transcript_slice text,
+      call_duration_sec integer, agent_talk_pct real, contact_talk_pct real,
+      overall_score real, overall_score_adj real, score_adjust_notes text,
+      category_scores text, pass_fail text, coaching_notes text, quick_summary text,
+      strengths text, improvements text, next_step_text text, golden_moments text,
+      status text DEFAULT 'NEW', flagged integer DEFAULT 0, error text DEFAULT '',
+      retry_count integer DEFAULT 0, queued_at text, last_tried_at text,
+      processed_at text, model_used text, rubric_version integer DEFAULT 1,
+      weekstart text, created_at text)`,
+    `CREATE TABLE IF NOT EXISTS webhook_debug (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      received_at text, src_tag text, base_source text, raw_payload text)`,
+    `CREATE TABLE IF NOT EXISTS daily_counters (
+      date_key text PRIMARY KEY, full_qc_used integer DEFAULT 0,
+      est_cost_usd real DEFAULT 0, updated_at text)`,
+    `CREATE TABLE IF NOT EXISTS score_overrides (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      call_id integer, override_by text DEFAULT 'Sam',
+      original_score real, override_score real, reason text, created_at text)`,
+    `CREATE TABLE IF NOT EXISTS score_history (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      call_id integer NOT NULL, snapshot_at text NOT NULL, rubric_version integer NOT NULL,
+      overall_score real, overall_score_adj real, category_scores text, pass_fail text,
+      score_adjust_notes text, quick_summary text, coaching_notes text,
+      strengths text, improvements text, model_used text,
+      CONSTRAINT fk_score_history_call_id_calls_id_fk
+        FOREIGN KEY (call_id) REFERENCES calls(id) ON DELETE CASCADE)`,
+    `CREATE INDEX IF NOT EXISTS idx_calls_status ON calls(status)`,
+    `CREATE INDEX IF NOT EXISTS idx_calls_rep ON calls(rep_name)`,
+    `CREATE INDEX IF NOT EXISTS idx_calls_received ON calls(received_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_calls_extkey ON calls(external_call_key)`,
+    `CREATE INDEX IF NOT EXISTS idx_score_history_version ON score_history(rubric_version)`,
+    `CREATE INDEX IF NOT EXISTS idx_score_history_call ON score_history(call_id)`,
+  ];
+  for (const sql of stmts) await q(sql);
+
+  const rr = await q('SELECT COUNT(*)::int AS c FROM rep_roster');
+  if (rr.rows[0].c === 0) {
+    const reps = [
+      ['Matt','Closer','Turnkey - Closers','fathom-closers-1',null,'#6366f1'],
+      ['Kevin','Closer','Turnkey - Closers','fathom-closers-2',null,'#8b5cf6'],
+      ['Andrew Cluney','Setter','Turnkey - Setters','aloware-setters','95724','#10b981'],
+      ['Steven Arnita','Setter','Turnkey - Setters','aloware-setters','111657','#f59e0b'],
+      ['Anurag Shriv','Setter','Turnkey - Setters','aloware-setters','112769','#0ea5e9'],
+    ];
+    for (const [n,r,t,s,aid,cl] of reps) {
+      await q('INSERT INTO rep_roster (name,role,team,src_tag,aloware_user_id,color) VALUES (?,?,?,?,?,?)', [n,r,t,s,aid,cl]);
+    }
+  }
+
+  const rc = await q('SELECT COUNT(*)::int AS c FROM rubric_items');
   if (rc.rows[0].c === 0) {
     const items = [
       [1,'Setter','discovery',20,'Client speaks 35%+ and rep asks about investment goals, timeline, markets, STR experience, budget before pitching','Rep talks 70%+, monologues, pitches within first 2 minutes','Rep opens with curiosity about portfolio, STR interest, timeline, cost seg experience, target returns. Client speaks 40%+.','Asks budget/timeline but skips goals or experience. Client 25-35%.','Pitches within 90 seconds. No investor questions. Client barely speaks.'],
@@ -55,10 +158,10 @@ async function migrate() {
       [1,'Closer','close_next_step',20,'Clear commitment with date, assumptive close','No commitment, vague follow-up','Asks for commitment with specific date. Creates urgency.','Suggests steps but no commitment ask.','Let me know what you think. No date. No urgency.'],
     ];
     for (const [v,r,cat,w,g,b,s10,s5,s1] of items) {
-      await c.execute({ sql: 'INSERT INTO rubric_items (version,role,category,weight,good,bad,score_10,score_5,score_1) VALUES (?,?,?,?,?,?,?,?,?)', args: [v,r,cat,w,g,b,s10,s5,s1] });
+      await q('INSERT INTO rubric_items (version,role,category,weight,good,bad,score_10,score_5,score_1) VALUES (?,?,?,?,?,?,?,?,?)', [v,r,cat,w,g,b,s10,s5,s1]);
     }
   }
-  console.log('[DB] Migration complete ✓');
+  console.log('[DB] Migration complete ✓ (Postgres)');
 }
 
 module.exports = { q, migrate, getClient };
