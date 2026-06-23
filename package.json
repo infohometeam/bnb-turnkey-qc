@@ -1,7 +1,7 @@
 {
   "name": "bnb-turnkey-qc",
   "version": "1.1.0",
-  "description": "BNB Turnkey Sales Call QC — The Rise Collective (Turso Persistent DB)",
+  "description": "BNB Turnkey Sales Call QC — The Rise Collective (Supabase Postgres)",
   "main": "src/index.js",
   "engines": { "node": ">=18.0.0" },
   "scripts": {
@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "express": "^4.21.0",
-    "@libsql/client": "^0.14.0",
+    "pg": "^8.13.0",
     "cors": "^2.8.5",
     "helmet": "^8.0.0",
     "morgan": "^1.10.0",
