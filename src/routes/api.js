@@ -41,9 +41,9 @@ router.get('/calls', async (req, res) => {
     if (from) { w += ' AND received_at >= ?'; p.push(from); }
     if (to) { w += ' AND received_at <= ?'; p.push(to + ' 23:59:59'); }
     if (!from && !to) {
-      if (period === 'day') w += " AND received_at >= date('now')";
-      if (period === 'week') w += " AND received_at >= date('now','-7 days')";
-      if (period === 'month') w += " AND received_at >= date('now','-30 days')";
+      if (period === 'day') w += " AND received_at::timestamp >= CURRENT_DATE";
+      if (period === 'week') w += " AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')";
+      if (period === 'month') w += " AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')";
     }
     const r = await q(`SELECT id,received_at,source,rep_name,rep_id,role,team,client_name,call_url,audio_url,call_duration_sec,agent_talk_pct,contact_talk_pct,overall_score,overall_score_adj,score_adjust_notes,category_scores,pass_fail,quick_summary,strengths,improvements,next_step_text,coaching_notes,golden_moments,status,flagged,error,retry_count,weekstart,processed_at FROM calls WHERE ${w} ORDER BY received_at DESC LIMIT ? OFFSET ?`, [...p, Number(limit), Number(offset)]);
     const cnt = await q(`SELECT COUNT(*) as c FROM calls WHERE ${w}`, p);
@@ -101,7 +101,7 @@ router.get('/rescore/preview', async (req, res) => {
     let where = "status='SCORED'";
     let params = [];
     if (scope === 'recent' && days) {
-      where += ` AND received_at >= datetime('now','-${Number(days)} days')`;
+      where += ` AND received_at::timestamp >= (NOW() - INTERVAL '${Number(days)} days')`;
     } else if (scope === 'selected' && ids) {
       const idList = String(ids).split(',').map(Number).filter(Boolean);
       if (!idList.length) return res.status(400).json({ error: 'No valid IDs' });
@@ -126,7 +126,7 @@ router.post('/rescore/execute', async (req, res) => {
     let where = "status='SCORED'";
     let params = [];
     if (scope === 'recent' && days) {
-      where += ` AND received_at >= datetime('now','-${Number(days)} days')`;
+      where += ` AND received_at::timestamp >= (NOW() - INTERVAL '${Number(days)} days')`;
     } else if (scope === 'selected') {
       if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Provide ids array for scope=selected' });
       where += ` AND id IN (${ids.map(()=>'?').join(',')})`;
@@ -267,7 +267,7 @@ router.post('/calls/rescore-recent', async (req, res) => {
   try {
     const days = Number(req.body?.days || 30);
     if (days < 1 || days > 365) return res.status(400).json({ error: 'days must be 1-365' });
-    const r = await q("UPDATE calls SET status='REQC', error='Queued for re-score (recent)', retry_count=0 WHERE status='SCORED' AND received_at >= datetime('now', ?)", [`-${days} days`]);
+    const r = await q("UPDATE calls SET status='REQC', error='Queued for re-score (recent)', retry_count=0 WHERE status='SCORED' AND received_at::timestamp >= (NOW() - (? || ' days')::interval)", [String(days)]);
     const affected = r.rowsAffected || r.changes || 0;
     res.json({ ok: true, queued: affected, days, message: `${affected} calls from last ${days} days queued for re-score` });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -292,7 +292,7 @@ router.get('/rescore-estimate', async (req, res) => {
     const days = Number(req.query.days || 30);
     let sql, params = [];
     if (scope === 'recent') {
-      sql = "SELECT COUNT(*) as count FROM calls WHERE status='SCORED' AND received_at >= datetime('now', ?)";
+      sql = "SELECT COUNT(*) as count FROM calls WHERE status='SCORED' AND received_at::timestamp >= (NOW() - (? || ' days')::interval)";
       params = [`-${days} days`];
     } else {
       sql = "SELECT COUNT(*) as count FROM calls WHERE status='SCORED'";
@@ -323,7 +323,7 @@ router.get('/calls/:id/history', async (req, res) => {
 router.get('/rubric-comparison', async (req, res) => {
   try {
     // Compare average scores between rubric versions
-    const currentAvg = await q("SELECT rubric_version, COUNT(*) as count, AVG(overall_score_adj) as avg_score, AVG(CASE WHEN category_scores IS NOT NULL THEN json_extract(category_scores, '$.discovery') END) as avg_discovery, AVG(CASE WHEN category_scores IS NOT NULL THEN json_extract(category_scores, '$.qualification') END) as avg_qual, AVG(CASE WHEN category_scores IS NOT NULL THEN json_extract(category_scores, '$.pitch') END) as avg_pitch FROM calls WHERE status='SCORED' GROUP BY rubric_version");
+    const currentAvg = await q("SELECT rubric_version, COUNT(*) as count, AVG(overall_score_adj) as avg_score, AVG(CASE WHEN category_scores IS NOT NULL THEN (category_scores::jsonb->>'discovery')::numeric END) as avg_discovery, AVG(CASE WHEN category_scores IS NOT NULL THEN (category_scores::jsonb->>'qualification')::numeric END) as avg_qual, AVG(CASE WHEN category_scores IS NOT NULL THEN (category_scores::jsonb->>'pitch')::numeric END) as avg_pitch FROM calls WHERE status='SCORED' GROUP BY rubric_version");
 
     // Also pull historical snapshots grouped by rubric version
     const histAvg = await q("SELECT rubric_version, COUNT(*) as count, AVG(overall_score_adj) as avg_score FROM score_history GROUP BY rubric_version");
@@ -431,7 +431,7 @@ router.get('/analytics', async (req, res) => {
     let df = '', rf = '', p = [];
     if (from) { df = 'AND received_at >= ?'; p.push(from); if (to) { df += ' AND received_at <= ?'; p.push(to + ' 23:59:59'); } }
     else if (to) { df = 'AND received_at <= ?'; p.push(to + ' 23:59:59'); }
-    else { if (period === 'day') df = "AND received_at >= date('now')"; if (period === 'week') df = "AND received_at >= date('now','-7 days')"; if (period === 'month') df = "AND received_at >= date('now','-30 days')"; }
+    else { if (period === 'day') df = "AND received_at::timestamp >= CURRENT_DATE"; if (period === 'week') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')"; if (period === 'month') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')"; }
     if (role) { rf = 'AND role=?'; p.push(role); }
 
     const stats = await q(`SELECT COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged, SUM(CASE WHEN status IN ('NEW','REQC','WAIT_RETRY_FULL') THEN 1 ELSE 0 END) as queued, SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) as errors, SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing_transcripts, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END),1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END),0) as avg_duration, ROUND(AVG(CASE WHEN status='SCORED' THEN agent_talk_pct END),1) as avg_agent_talk, ROUND(AVG(CASE WHEN status='SCORED' THEN contact_talk_pct END),1) as avg_contact_talk FROM calls WHERE 1=1 ${df} ${rf}`, p);
@@ -459,9 +459,9 @@ router.get('/analytics/trends', async (req, res) => {
   try {
     const { period = 'daily', days = 30, role } = req.query;
     let rf = '', p = []; if (role) { rf = 'AND role=?'; p.push(role); }
-    const groupBy = period === 'weekly' ? 'weekstart' : "date(received_at)";
-    const trends = await q(`SELECT ${groupBy} as period_date, COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END),1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END),0) as avg_duration, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged FROM calls WHERE received_at >= date('now','-${Number(days)} days') ${rf} GROUP BY ${groupBy} ORDER BY period_date ASC`, p);
-    const repTrends = await q(`SELECT ${groupBy} as period_date, rep_name, COUNT(*) as calls, ROUND(AVG(overall_score_adj),1) as avg_score FROM calls WHERE status='SCORED' AND received_at >= date('now','-${Number(days)} days') ${rf} GROUP BY ${groupBy}, rep_name ORDER BY period_date ASC`, p);
+    const groupBy = period === 'weekly' ? 'weekstart' : "received_at::date";
+    const trends = await q(`SELECT ${groupBy} as period_date, COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END),1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END),0) as avg_duration, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged FROM calls WHERE received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy} ORDER BY period_date ASC`, p);
+    const repTrends = await q(`SELECT ${groupBy} as period_date, rep_name, COUNT(*) as calls, ROUND(AVG(overall_score_adj),1) as avg_score FROM calls WHERE status='SCORED' AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy}, rep_name ORDER BY period_date ASC`, p);
     res.json({ trends: trends.rows, repTrends: repTrends.rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -471,7 +471,7 @@ router.get('/analytics/distribution', async (req, res) => {
     const { period, from, to, role } = req.query;
     let df = '', rf = '', p = [];
     if (from) { df = "AND received_at >= ?"; p.push(from); if (to) { df += " AND received_at <= ?"; p.push(to + ' 23:59:59'); } }
-    else { if (period === 'day') df = "AND received_at >= date('now')"; if (period === 'week') df = "AND received_at >= date('now','-7 days')"; if (period === 'month') df = "AND received_at >= date('now','-30 days')"; }
+    else { if (period === 'day') df = "AND received_at::timestamp >= CURRENT_DATE"; if (period === 'week') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')"; if (period === 'month') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')"; }
     if (role) { rf = 'AND role=?'; p.push(role); }
     const dist = await q(`SELECT CAST(overall_score_adj AS INTEGER) as score_bucket, COUNT(*) as count FROM calls WHERE status='SCORED' ${df} ${rf} GROUP BY score_bucket ORDER BY score_bucket`, p);
     res.json({ distribution: dist.rows });
@@ -484,7 +484,7 @@ router.get('/queue/status', async (req, res) => {
     const dk = new Date().toISOString().slice(0, 10);
     const daily = await q('SELECT * FROM daily_counters WHERE date_key=?', [dk]);
     const queue = await q("SELECT status, COUNT(*) as count FROM calls WHERE status NOT IN ('SCORED','SKIP_SHORT','SKIP_VOICEMAIL','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL') GROUP BY status");
-    const scored = await q("SELECT COUNT(*) as c FROM calls WHERE status='SCORED' AND date(processed_at)=date('now')");
+    const scored = await q("SELECT COUNT(*) as c FROM calls WHERE status='SCORED' AND processed_at::date = CURRENT_DATE");
     const d = daily.rows[0] || { full_qc_used: 0, est_cost_usd: 0 };
     d.scored_today = Number(scored.rows[0]?.c || 0);
     res.json({ daily: d, queue: queue.rows, engine: process.env.AI_ENGINE || 'gemini' });
