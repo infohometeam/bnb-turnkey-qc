@@ -55,6 +55,10 @@ function translatePlaceholders(sql) {
 
 function isInsert(sql) { return /^\s*insert\s/i.test(sql); }
 function alreadyReturning(sql) { return /returning\s/i.test(sql); }
+// Upserts (ON CONFLICT) may take the UPDATE path and shouldn't force RETURNING id.
+function hasOnConflict(sql) { return /on\s+conflict/i.test(sql); }
+// Tables without an `id` column (PK is something else). daily_counters PK = date_key.
+function insertsIntoIdlessTable(sql) { return /^\s*insert\s+into\s+daily_counters\b/i.test(sql); }
 
 // ─── The universal query function (unchanged signature) ─────────
 async function q(sql, args = []) {
@@ -62,7 +66,7 @@ async function q(sql, args = []) {
   let text = translatePlaceholders(sql);
 
   let wantsId = false;
-  if (isInsert(text) && !alreadyReturning(text)) {
+  if (isInsert(text) && !alreadyReturning(text) && !hasOnConflict(text) && !insertsIntoIdlessTable(text)) {
     text = text + ' RETURNING id';
     wantsId = true;
   }
