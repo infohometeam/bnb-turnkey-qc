@@ -168,7 +168,7 @@ async function processCall(row) {
       [skipStatus, summary, `Classified: ${classification.callType}`, ts, 'classifier', durSec, row.id]);
     if (classification.cost > 0) {
       const dk = ts.slice(0,10);
-      await q('INSERT INTO daily_counters (date_key,full_qc_used,est_cost_usd,updated_at) VALUES (?,0,?,?) ON CONFLICT(date_key) DO UPDATE SET est_cost_usd=est_cost_usd+?, updated_at=?',
+      await q('INSERT INTO daily_counters (date_key,full_qc_used,est_cost_usd,updated_at) VALUES (?,0,?,?) ON CONFLICT(date_key) DO UPDATE SET est_cost_usd=daily_counters.est_cost_usd+?, updated_at=?',
         [dk, classification.cost, ts, classification.cost, ts]);
     }
     return { callId: row.id, score: null, flagged: false, cost: classification.cost, classified: classification.callType };
@@ -253,7 +253,7 @@ async function processCall(row) {
     [result.overall_score, adj.adjusted, adjustNotes, JSON.stringify(result.category_scores||{}), JSON.stringify(enrichedPassFail), result.coaching_notes||'', result.quick_summary||'', JSON.stringify(result.strengths||[]), JSON.stringify(result.improvements||[]), result.next_step_text||'', JSON.stringify(result.golden_moments||[]), flagged?1:0, 'SCORED', '', ts, usage.model||'unknown', slice, rubricVersion, durSec, row.id]);
 
   const dk = ts.slice(0,10);
-  await q('INSERT INTO daily_counters (date_key,full_qc_used,est_cost_usd,updated_at) VALUES (?,1,?,?) ON CONFLICT(date_key) DO UPDATE SET full_qc_used=full_qc_used+1, est_cost_usd=est_cost_usd+?, updated_at=?', [dk,totalCost,ts,totalCost,ts]);
+  await q('INSERT INTO daily_counters (date_key,full_qc_used,est_cost_usd,updated_at) VALUES (?,1,?,?) ON CONFLICT(date_key) DO UPDATE SET full_qc_used=daily_counters.full_qc_used+1, est_cost_usd=daily_counters.est_cost_usd+?, updated_at=?', [dk,totalCost,ts,totalCost,ts]);
 
   console.log(`[QC] ✓ #${row.id} → ${adj.adjusted}/10 $${totalCost.toFixed(4)}`);
   return { callId: row.id, score: adj.adjusted, flagged, cost: totalCost };
