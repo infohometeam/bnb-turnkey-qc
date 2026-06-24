@@ -19,20 +19,42 @@ function detectSource(data, srcTag) {
   return srcTag?.startsWith('aloware') ? 'Aloware' : srcTag?.startsWith('fathom') ? 'Fathom' : 'Unknown';
 }
 
-function detectAlowareRep(inner, transcript) {
-  const email = (inner?.user_email || '').toLowerCase();
-  if (email.includes('anurag')) return { name: 'Anurag', srcTag: 'aloware-setters-3' };
-  if (email.includes('steven')) return { name: 'Steven', srcTag: 'aloware-setters-2' };
-  if (email.includes('andrew')) return { name: 'Andrew', srcTag: 'aloware-setters' };
-  const eng = (inner?.contact?.last_engagement_text || '').toLowerCase();
-  if (eng.includes('anurag')) return { name: 'Anurag', srcTag: 'aloware-setters-3' };
-  if (eng.includes('steven')) return { name: 'Steven', srcTag: 'aloware-setters-2' };
-  if (eng.includes('andrew')) return { name: 'Andrew', srcTag: 'aloware-setters' };
-  const low = (transcript || '').toLowerCase();
-  for (const [name, tag] of [['anurag','aloware-setters-3'],['steven','aloware-setters-2'],['andrew','aloware-setters']]) {
-    if ((low.match(new RegExp(name, 'g')) || []).length >= 2) return { name: name[0].toUpperCase() + name.slice(1), srcTag: tag };
+async function detectAlowareRep(inner, transcript) {
+  // PRIMARY: match by Aloware user_id (most reliable — present on Recording-Saved events)
+  const userId = inner?.user_id != null ? String(inner.user_id)
+               : inner?.owner_id != null ? String(inner.owner_id) : '';
+  if (userId) {
+    const r = await q('SELECT id,name,role,src_tag FROM rep_roster WHERE aloware_user_id=? AND active=1', [userId]);
+    if (r.rows.length) {
+      const row = r.rows[0];
+      return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role };
+    }
   }
-  return { name: 'Unknown Setter', srcTag: 'aloware-setters' };
+
+  // SECONDARY: match by user_email against the roster name (email format: first@bnb-turnkey.com)
+  const email = (inner?.user_email || '').toLowerCase();
+  if (email) {
+    const r = await q('SELECT id,name,role,src_tag FROM rep_roster WHERE active=1 AND role=?', ['Setter']);
+    for (const row of r.rows) {
+      const first = String(row.name).split(' ')[0].toLowerCase();
+      if (first && email.includes(first)) return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role };
+    }
+  }
+
+  // TERTIARY: engagement text or transcript name mentions (fallback for transcript-only events)
+  const eng = (inner?.contact?.last_engagement_text || '').toLowerCase();
+  const low = (transcript || '').toLowerCase();
+  const setters = await q('SELECT id,name,role,src_tag FROM rep_roster WHERE active=1 AND role=?', ['Setter']);
+  for (const row of setters.rows) {
+    const first = String(row.name).split(' ')[0].toLowerCase();
+    if (first && eng.includes(first)) return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role };
+  }
+  for (const row of setters.rows) {
+    const first = String(row.name).split(' ')[0].toLowerCase();
+    if (first && (low.match(new RegExp(first, 'g')) || []).length >= 2) return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role };
+  }
+
+  return { name: 'Unknown Setter', srcTag: 'aloware-setters', repId: null, role: 'Setter' };
 }
 
 function detectClientName(data, inner) {
@@ -213,10 +235,9 @@ async function ingestCall(rawPayload, srcTag) {
   let transcript = redact(extractTranscript(data, inner));
 
   if (baseSource === 'Aloware') {
-    const det = detectAlowareRep(inner, transcript);
+    const det = await detectAlowareRep(inner, transcript);
     repName = det.name; resolvedSrcTag = det.srcTag;
-    const r = await q('SELECT id,name,role FROM rep_roster WHERE src_tag=? AND active=1', [resolvedSrcTag]);
-    if (r.rows.length) { repId = r.rows[0].id; repName = r.rows[0].name; role = r.rows[0].role; }
+    if (det.repId) { repId = det.repId; role = det.role; }
   } else if (baseSource === 'Fathom') {
     repName = data?.recorded_by?.name || data?.host?.name || '';
     if (srcTag) { const r = await q('SELECT id,name,role FROM rep_roster WHERE src_tag=? AND active=1', [srcTag]); if (r.rows.length) { repId = r.rows[0].id; repName = r.rows[0].name; role = r.rows[0].role; } }
