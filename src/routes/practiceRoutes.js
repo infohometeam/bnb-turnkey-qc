@@ -138,6 +138,20 @@ router.post('/:id/end', express.json(), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── List ElevenLabs voices (so the team can choose one) ──
+// MUST be before GET /:id (else "voices" is treated as a session id).
+router.get('/voices', async (req, res) => {
+  try {
+    const key = req.headers['x-eleven-key'] || process.env.ELEVENLABS_API_KEY;
+    if (!key) return res.json({ voices: [], configured: false });
+    const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
+    if (!r.ok) return res.status(502).json({ error: 'Could not fetch voices (check key)', voices: [] });
+    const data = await r.json();
+    const voices = (data.voices || []).map(v => ({ id: v.voice_id, name: v.name, labels: v.labels || {} }));
+    res.json({ voices, configured: true });
+  } catch (e) { res.status(500).json({ error: e.message, voices: [] }); }
+});
+
 // Get a session (with parsed scoring)
 router.get('/:id', async (req, res) => {
   try {
@@ -176,20 +190,6 @@ function parseSession(s) {
   }
   return s;
 }
-
-// ─── List ElevenLabs voices (so the team can choose one) ──
-// Accepts a key via header (client-pasted) or falls back to server env key.
-router.get('/voices', async (req, res) => {
-  try {
-    const key = req.headers['x-eleven-key'] || process.env.ELEVENLABS_API_KEY;
-    if (!key) return res.json({ voices: [], configured: false });
-    const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
-    if (!r.ok) return res.status(502).json({ error: 'Could not fetch voices (check key)', voices: [] });
-    const data = await r.json();
-    const voices = (data.voices || []).map(v => ({ id: v.voice_id, name: v.name, labels: v.labels || {} }));
-    res.json({ voices, configured: true });
-  } catch (e) { res.status(500).json({ error: e.message, voices: [] }); }
-});
 
 // ─── Text-to-speech proxy (ElevenLabs) — gives the prospect a voice ──
 // Keeps the API key server-side. Returns audio/mpeg the browser can play.
