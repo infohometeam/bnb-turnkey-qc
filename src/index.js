@@ -7,7 +7,7 @@ const cron = require('node-cron');
 const path = require('path');
 
 const apiRoutes = require('./routes/api');
-const { processQueue, unpauseDailyRows } = require('./workers/qcWorker');
+const { processQueue, unpauseDailyRows, sweepStuckTranscripts } = require('./workers/qcWorker');
 const { migrate } = require('../migrations/run');
 
 const app = express();
@@ -44,6 +44,12 @@ cron.schedule('*/2 * * * *', async () => {
 
 // Daily reset at midnight
 cron.schedule('0 0 * * *', async () => { try { await unpauseDailyRows(); } catch(e) {} });
+
+// Hourly: flag transcripts that never arrived (prevents silent WAIT_TRANSCRIPT pile-up)
+cron.schedule('15 * * * *', async () => {
+  try { const r = await sweepStuckTranscripts(4); if (r.swept > 0) console.log(`[Cron] Flagged ${r.swept} stuck transcript(s)`); }
+  catch (e) { console.error('[Cron sweep]', e.message); }
+});
 
 // Start: migrate then listen
 async function start() {
