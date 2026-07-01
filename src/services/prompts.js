@@ -56,7 +56,7 @@ ${mid}`;
 }
 
 // ─── QC Prompt ───────────────────────────────────────────────
-function buildQCPrompt({ role, repName, source, transcript, rubricItems, goldExamples, metrics, middleSummary }) {
+function buildQCPrompt({ role, repName, source, transcript, rubricItems, goldExamples, metrics, middleSummary, scenarioContext }) {
   const dur = isN(metrics.durationSec) ? `${metrics.durationSec}s (${Math.floor(metrics.durationSec/60)}m${metrics.durationSec%60}s)` : 'unknown';
   const parts = [
     `You are a strict sales-call QA evaluator for BNB Turnkey, a turnkey short-term rental investment service under The Rise Collective. You evaluate calls according to Sam Arnita's (CRO) sales philosophy.
@@ -129,6 +129,7 @@ RULES: Score 0-10 strictly. Do not inflate. Missing evidence = score conservativ
   });
 
   if (middleSummary) parts.push(`\nMIDDLE SECTION SUMMARY (long call — AI summary of middle portion):\n${middleSummary}`);
+  if (scenarioContext) parts.push(scenarioContext);
 
   parts.push(`
 Return ONLY valid JSON (no markdown). Schema:
