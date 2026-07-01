@@ -427,6 +427,10 @@ function TrainPage() {
     function loadVoices(){ const v = window.speechSynthesis ? window.speechSynthesis.getVoices() : []; if(v.length){ setBrowserVoices(v); if(!voiceUri) setVoiceUri(v[0].voiceURI); } }
     loadVoices();
     if(window.speechSynthesis) window.speechSynthesis.onvoiceschanged = loadVoices;
+    // Also try loading ElevenLabs voices from the SERVER key (so the team gets them without pasting)
+    fetch(`${API}/practice/voices`).then(r=>r.json()).then(d=>{
+      if(d.configured && d.voices && d.voices.length){ setElevenVoices(d.voices); setElevenVoiceId(d.voices[0].id); }
+    }).catch(()=>{});
   }, []);
 
   // Speak text — ElevenLabs (chosen voice) if key present, else browser voice (free)
@@ -538,7 +542,7 @@ function TrainPage() {
     const PERSONAS = [["male","Male prospect","Single decision maker"],["female","Female prospect","Single decision maker"],["couple_husband","Couple — husband leads","Wife raises doubts"],["couple_wife","Couple — wife leads","Husband raises price objections"]];
     const scenariosForRole = (scenarios?.scenarios || []).filter(s => !repRole || s.target_role === repRole || s.target_role === "Both");
     return (
-      <div className="flex-col gap-16" style={{ maxWidth: 760 }}>
+      <div className="flex-col gap-20" style={{ maxWidth: 760 }}>
         <div>
           <h2 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>Train</h2>
           <p style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>Practice against an AI prospect — scored on the same rubric as your real calls.</p>
