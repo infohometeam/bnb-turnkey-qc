@@ -498,7 +498,11 @@ router.post('/queue/process', async (req, res) => {
 
 router.post('/queue/retry-all', async (req, res) => {
   try {
-    const r = await q("UPDATE calls SET status='NEW', error='', retry_count=0 WHERE status IN ('ERROR','WAIT_RETRY_FULL','WAIT_TRANSCRIPT')");
+    // Only retry genuinely-failed calls. WAIT_TRANSCRIPT is a legitimate waiting
+    // state (transcript hasn't arrived yet) — retrying it forces a NO_TRANSCRIPT error.
+    // NO_TRANSCRIPT (transcript never came after the sweep) is included so a manual
+    // retry can re-attempt once a transcript may finally be available.
+    const r = await q("UPDATE calls SET status='NEW', error='', retry_count=0 WHERE status IN ('ERROR','WAIT_RETRY_FULL','NO_TRANSCRIPT')");
     res.json({ retriedCount: r.rowsAffected });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -521,6 +525,7 @@ router.get('/health', async (req, res) => {
       SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored,
       SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) as errors,
       SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing,
+      SUM(CASE WHEN status='NO_TRANSCRIPT' THEN 1 ELSE 0 END) as stuck_no_transcript,
       SUM(CASE WHEN status='SKIP_VOICEMAIL' THEN 1 ELSE 0 END) as voicemails,
       SUM(CASE WHEN status IN ('SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL') THEN 1 ELSE 0 END) as classified_skipped,
       SUM(CASE WHEN status='SKIP_SHORT' THEN 1 ELSE 0 END) as too_short,
@@ -602,6 +607,7 @@ router.get('/health', async (req, res) => {
       scored: Number(r.scored),
       errors: Number(r.errors),
       missing: Number(r.missing),
+      stuckNoTranscript: Number(r.stuck_no_transcript),
       voicemails: Number(r.voicemails),
       classified_skipped: Number(r.classified_skipped),
       too_short: Number(r.too_short),
