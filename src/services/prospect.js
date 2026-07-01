@@ -11,12 +11,35 @@ function buildProspectPrompt(scenario, difficultyOverrides = {}) {
   const hidden = safeObj(scenario.hidden_truth_json);
   const objections = safeArr(scenario.layered_objections_json);
 
+  // Translate difficulty preset (standard/hard/extreme) into the dials
+  const preset = difficultyOverrides.difficulty;
+  const presetDials = preset === 'extreme'
+    ? { skepticism: 5, talkativeness: 2, objection_intensity: 5, warmth: 1 }
+    : preset === 'hard'
+    ? { skepticism: 4, talkativeness: 3, objection_intensity: 4, warmth: 2 }
+    : preset === 'standard'
+    ? { skepticism: 3, talkativeness: 3, objection_intensity: 3, warmth: 3 }
+    : {};
+
   const d = {
-    skepticism: difficultyOverrides.skepticism ?? scenario.difficulty_tier ?? 3,
-    talkativeness: difficultyOverrides.talkativeness ?? 3,
-    objection_intensity: difficultyOverrides.objection_intensity ?? scenario.difficulty_tier ?? 3,
-    warmth: difficultyOverrides.warmth ?? 3,
+    skepticism: difficultyOverrides.skepticism ?? presetDials.skepticism ?? scenario.difficulty_tier ?? 3,
+    talkativeness: difficultyOverrides.talkativeness ?? presetDials.talkativeness ?? 3,
+    objection_intensity: difficultyOverrides.objection_intensity ?? presetDials.objection_intensity ?? scenario.difficulty_tier ?? 3,
+    warmth: difficultyOverrides.warmth ?? presetDials.warmth ?? 3,
   };
+
+  // Persona: single vs couple mode
+  const personaMode = difficultyOverrides.persona || 'male';
+  let personaBlock = '';
+  if (personaMode === 'couple_husband') {
+    personaBlock = 'You are a COUPLE on the call — a husband (who leads the conversation) and his wife (who chimes in with doubts and concerns). Voice both, labeling who speaks (e.g. "[Husband]:" / "[Wife]:"). The wife is more skeptical and raises objections the husband glosses over. The rep must win over BOTH.';
+  } else if (personaMode === 'couple_wife') {
+    personaBlock = 'You are a COUPLE on the call — a wife (who leads the conversation) and her husband (who chimes in, mainly with price/cost objections). Voice both, labeling who speaks (e.g. "[Wife]:" / "[Husband]:"). The husband is the money skeptic. The rep must win over BOTH.';
+  } else if (personaMode === 'female') {
+    personaBlock = 'You are a female prospect and the sole decision maker.';
+  } else {
+    personaBlock = 'You are a male prospect and the sole decision maker.';
+  }
 
   const lines = [
     `You are roleplaying as a PROSPECT on a sales call with a rep from BNB Turnkey, a turnkey short-term-rental investment company under The Rise Collective. You are NOT an AI assistant — you are this specific person, and you stay in character no matter what.`,
@@ -30,6 +53,7 @@ function buildProspectPrompt(scenario, difficultyOverrides = {}) {
     `╚════════════════════════════════════════════╝`,
     ``,
     `── WHO YOU ARE ──`,
+    personaBlock,
     `Name: ${persona.name || 'the prospect'}`,
     persona.background ? `Background: ${persona.background}` : '',
     persona.personality ? `Personality: ${persona.personality}` : '',
