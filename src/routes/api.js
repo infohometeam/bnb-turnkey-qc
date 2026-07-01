@@ -434,9 +434,9 @@ router.get('/analytics', async (req, res) => {
     else { if (period === 'day') df = "AND received_at::timestamp >= CURRENT_DATE"; if (period === 'week') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')"; if (period === 'month') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')"; }
     if (role) { rf = 'AND role=?'; p.push(role); }
 
-    const stats = await q(`SELECT COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged, SUM(CASE WHEN status IN ('NEW','REQC','WAIT_RETRY_FULL') THEN 1 ELSE 0 END) as queued, SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) as errors, SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing_transcripts, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END),1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END),0) as avg_duration, ROUND(AVG(CASE WHEN status='SCORED' THEN agent_talk_pct END),1) as avg_agent_talk, ROUND(AVG(CASE WHEN status='SCORED' THEN contact_talk_pct END),1) as avg_contact_talk FROM calls WHERE 1=1 ${df} ${rf}`, p);
+    const stats = await q(`SELECT COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged, SUM(CASE WHEN status IN ('NEW','REQC','WAIT_RETRY_FULL') THEN 1 ELSE 0 END) as queued, SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) as errors, SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing_transcripts, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END)::numeric,1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END)::numeric,0) as avg_duration, ROUND(AVG(CASE WHEN status='SCORED' THEN agent_talk_pct END)::numeric,1) as avg_agent_talk, ROUND(AVG(CASE WHEN status='SCORED' THEN contact_talk_pct END)::numeric,1) as avg_contact_talk FROM calls WHERE 1=1 ${df} ${rf}`, p);
 
-    const repStats = await q(`SELECT rep_name, role, COUNT(*) as call_count, ROUND(AVG(overall_score_adj),1) as avg_score, ROUND(AVG(call_duration_sec),0) as avg_duration, ROUND(AVG(agent_talk_pct),1) as avg_agent_talk, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged_count FROM calls WHERE status='SCORED' ${df} ${rf} GROUP BY rep_name, role ORDER BY avg_score DESC`, p);
+    const repStats = await q(`SELECT rep_name, role, COUNT(*) as call_count, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score, ROUND(AVG(call_duration_sec)::numeric,0) as avg_duration, ROUND(AVG(agent_talk_pct)::numeric,1) as avg_agent_talk, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged_count FROM calls WHERE status='SCORED' ${df} ${rf} GROUP BY rep_name, role ORDER BY avg_score DESC`, p);
 
     const catAvgs = await q(`SELECT rep_name, category_scores FROM calls WHERE status='SCORED' AND category_scores IS NOT NULL ${df} ${rf}`, p);
     const repCats = {};
@@ -460,8 +460,8 @@ router.get('/analytics/trends', async (req, res) => {
     const { period = 'daily', days = 30, role } = req.query;
     let rf = '', p = []; if (role) { rf = 'AND role=?'; p.push(role); }
     const groupBy = period === 'weekly' ? 'weekstart' : "received_at::date";
-    const trends = await q(`SELECT ${groupBy} as period_date, COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END),1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END),0) as avg_duration, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged FROM calls WHERE received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy} ORDER BY period_date ASC`, p);
-    const repTrends = await q(`SELECT ${groupBy} as period_date, rep_name, COUNT(*) as calls, ROUND(AVG(overall_score_adj),1) as avg_score FROM calls WHERE status='SCORED' AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy}, rep_name ORDER BY period_date ASC`, p);
+    const trends = await q(`SELECT ${groupBy} as period_date, COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END)::numeric,1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END)::numeric,0) as avg_duration, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged FROM calls WHERE received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy} ORDER BY period_date ASC`, p);
+    const repTrends = await q(`SELECT ${groupBy} as period_date, rep_name, COUNT(*) as calls, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score FROM calls WHERE status='SCORED' AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy}, rep_name ORDER BY period_date ASC`, p);
     res.json({ trends: trends.rows, repTrends: repTrends.rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -538,6 +538,49 @@ router.get('/health', async (req, res) => {
 
     // Webhook health monitor — last webhook per source
     const webhookHealth = await q("SELECT base_source, MAX(received_at) as last_received, COUNT(*) as total_received FROM webhook_debug GROUP BY base_source");
+
+    // PER-REP webhook health — when was each rep's last call pulled + 24h volume
+    const repHealthStart = Date.now();
+    const repHealth = await q(`SELECT r.name AS rep_name, r.role, r.team,
+        MAX(c.received_at) AS last_call,
+        SUM(CASE WHEN c.received_at::timestamp >= (NOW() - INTERVAL '24 hours') THEN 1 ELSE 0 END) AS calls_24h,
+        SUM(CASE WHEN c.received_at::timestamp >= (NOW() - INTERVAL '7 days') THEN 1 ELSE 0 END) AS calls_7d,
+        COUNT(c.id) AS calls_total
+      FROM rep_roster r
+      LEFT JOIN calls c ON c.rep_name = r.name
+      WHERE r.active = 1
+      GROUP BY r.name, r.role, r.team
+      ORDER BY r.role, r.name`);
+    // dbLatencyMs: how long that real query took = a live DB-reachability signal
+    const dbLatencyMs = Date.now() - repHealthStart;
+
+    // Flag reps who've gone quiet (no call in 24h) — the "did their webhook stop?" signal
+    const repAlerts = [];
+    const nowMs = Date.now();
+    for (const rh of repHealth.rows) {
+      const hrs = rh.last_call ? (nowMs - new Date(rh.last_call + 'Z').getTime()) / 3.6e6 : null;
+      rh.hours_since = hrs == null ? null : Math.round(hrs * 10) / 10;
+      rh.calls_24h = Number(rh.calls_24h) || 0;
+      rh.calls_7d = Number(rh.calls_7d) || 0;
+      rh.calls_total = Number(rh.calls_total) || 0;
+      // status: green (call in 24h) / amber (1-3 days) / red (>3 days or never)
+      if (rh.calls_total === 0) rh.status = 'none';
+      else if (hrs == null || hrs > 72) rh.status = 'stale';
+      else if (hrs > 24) rh.status = 'quiet';
+      else rh.status = 'active';
+      if (rh.status === 'stale' || rh.status === 'quiet') {
+        repAlerts.push({ rep: rh.rep_name, role: rh.role, lastCall: rh.last_call, hoursSince: rh.hours_since, status: rh.status });
+      }
+    }
+
+    // Today's cost vs budget (budget from env, 0 = unlimited)
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayRow = await q("SELECT full_qc_used, est_cost_usd FROM daily_counters WHERE date_key=?", [todayKey]);
+    const dailyBudget = Number(process.env.DAILY_BUDGET_USD || 0);
+
+    // Last successful score (freshness signal — is scoring actually happening?)
+    const lastScored = await q("SELECT MAX(processed_at) AS last FROM calls WHERE status='SCORED'");
+
     // Check for stale sources (no webhook in 24h during business hours)
     const webhookAlerts = [];
     for (const wh of webhookHealth.rows) {
@@ -570,8 +613,167 @@ router.get('/health', async (req, res) => {
       engine: process.env.AI_ENGINE || 'gemini',
       webhookHealth: webhookHealth.rows,
       webhookAlerts,
+      repHealth: repHealth.rows,
+      repAlerts,
+      dbLatencyMs,
+      lastScoredAt: lastScored.rows[0]?.last || null,
+      today: {
+        date: todayKey,
+        scored: Number(todayRow.rows[0]?.full_qc_used || 0),
+        cost: Number(todayRow.rows[0]?.est_cost_usd || 0),
+        budget: dailyBudget,
+      },
+      serverTime: new Date().toISOString(),
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Resources: training manuals (served as structured HTML) ──
+const TRAINING_MANUALS = require('../services/resources');
+router.get('/resources', (req, res) => {
+  // list = lightweight (no html bodies); full = with content
+  if (req.query.full === '1') return res.json({ manuals: TRAINING_MANUALS });
+  res.json({ manuals: TRAINING_MANUALS.map(({ html, ...meta }) => meta) });
+});
+router.get('/resources/:id', (req, res) => {
+  const m = TRAINING_MANUALS.find(x => x.id === req.params.id);
+  if (!m) return res.status(404).json({ error: 'Manual not found' });
+  res.json(m);
+});
+
+// ─── Rubric: the live scoring rubric (for the Rubric tab) ──
+router.get('/rubric', async (req, res) => {
+  try {
+    const version = req.query.version
+      ? Number(req.query.version)
+      : (await q('SELECT MAX(version) AS v FROM rubric_items')).rows[0]?.v || 1;
+    const items = await q('SELECT * FROM rubric_items WHERE version=? ORDER BY role, weight DESC', [version]);
+    const versions = await q('SELECT DISTINCT version FROM rubric_items ORDER BY version');
+    res.json({ version, versions: versions.rows.map(r => r.version), items: items.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Report: structured data for per-rep cards, weekly digest, trends ──
+router.get('/report', async (req, res) => {
+  try {
+    const days = Number(req.query.days || 7);
+    const role = req.query.role; // optional Closer|Setter
+    const rep = req.query.rep;    // optional single rep
+
+    const roleFilter = role ? ' AND role=?' : '';
+    const repFilter = rep ? ' AND rep_name=?' : '';
+    const baseArgs = [];
+    if (role) baseArgs.push(role);
+    if (rep) baseArgs.push(rep);
+
+    // Window helpers (this period vs the previous equal-length period, for trend)
+    const periodClause = `received_at::timestamp >= (NOW() - (? || ' days')::interval)`;
+    const prevClause = `received_at::timestamp >= (NOW() - (? || ' days')::interval) AND received_at::timestamp < (NOW() - (? || ' days')::interval)`;
+
+    // Per-rep summary for THIS period
+    const perRep = await q(
+      `SELECT rep_name, role,
+         COUNT(*) FILTER (WHERE status='SCORED') AS scored,
+         ROUND(AVG(overall_score_adj) FILTER (WHERE status='SCORED')::numeric,1) AS avg_adj,
+         ROUND(AVG(overall_score) FILTER (WHERE status='SCORED')::numeric,1) AS avg_raw,
+         COUNT(*) FILTER (WHERE status='SKIP_VOICEMAIL') AS voicemails,
+         COUNT(*) AS total_calls,
+         ROUND(AVG(agent_talk_pct) FILTER (WHERE status='SCORED')::numeric,0) AS avg_talk
+       FROM calls WHERE ${periodClause}${roleFilter}${repFilter}
+       GROUP BY rep_name, role ORDER BY avg_adj DESC NULLS LAST`,
+      [String(days), ...baseArgs]);
+
+    // Previous period avg per rep (for trend arrows)
+    const prevRep = await q(
+      `SELECT rep_name, ROUND(AVG(overall_score_adj) FILTER (WHERE status='SCORED')::numeric,1) AS prev_avg
+       FROM calls WHERE ${prevClause}${roleFilter}${repFilter}
+       GROUP BY rep_name`,
+      [String(days * 2), String(days), ...baseArgs]);
+    const prevMap = Object.fromEntries(prevRep.rows.map(r => [r.rep_name, r.prev_avg]));
+
+    // Per-rep category averages (parse JSON in JS)
+    const scoredCalls = await q(
+      `SELECT rep_name, category_scores, pass_fail, improvements
+       FROM calls WHERE status='SCORED' AND ${periodClause}${roleFilter}${repFilter}`,
+      [String(days), ...baseArgs]);
+
+    const catByRep = {}, dedByRep = {}, impByRep = {};
+    for (const c of scoredCalls.rows) {
+      const r = c.rep_name;
+      try {
+        const cs = JSON.parse(c.category_scores || '{}');
+        catByRep[r] = catByRep[r] || {};
+        for (const k of Object.keys(cs)) {
+          catByRep[r][k] = catByRep[r][k] || [];
+          if (cs[k] != null) catByRep[r][k].push(Number(cs[k]));
+        }
+      } catch {}
+      try {
+        const pf = JSON.parse(c.pass_fail || '{}');
+        (pf.deductions || []).forEach(d => {
+          dedByRep[r] = dedByRep[r] || {};
+          dedByRep[r][d.label] = (dedByRep[r][d.label] || 0) + 1;
+        });
+      } catch {}
+      try {
+        const imps = JSON.parse(c.improvements || '[]');
+        (imps || []).forEach(i => { impByRep[r] = impByRep[r] || {}; impByRep[r][i] = (impByRep[r][i] || 0) + 1; });
+      } catch {}
+    }
+    const avgCat = {};
+    for (const r of Object.keys(catByRep)) {
+      avgCat[r] = {};
+      for (const k of Object.keys(catByRep[r])) {
+        const a = catByRep[r][k];
+        avgCat[r][k] = a.length ? Math.round((a.reduce((x, y) => x + y, 0) / a.length) * 10) / 10 : null;
+      }
+    }
+
+    // Daily trend (team-wide, for the trend chart)
+    const trend = await q(
+      `SELECT received_at::date AS day,
+         COUNT(*) FILTER (WHERE status='SCORED') AS scored,
+         ROUND(AVG(overall_score_adj) FILTER (WHERE status='SCORED')::numeric,1) AS avg_adj
+       FROM calls WHERE ${periodClause}${roleFilter}${repFilter}
+       GROUP BY received_at::date ORDER BY day`,
+      [String(days), ...baseArgs]);
+
+    // Team totals
+    const team = await q(
+      `SELECT COUNT(*) FILTER (WHERE status='SCORED') AS scored,
+         ROUND(AVG(overall_score_adj) FILTER (WHERE status='SCORED')::numeric,1) AS avg_adj,
+         COUNT(*) FILTER (WHERE status='SKIP_VOICEMAIL') AS voicemails,
+         COUNT(*) AS total
+       FROM calls WHERE ${periodClause}${roleFilter}${repFilter}`,
+      [String(days), ...baseArgs]);
+
+    // Assemble per-rep cards with trend + top deduction + top improvement
+    const repCards = perRep.rows.map(r => {
+      const prev = prevMap[r.rep_name];
+      const delta = (r.avg_adj != null && prev != null) ? Math.round((r.avg_adj - prev) * 10) / 10 : null;
+      const topDed = dedByRep[r.rep_name] ? Object.entries(dedByRep[r.rep_name]).sort((a, b) => b[1] - a[1]).slice(0, 3) : [];
+      const topImp = impByRep[r.rep_name] ? Object.entries(impByRep[r.rep_name]).sort((a, b) => b[1] - a[1]).slice(0, 3) : [];
+      return {
+        rep_name: r.rep_name, role: r.role,
+        scored: Number(r.scored) || 0, avg_adj: r.avg_adj, avg_raw: r.avg_raw,
+        avg_talk: r.avg_talk, voicemails: Number(r.voicemails) || 0, total_calls: Number(r.total_calls) || 0,
+        prev_avg: prev ?? null, delta,
+        categories: avgCat[r.rep_name] || {},
+        top_deductions: topDed.map(([label, count]) => ({ label, count })),
+        top_improvements: topImp.map(([text, count]) => ({ text, count })),
+      };
+    });
+
+    res.json({
+      generated: new Date().toISOString(),
+      period_days: days,
+      role: role || 'all',
+      rep: rep || null,
+      team: team.rows[0],
+      reps: repCards,
+      trend: trend.rows,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;
