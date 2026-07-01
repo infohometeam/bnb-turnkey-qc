@@ -19,6 +19,7 @@ app.use(morgan('short'));
 app.use(express.json({ limit: '5mb' }));
 
 app.use('/api', apiRoutes);
+app.use('/api/practice', require('./routes/practiceRoutes'));
 
 app.get('/health', (req, res) => {
   res.json({
