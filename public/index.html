@@ -107,6 +107,49 @@ function CallsList({onSelect}){const[sf,sSf]=useState("ALL");const[rf,sRf]=useSt
 // ── Call Detail ──────────────────────────────────────────────
 function CallScoreHistory({callId}){const{data}=useApi(`/calls/${callId}/history`,[callId]);if(!data||!data.history?.length)return null;return<div className="card" style={{padding:18}}><div className="section-head" style={{marginBottom:10}}>📜 Score History</div><div style={{display:"flex",flexDirection:"column",gap:8}}>{data.history.map((h,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#141925",borderRadius:8,border:"1px solid #2a3140"}}><div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:50}}><div style={{fontSize:18,fontWeight:900,color:sClr(h.overall_score_adj),fontFamily:"var(--m)"}}>{h.overall_score_adj??"—"}</div><div style={{fontSize:9,color:"#4b5563"}}>/10</div></div><div style={{flex:1,minWidth:0}}><div style={{fontSize:11,fontWeight:700,color:"#c9d1d9"}}>Rubric v{h.rubric_version} · {fmtF(h.snapshot_at)}</div><div style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.quick_summary||'(no summary)'}</div></div></div>)}</div></div>}
 
+function CallComments({callId}){
+  const[comments,setComments]=useState([]);
+  const[author,setAuthor]=useState("");
+  const[body,setBody]=useState("");
+  const[type,setType]=useState("note");
+  const[busy,setBusy]=useState(false);
+  const{data:reps}=useApi("/reps");
+  function load(){fetch(`${API}/calls/${callId}/comments`).then(r=>r.json()).then(d=>setComments(d.comments||[])).catch(()=>setComments([]))}
+  React.useEffect(()=>{load()},[callId]);
+  async function submit(){
+    if(!author||!body.trim())return;setBusy(true);
+    const rep=(reps||[]).find(r=>r.name===author);
+    await fetch(`${API}/calls/${callId}/comments`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({author,author_role:rep?.role||"",body:body.trim(),comment_type:type})});
+    setBody("");setBusy(false);load();
+  }
+  async function del(id){if(!confirm("Delete this comment?"))return;await fetch(`${API}/comments/${id}`,{method:"DELETE"});load();}
+  const typeColors={note:"#64748b",praise:"#22c55e",coaching:"#f59e0b",question:"#60a5fa"};
+  return<div className="card" style={{padding:24}}>
+    <div className="section-head">Team Notes {comments.length>0&&<span style={{color:"#4338ca"}}>· {comments.length}</span>}</div>
+    <p style={{fontSize:11,color:"#64748b",marginTop:-10,marginBottom:16}}>Share feedback on this call — your own or a teammate's. Everyone on the team can see and add notes.</p>
+    <div className="flex-col gap-10" style={{marginBottom:18}}>
+      {comments.length===0&&<div style={{fontSize:12,color:"#374151",fontStyle:"italic"}}>No notes yet. Be the first to weigh in.</div>}
+      {comments.map(cm=><div key={cm.id} style={{padding:"12px 14px",background:"#141925",borderRadius:10,border:"1px solid #2a3140"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>{cm.author}</span>
+            {cm.author_role&&<span style={{fontSize:10,color:"#374151"}}>{cm.author_role}</span>}
+            <span className="badge" style={{background:(typeColors[cm.comment_type]||"#64748b")+"22",color:typeColors[cm.comment_type]||"#64748b",border:`1px solid ${typeColors[cm.comment_type]||"#64748b"}44`,fontSize:8}}>{cm.comment_type}</span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:"#374151"}}>{cm.created_at}</span><span onClick={()=>del(cm.id)} style={{fontSize:11,color:"#374151",cursor:"pointer"}}>✕</span></div>
+        </div>
+        <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{cm.body}</div>
+      </div>)}
+    </div>
+    <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+      <select value={author} onChange={e=>setAuthor(e.target.value)} style={{padding:"7px 10px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="">You are…</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
+      <select value={type} onChange={e=>setType(e.target.value)} style={{padding:"7px 10px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="note">Note</option><option value="praise">Praise</option><option value="coaching">Coaching</option><option value="question">Question</option></select>
+    </div>
+    <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="Add a note about this call…" rows={2} style={{width:"100%",padding:"10px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,color:"var(--t1)",fontSize:13,resize:"vertical",fontFamily:"inherit"}}/>
+    <button className="btn btn-primary" onClick={submit} disabled={busy||!author||!body.trim()} style={{marginTop:8}}>{busy?"Posting…":"Post Note"}</button>
+  </div>
+}
+
 function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const[stx,setStx]=useState(false);const[ed,setEd]=useState(false);const{data:fc,reload}=useApi(`/calls/${initial.id}`,[initial.id]);const c=fc||initial;
   async function reqc(){setRs(true);await postApi(`/calls/${c.id}/reqc`);alert("Queued for re-score.");reload();setRs(false)}
   async function del(){if(!confirm("Delete permanently?"))return;await deleteApi(`/calls/${c.id}`);onBack()}
@@ -137,6 +180,7 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
     {c.next_step_text&&<div className="card" style={{padding:16,background:"#14224a",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
     {c.score_adjust_notes&&(()=>{const parts=c.score_adjust_notes.split('Confidence:');const adj=parts[0]?.replace(/\|\s*$/,'').trim();const conf=parts[1]?.trim();const confLevel=conf?.split(/[\s—-]/)[0]?.toLowerCase();const confColor=confLevel==='high'?'#22c55e':confLevel==='medium'?'#f59e0b':'#ef4444';const confBg=confLevel==='high'?'#052e16':confLevel==='medium'?'#2a1a00':'#2a0a0a';const confBd=confLevel==='high'?'#166534':confLevel==='medium'?'#92400e':'#991b1b';return<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>{conf&&<div style={{display:"flex",alignItems:"center",gap:8}}><span className="badge" style={{background:confBg,color:confColor,border:`1px solid ${confBd}`,fontSize:10}}>Confidence: {confLevel?.toUpperCase()}</span><span style={{fontSize:10,color:"#4b5563"}}>{conf.replace(/^(high|medium|low)[\s—-]*/i,'')}</span></div>}{adj&&adj!=='No adjustments'&&<div style={{fontSize:11,color:"#374151"}}>Adjustments: {adj}</div>}</div>})()}
     <div className="card" style={{overflow:"hidden"}}><button onClick={()=>setStx(!stx)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",background:"transparent",border:"none",cursor:"pointer",color:"var(--t1)"}}><span className="section-head" style={{marginBottom:0}}>📝 Transcript</span><span style={{fontSize:12,color:"#4b5563",fontFamily:"var(--m)"}}>{stx?"▼":"▶"}</span></button>{stx&&<div style={{maxHeight:500,overflowY:"auto",padding:"16px 20px",borderTop:"1px solid #2a3140"}}>{!lines.length&&<div style={{color:"#374151",textAlign:"center",padding:20}}>No transcript</div>}{lines.map((line,i)=>{const m=line.match(/^\[([^\]]*)\]\s*([^:]+):\s*(.*)/);if(!m)return<div key={i} style={{fontSize:12,color:"#64748b",lineHeight:1.8}}>{line}</div>;const[,ts,sp,tx]=m;const isAg=TEAM_NAMES.has(sp.toLowerCase().trim());return<div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:"1px solid #1a1f2b"}}><span style={{fontSize:10,color:"#2a3040",fontFamily:"var(--m)",minWidth:42}}>{ts}</span><div><span style={{fontSize:11,fontWeight:700,color:isAg?"#60a5fa":"#34d399",marginRight:6}}>{sp.trim()}</span><span style={{fontSize:12,color:"#94a3b8"}}>{tx}</span></div></div>})}</div>}</div>
+    <CallComments callId={c.id}/>
     {ed&&<EditModal call={c} onClose={()=>setEd(false)} onSave={()=>{setEd(false);reload()}}/>}
   </div>}
 
@@ -349,7 +393,16 @@ function AboutPage(){return<div className="flex-col gap-24" style={{maxWidth:800
 
 function TrainPage() {
   const [phase, setPhase] = React.useState("setup");        // setup | live | scored
+  const [voiceOn, setVoiceOn] = React.useState(false);
   const [repName, setRepName] = React.useState("");
+  const [repRole, setRepRole] = React.useState("Setter");
+  const [businessUnit, setBusinessUnit] = React.useState("BNB Turnkey");
+  const [difficulty, setDifficulty] = React.useState("standard");
+  const [sessionMode, setSessionMode] = React.useState("text");
+  const [persona, setPersona] = React.useState("male");
+  const [elevenKey, setElevenKey] = React.useState("");
+  const [voiceUri, setVoiceUri] = React.useState("");
+  const [browserVoices, setBrowserVoices] = React.useState([]);
   const [scenarioId, setScenarioId] = React.useState("");
   const [session, setSession] = React.useState(null);
   const [scenario, setScenario] = React.useState(null);
@@ -365,13 +418,38 @@ function TrainPage() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, busy]);
 
+  // Load browser TTS voices (free, no key needed)
+  React.useEffect(() => {
+    function loadVoices(){ const v = window.speechSynthesis ? window.speechSynthesis.getVoices() : []; if(v.length){ setBrowserVoices(v); if(!voiceUri) setVoiceUri(v[0].voiceURI); } }
+    loadVoices();
+    if(window.speechSynthesis) window.speechSynthesis.onvoiceschanged = loadVoices;
+  }, []);
+
+  // Speak text — ElevenLabs if key present, else browser voice (free)
+  function speakText(text){
+    if(elevenKey){
+      // client-side ElevenLabs (uses the pasted key)
+      fetch(`https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM`,{method:"POST",headers:{"xi-api-key":elevenKey,"Content-Type":"application/json","Accept":"audio/mpeg"},body:JSON.stringify({text,model_id:"eleven_turbo_v2"})})
+        .then(r=>r.ok?r.arrayBuffer():Promise.reject())
+        .then(buf=>{const ctx=new (window.AudioContext||window.webkitAudioContext)();return ctx.decodeAudioData(buf).then(d=>{const s=ctx.createBufferSource();s.buffer=d;s.connect(ctx.destination);s.start(0)})})
+        .catch(()=>browserSpeak(text));
+    } else browserSpeak(text);
+  }
+  function browserSpeak(text){
+    if(!window.speechSynthesis)return;
+    const u=new SpeechSynthesisUtterance(text);
+    const v=browserVoices.find(x=>x.voiceURI===voiceUri); if(v)u.voice=v;
+    window.speechSynthesis.speak(u);
+  }
+  function previewVoice(){ speakText("Hi, thanks for taking the time to chat with me today about the investment opportunity."); }
+
   async function startSession() {
     if (!repName || !scenarioId) return;
     setBusy(true);
     try {
       const r = await fetch(`${API}/practice/start`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rep_name: repName, scenario_id: scenarioId })
+        body: JSON.stringify({ rep_name: repName, scenario_id: scenarioId, difficulty_overrides: { difficulty, persona }, business_unit: businessUnit })
       }).then(r => r.json());
       setSession({ id: r.session_id });
       setScenario(r.scenario);
@@ -392,10 +470,21 @@ function TrainPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: myText })
       }).then(r => r.json());
-      if (r.prospect) setMessages(m => [...m, { role: "prospect", text: r.prospect }]);
+      if (r.prospect) { setMessages(m => [...m, { role: "prospect", text: r.prospect }]); if (sessionMode==="voice") speakText(r.prospect); }
       if (r.ended) endSession();
     } catch (e) { alert("Error: " + e.message); }
     setBusy(false);
+  }
+
+  async function speak(text){
+    try{
+      const res=await fetch(`${API}/practice/tts`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})});
+      if(!res.ok)return;
+      const buf=await res.arrayBuffer();
+      const ctx=new (window.AudioContext||window.webkitAudioContext)();
+      const decoded=await ctx.decodeAudioData(buf);
+      const src=ctx.createBufferSource();src.buffer=decoded;src.connect(ctx.destination);src.start(0);
+    }catch(e){}
   }
 
   async function endSession() {
@@ -418,47 +507,93 @@ function TrainPage() {
 
   // ─── SETUP ───
   if (phase === "setup") {
+    const BUSINESS_UNITS = ["BNB Turnkey","BNB Investor Academy","Hotel Turnkey","Property Management","Legacy Business Services","Surge Tax"];
+    const DIFFICULTIES = [["standard","Standard"],["hard","Hard (objection-heavy)"],["extreme","Extreme (cold/hostile)"]];
+    const PERSONAS = [["male","Male prospect","Single decision maker"],["female","Female prospect","Single decision maker"],["couple_husband","Couple — husband leads","Wife raises doubts"],["couple_wife","Couple — wife leads","Husband raises price objections"]];
+    const scenariosForRole = (scenarios?.scenarios || []).filter(s => !repRole || s.target_role === repRole || s.target_role === "Both");
     return (
-      <div className="flex-col gap-24" style={{ maxWidth: 720 }}>
+      <div className="flex-col gap-16" style={{ maxWidth: 760 }}>
         <div>
           <h2 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>Train</h2>
-          <p style={{ fontSize: 12, color: "#374151", marginTop: 4 }}>
-            Practice against an AI prospect — scored on the same rubric as your real calls.
-          </p>
+          <p style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>Practice against an AI prospect — scored on the same rubric as your real calls.</p>
         </div>
+
+        {/* Rep info */}
         <div className="card" style={{ padding: 24 }}>
-          <div className="section-head">Who's practicing?</div>
-          <select value={repName} onChange={e => setRepName(e.target.value)}
-            style={{ width: "100%", marginBottom: 18, padding: "8px 12px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--t1)" }}>
-            <option value="">Select rep…</option>
-            {(reps || []).map(r => <option key={r.id} value={r.name}>{r.name} · {r.role}</option>)}
-          </select>
-          <div className="section-head">Pick a scenario</div>
+          <div className="section-head" style={{marginBottom:4}}>Rep Info</div>
+          <p style={{fontSize:11,color:"#64748b",marginBottom:16}}>Who's practicing?</p>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div><label style={{fontSize:10,color:"#64748b",fontWeight:700,letterSpacing:.5}}>NAME</label>
+              <select value={repName} onChange={e=>{setRepName(e.target.value);const r=(reps||[]).find(x=>x.name===e.target.value);if(r)setRepRole(r.role)}} style={{width:"100%",marginTop:6,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)"}}><option value="">Select rep…</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select></div>
+            <div><label style={{fontSize:10,color:"#64748b",fontWeight:700,letterSpacing:.5}}>ROLE</label>
+              <select value={repRole} onChange={e=>setRepRole(e.target.value)} style={{width:"100%",marginTop:6,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)"}}><option>Setter</option><option>Closer</option></select></div>
+            <div><label style={{fontSize:10,color:"#64748b",fontWeight:700,letterSpacing:.5}}>BUSINESS UNIT</label>
+              <select value={businessUnit} onChange={e=>setBusinessUnit(e.target.value)} style={{width:"100%",marginTop:6,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)"}}>{BUSINESS_UNITS.map(b=><option key={b}>{b}</option>)}</select></div>
+            <div><label style={{fontSize:10,color:"#64748b",fontWeight:700,letterSpacing:.5}}>DIFFICULTY</label>
+              <select value={difficulty} onChange={e=>setDifficulty(e.target.value)} style={{width:"100%",marginTop:6,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)"}}>{DIFFICULTIES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+          </div>
+        </div>
+
+        {/* Session mode */}
+        <div className="card" style={{ padding: 24 }}>
+          <div className="section-head" style={{marginBottom:4}}>Session Mode</div>
+          <p style={{fontSize:11,color:"#64748b",marginBottom:14}}>Voice mode speaks the prospect out loud and listens to your response — closest to a real call. Text mode is standard chat.</p>
+          <div style={{display:"flex",gap:10}}>
+            {[["text","💬 Text chat"],["voice","🎙 Voice call"]].map(([v,l])=><button key={v} onClick={()=>setSessionMode(v)} className="btn" style={{flex:1,padding:"12px",background:sessionMode===v?"#1e1b4b":"",borderColor:sessionMode===v?"#4338ca":"",color:sessionMode===v?"#c7d2fe":""}}>{l}</button>)}
+          </div>
+        </div>
+
+        {/* Prospect persona */}
+        <div className="card" style={{ padding: 24 }}>
+          <div className="section-head" style={{marginBottom:4}}>Prospect Persona</div>
+          <p style={{fontSize:11,color:"#64748b",marginBottom:14}}>Choose who you're selling to. Couple mode puts both a husband and wife on the call — a common real-world challenge.</p>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {PERSONAS.map(([v,title,sub])=><div key={v} onClick={()=>setPersona(v)} style={{padding:"14px 16px",borderRadius:10,cursor:"pointer",background:persona===v?"#1e1b4b":"#141925",border:`1px solid ${persona===v?"#4338ca":"#2a3140"}`}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{title}</div>
+              <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{sub}</div>
+            </div>)}
+          </div>
+
+          {/* Voice picker (only shown in voice mode) */}
+          {sessionMode==="voice"&&<div style={{marginTop:20,paddingTop:18,borderTop:"1px solid #2a3140"}}>
+            <div style={{fontSize:10,color:"#64748b",fontWeight:700,letterSpacing:.5,marginBottom:8}}>PROSPECT VOICE — PREVIEW BEFORE YOU COMMIT</div>
+            <label style={{fontSize:10,color:"#64748b"}}>ELEVENLABS KEY <span style={{color:"#4b5563"}}>(natural AI voices — optional)</span></label>
+            <div style={{display:"flex",gap:8,marginTop:6,marginBottom:14}}>
+              <input value={elevenKey} onChange={e=>setElevenKey(e.target.value)} placeholder="sk_… paste key from elevenlabs.io/app/settings/api-keys" style={{flex:1,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}/>
+              <button className="btn" onClick={()=>elevenKey&&alert("ElevenLabs key set for this session. Preview to test.")}>Connect</button>
+            </div>
+            <label style={{fontSize:10,color:"#64748b",fontWeight:700,letterSpacing:.5}}>PROSPECT VOICE {elevenKey&&<span style={{color:"#22c55e"}}>· ElevenLabs active</span>}</label>
+            <div style={{display:"flex",gap:8,marginTop:6}}>
+              <select value={voiceUri} onChange={e=>setVoiceUri(e.target.value)} disabled={!!elevenKey} style={{flex:1,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12,opacity:elevenKey?.5:1}}>
+                {elevenKey?<option>ElevenLabs — natural voice</option>:browserVoices.map(v=><option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
+              </select>
+              <button className="btn" onClick={previewVoice} title="Preview voice">▶</button>
+            </div>
+            <p style={{fontSize:10,color:"#4b5563",marginTop:8}}>{elevenKey?"Using ElevenLabs natural AI voices.":"Using free browser voices. Add an ElevenLabs key above for natural AI voices."}</p>
+          </div>}
+        </div>
+
+        {/* Scenario */}
+        <div className="card" style={{ padding: 24 }}>
+          <div className="section-head">Pick a Scenario</div>
           <div className="flex-col gap-8">
-            {(scenarios?.scenarios || []).map(s => (
-              <div key={s.id} onClick={() => setScenarioId(s.id)}
-                style={{
-                  padding: "14px 16px", borderRadius: 10, cursor: "pointer",
-                  background: scenarioId === s.id ? "#1e1b4b" : "#060a10",
-                  border: `1px solid ${scenarioId === s.id ? "#4338ca" : "#111520"}`
-                }}>
+            {scenariosForRole.map(s => (
+              <div key={s.id} onClick={() => setScenarioId(s.id)} style={{ padding: "14px 16px", borderRadius: 10, cursor: "pointer", background: scenarioId === s.id ? "#1e1b4b" : "#141925", border: `1px solid ${scenarioId === s.id ? "#4338ca" : "#2a3140"}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#c9d1d9" }}>{s.title}</span>
                   <span style={{ fontSize: 10, color: "#64748b" }}>{s.target_role} · Tier {s.difficulty_tier}</span>
                 </div>
               </div>
             ))}
-            {!scenarios?.scenarios?.length && <div style={{ color: "#374151", fontSize: 13 }}>No scenarios yet.</div>}
+            {!scenariosForRole.length && <div style={{ color: "#374151", fontSize: 13 }}>No scenarios for this role yet.</div>}
           </div>
-          <button className="btn btn-primary" disabled={!repName || !scenarioId || busy}
-            onClick={startSession} style={{ marginTop: 18 }}>
-            {busy ? "Starting…" : "Start Practice Call →"}
+          <button className="btn btn-primary" disabled={!repName || !scenarioId || busy} onClick={startSession} style={{ marginTop: 18, width: "100%", padding: "12px" }}>
+            {busy ? "Starting…" : `Start ${sessionMode==="voice"?"Voice ":""}Practice Call →`}
           </button>
         </div>
       </div>
     );
   }
-
   // ─── LIVE ───
   if (phase === "live") {
     return (
@@ -468,7 +603,10 @@ function TrainPage() {
             <h2 style={{ fontSize: 20, fontWeight: 900, margin: 0 }}>{scenario?.title}</h2>
             <p style={{ fontSize: 11, color: "#374151", marginTop: 2 }}>{repName} practicing · in character</p>
           </div>
-          <button className="btn btn-green" onClick={endSession} disabled={busy}>End & Score</button>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <button className="btn" onClick={()=>setVoiceOn(!voiceOn)} style={{background:voiceOn?"#1e1b4b":"",borderColor:voiceOn?"#4338ca":"",color:voiceOn?"#c7d2fe":""}} title="Prospect speaks aloud (ElevenLabs)">{voiceOn?"🔊 Voice on":"🔇 Voice off"}</button>
+            <button className="btn btn-green" onClick={endSession} disabled={busy}>End & Score</button>
+          </div>
         </div>
         <div className="card" ref={scrollRef} style={{ padding: 18, height: 440, overflowY: "auto" }}>
           {messages.length === 0 && <div style={{ color: "#374151", fontSize: 13, textAlign: "center", marginTop: 40 }}>
@@ -552,6 +690,41 @@ function TrainPage() {
   );
 }
 
+function PracticeHistoryPage(){
+  const[rep,setRep]=useState("");
+  const{data:reps}=useApi("/reps");
+  const[sessions,setSessions]=useState(null);
+  const[detail,setDetail]=useState(null);
+  React.useEffect(()=>{const qs=rep?`?rep=${encodeURIComponent(rep)}`:"";fetch(`${API}/practice${qs}`).then(r=>r.json()).then(d=>setSessions(d.sessions||[])).catch(()=>setSessions([]))},[rep]);
+
+  // Detail view — reuse the same scorecard layout
+  if(detail){const cats=detail.category_scores||{};return<div className="flex-col gap-20" style={{maxWidth:760}}>
+    <button className="btn" onClick={()=>setDetail(null)} style={{alignSelf:"flex-start"}}>← All sessions</button>
+    <div className="card" style={{padding:24,display:"flex",alignItems:"center",gap:20}}>
+      <ScoreRing value={detail.overall_score_adj} size={72} sw={4.5}/>
+      <div><div style={{fontSize:15,fontWeight:700,color:"#c9d1d9"}}>{detail.scenario_id}</div>
+      <div style={{fontSize:11,color:"#374151",marginTop:4}}>{detail.rep_name} · {detail.created_at} · scored on rubric v{detail.rubric_version}</div></div>
+    </div>
+    {Object.keys(cats).length>0&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:14}}>Categories</div>{CATS.filter(c=>cats[c]!=null).map(c=><div key={c} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontSize:11,color:"#64748b",fontWeight:600,width:130}}>{CL[c]||c}</span><div style={{flex:1}}><MiniBar value={cats[c]}/></div></div>)}</div>}
+    {detail.pass_fail?.deductions?.length>0&&<div className="card" style={{padding:18}}><div className="section-head" style={{marginBottom:10}}>⚠ Deductions</div>{detail.pass_fail.deductions.map((d,i)=><div key={i} style={{display:"flex",gap:10,padding:"8px 12px",marginBottom:6,background:d.severity==="critical"?"#1a0a0a":"#1a1400",borderRadius:8,border:`1px solid ${d.severity==="critical"?"#991b1b":"#92400e"}`}}><span style={{fontSize:18,fontWeight:900,color:d.severity==="critical"?"#ef4444":"#f59e0b",minWidth:36}}>{d.points}</span><div><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>{d.label}</div></div></div>)}</div>}
+    {detail.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:10}}>Coaching</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{detail.coaching_notes}</div></div>}
+  </div>}
+
+  return<div className="flex-col gap-20" style={{maxWidth:820}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Practice History</h2><p style={{fontSize:12,color:"#64748b",marginTop:4}}>Every practice session, scored on the same rubric as real calls. Click any to review.</p></div>
+      <select value={rep} onChange={e=>setRep(e.target.value)} style={{padding:"7px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="">All reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
+    </div>
+    {!sessions&&<div style={{padding:40,textAlign:"center",color:"#374151"}}>Loading…</div>}
+    {sessions&&sessions.length===0&&<div className="card" style={{padding:40,textAlign:"center",color:"#64748b"}}>No practice sessions yet. Head to the <b>Train</b> tab to start one.</div>}
+    {sessions&&sessions.map(s=><div key={s.id} onClick={()=>s.status==="scored"&&setDetail(s)} className="card" style={{padding:"16px 20px",cursor:s.status==="scored"?"pointer":"default",display:"flex",alignItems:"center",gap:16}}>
+      {s.status==="scored"?<ScoreRing value={s.overall_score_adj} size={40} sw={3}/>:<div style={{width:40,height:40,borderRadius:"50%",border:"2px dashed #374151",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#374151"}}>{s.status==="in_progress"?"…":"—"}</div>}
+      <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700,color:"#c9d1d9"}}>{s.scenario_id}</div><div style={{fontSize:11,color:"#374151"}}>{s.rep_name} · {s.created_at}{s.status!=="scored"?` · ${s.status}`:""}</div></div>
+      {s.status==="scored"&&<span style={{fontSize:11,color:"#64748b"}}>Review →</span>}
+    </div>)}
+  </div>
+}
+
 function ResourcesPage(){
   const[manuals,setManuals]=useState(null);
   const[active,setActive]=useState(null);
@@ -579,7 +752,7 @@ function ResourcesPage(){
   </div>
 }
 
-const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
+const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
 
 function RubricViewer(){
   const[rb,setRb]=useState(null);const[role,setRole]=useState("Closer");
@@ -699,7 +872,7 @@ function RubricPage(){
 
 function App(){const[pg,sPg]=useState("dashboard");const[dt,sDt]=useState(null);
   return<><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>{NAV.map(n=><button key={n.id} className={pg===n.id?"active":""} onClick={()=>{sPg(n.id);sDt(null)}} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}><span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>)}</nav><div style={{padding:"14px 16px",borderTop:"1px solid #2a3140"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
-    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="train"?<TrainPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
+    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
