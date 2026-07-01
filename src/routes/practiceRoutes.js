@@ -177,13 +177,27 @@ function parseSession(s) {
   return s;
 }
 
+// ─── List ElevenLabs voices (so the team can choose one) ──
+// Accepts a key via header (client-pasted) or falls back to server env key.
+router.get('/voices', async (req, res) => {
+  try {
+    const key = req.headers['x-eleven-key'] || process.env.ELEVENLABS_API_KEY;
+    if (!key) return res.json({ voices: [], configured: false });
+    const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
+    if (!r.ok) return res.status(502).json({ error: 'Could not fetch voices (check key)', voices: [] });
+    const data = await r.json();
+    const voices = (data.voices || []).map(v => ({ id: v.voice_id, name: v.name, labels: v.labels || {} }));
+    res.json({ voices, configured: true });
+  } catch (e) { res.status(500).json({ error: e.message, voices: [] }); }
+});
+
 // ─── Text-to-speech proxy (ElevenLabs) — gives the prospect a voice ──
 // Keeps the API key server-side. Returns audio/mpeg the browser can play.
 router.post('/tts', express.json(), async (req, res) => {
   try {
     const { text, voiceId } = req.body || {};
     if (!text) return res.status(400).json({ error: 'text required' });
-    const key = process.env.ELEVENLABS_API_KEY;
+    const key = req.headers['x-eleven-key'] || process.env.ELEVENLABS_API_KEY;
     if (!key) return res.status(503).json({ error: 'TTS not configured (missing ELEVENLABS_API_KEY)' });
     const vid = voiceId || process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'; // default voice
     const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${vid}`, {
