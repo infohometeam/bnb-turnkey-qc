@@ -126,4 +126,46 @@ function estimateCost(usage) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-module.exports = { callAI, callAIJson, estimateCost, parseJsonSafe };
+
+// ─── Conversation mode (multi-turn) — for the live Trainer prospect ──
+// systemPrompt: the prospect persona (static, cached). messages: [{role:'user'|'assistant', content}]
+async function callConversation(systemPrompt, messages, opts = {}) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const model = opts.model || process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20241022';
+  if (!apiKey) throw new Error('MISSING_ANTHROPIC_API_KEY');
+
+  for (let attempt = 0; attempt <= 3; attempt++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: opts.maxTokens || 400,
+        // Prompt caching on the system prompt — ~90% savings on the static portion
+        system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+        messages,
+        temperature: opts.temperature ?? 0.8,  // higher temp = more natural, varied prospect
+      }),
+    });
+    const status = res.status;
+    const body = await res.text();
+    if (status === 429 || status === 503 || status === 529) {
+      const delay = RETRY_DELAYS[attempt] || 15000;
+      console.warn(`[Prospect] ${status} — retry in ${delay}ms`);
+      await sleep(delay);
+      continue;
+    }
+    if (status < 200 || status >= 300) throw new Error(`CLAUDE_HTTP_${status}: ${body.slice(0, 400)}`);
+    const data = JSON.parse(body);
+    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const usage = data.usage || {};
+    return { text, usage: { inputTokens: usage.input_tokens || 0, outputTokens: usage.output_tokens || 0, model, engine: 'claude' } };
+  }
+  throw new Error('CLAUDE_MAX_RETRIES');
+}
+
+module.exports = { callAI, callAIJson, callConversation, estimateCost, parseJsonSafe };
