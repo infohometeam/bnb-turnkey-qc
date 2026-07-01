@@ -296,4 +296,33 @@ async function unpauseDailyRows() {
   if (r.rowsAffected) console.log(`[QC] Unpaused ${r.rowsAffected} rows`);
 }
 
-module.exports = { processQueue, processCall, unpauseDailyRows, adjustScore };
+// ─── Stuck-transcript fallback ──────────────────────────────
+// WAIT_TRANSCRIPT calls sit until Aloware's transcript event arrives.
+// If it never comes, they'd wait forever. This sweep flags calls that
+// have waited beyond a threshold so they surface instead of vanishing.
+// Runs on a timer (see index.js). Non-destructive: only changes status
+// of calls that are genuinely overdue AND still have no transcript.
+async function sweepStuckTranscripts(maxHours = 4) {
+  // Find WAIT_TRANSCRIPT calls older than maxHours with still-empty transcripts
+  const stuck = await q(
+    `SELECT id, rep_name, client_name, call_duration_sec, received_at
+     FROM calls
+     WHERE status='WAIT_TRANSCRIPT'
+       AND (transcript IS NULL OR LENGTH(transcript)=0)
+       AND received_at::timestamp < (NOW() - (? || ' hours')::interval)`,
+    [String(maxHours)]);
+
+  if (!stuck.rows.length) return { swept: 0 };
+
+  const ts = now();
+  for (const row of stuck.rows) {
+    // Mark as NO_TRANSCRIPT so it's visible as needing attention (not silently waiting).
+    // We keep the row and all its metadata — this is a flag, not a delete.
+    await q("UPDATE calls SET status='NO_TRANSCRIPT', error=? WHERE id=?",
+      [`Transcript never arrived after ${maxHours}h wait (Aloware). Call ${row.call_duration_sec}s. May need manual pull.`, row.id]);
+    console.log(`[QC] Stuck transcript flagged: #${row.id} ${row.rep_name} → ${row.client_name} (waited >${maxHours}h)`);
+  }
+  return { swept: stuck.rows.length, ids: stuck.rows.map(r => r.id) };
+}
+
+module.exports = { processQueue, processCall, unpauseDailyRows, adjustScore, sweepStuckTranscripts };
