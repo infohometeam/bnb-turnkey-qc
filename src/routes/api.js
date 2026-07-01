@@ -782,4 +782,25 @@ router.get('/report', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Call comments: team notes/opinions on calls ──
+router.get('/calls/:id/comments', async (req, res) => {
+  try {
+    const r = await q('SELECT * FROM call_comments WHERE call_id=? ORDER BY created_at ASC', [req.params.id]);
+    res.json({ comments: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.post('/calls/:id/comments', express.json(), async (req, res) => {
+  try {
+    const { author, author_role, body, comment_type } = req.body || {};
+    if (!author || !body) return res.status(400).json({ error: 'author and body required' });
+    const ins = await q('INSERT INTO call_comments (call_id, author, author_role, body, comment_type) VALUES (?,?,?,?,?)',
+      [req.params.id, author, author_role || '', body, comment_type || 'note']);
+    res.json({ ok: true, id: ins.lastInsertRowid });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.delete('/comments/:id', async (req, res) => {
+  try { await q('DELETE FROM call_comments WHERE id=?', [req.params.id]); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
