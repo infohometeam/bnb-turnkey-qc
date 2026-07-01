@@ -5,22 +5,22 @@
 <title>BNB Turnkey QC — The Rise Collective</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--f:'Outfit',sans-serif;--m:'IBM Plex Mono',monospace;--bg:#030608;--card:#0a0e14;--border:#1a2030;--t1:#e2e8f0;--t2:#94a3b8;--t3:#4b5563;--t4:#374151;--t5:#1e293b}
+:root{--f:'Outfit',sans-serif;--m:'IBM Plex Mono',monospace;--bg:#12161f;--card:#1a1f2b;--border:#2a3140;--t1:#eef1f6;--t2:#aab4c5;--t3:#6b7686;--t4:#55606f;--t5:#2a3140;--accent:#7c83ff}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:var(--f);background:var(--bg);color:var(--t1);min-height:100vh}
 #root{display:flex;min-height:100vh;width:100%}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#1a2030;border-radius:3px}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#2a3140;border-radius:3px}
 button{font-family:var(--f)}input,select{font-family:var(--f)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px}
 .stat-card{padding:16px 20px}.stat-label{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:10px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:1px;font-family:var(--m)}.stat-value{font-size:26px;font-weight:900;font-family:var(--m)}.stat-sub{font-size:10px;color:var(--t4);margin-top:4px}
 .badge{display:inline-block;padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700;font-family:var(--m);letter-spacing:.5px}
 .section-head{font-size:11px;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:1px;font-family:var(--m);margin-bottom:16px}
-.btn{padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--t2);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}.btn:hover{background:#111520;color:var(--t1)}.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn{padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--t2);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}.btn:hover{background:#2a3140;color:var(--t1)}.btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-primary{background:#6366f1;border-color:#6366f1;color:#fff}.btn-primary:hover{background:#4f46e5}
 .btn-green{background:#052e16;border-color:#166534;color:#22c55e}.btn-red{background:#2a0a0a;border-color:#991b1b;color:#ef4444}.btn-sm{padding:4px 10px;font-size:10px}
 .grid{display:grid;gap:12px}.grid-stats{grid-template-columns:repeat(auto-fit,minmax(155px,1fr))}
 .flex-col{display:flex;flex-direction:column}.gap-24{gap:24px}.gap-20{gap:20px}.gap-12{gap:12px}.gap-8{gap:8px}
-aside{width:220px;flex-shrink:0;background:#050910;border-right:1px solid #111520;display:flex;flex-direction:column}
+aside{width:220px;flex-shrink:0;background:#050910;border-right:1px solid #2a3140;display:flex;flex-direction:column}
 nav button{display:flex;align-items:center;gap:11px;width:100%;padding:9px 14px;background:transparent;border:none;border-radius:8px;cursor:pointer;color:var(--t4);font-size:12px;font-weight:500;transition:all .15s;border-left:3px solid transparent;text-align:left}
 nav button.active{font-weight:800;border-left-color:currentColor}
 main{flex:1;overflow:auto;padding:28px 32px}.max-w{max-width:1100px;margin:0 auto}
@@ -31,10 +31,28 @@ select,input[type=date]{background:var(--card);border:1px solid var(--border);bo
 .tab-btn{padding:9px 16px;border-radius:10px;border:2px solid var(--border);cursor:pointer;background:transparent;color:var(--t3);font-size:12px;font-weight:600;transition:all .2s}
 .tab-btn.active{color:#fff;font-weight:800}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100}
-.modal{background:#0d1117;border:1px solid var(--border);border-radius:16px;padding:28px;max-width:500px;width:90%}
+.modal{background:#141925;border:1px solid var(--border);border-radius:16px;padding:28px;max-width:500px;width:90%}
 .modal label{display:block;font-size:11px;color:var(--t3);margin-bottom:4px;font-weight:600}
 .modal input,.modal select{width:100%;margin-bottom:14px;padding:8px 12px}
 @media(max-width:768px){aside{display:none}main{padding:16px}.grid-stats{grid-template-columns:repeat(2,1fr)}}
+.manual-body{font-size:14px;line-height:1.75;color:#b8c2cf}
+.manual-body h2{font-size:19px;font-weight:800;color:#e6edf3;margin:28px 0 12px;padding-bottom:8px;border-bottom:1px solid #1e293b}
+.manual-body h2:first-child{margin-top:0}
+.manual-body h3{font-size:15px;font-weight:700;color:#c9d1d9;margin:22px 0 8px}
+.manual-body h4{font-size:13px;font-weight:700;color:#a5b4fc;margin:18px 0 6px}
+.manual-body p{margin:10px 0}
+.manual-body ul{margin:10px 0;padding-left:22px}
+.manual-body li{margin:6px 0}
+.manual-body b,.manual-body strong{color:#e6edf3}
+.rep-card{break-inside:avoid}
+@media print{
+  aside,.no-print,.tab-btn{display:none!important}
+  main{margin:0!important}
+  body,:root{--bg:#fff!important;--card:#fff!important}
+  .report-sheet,.report-sheet *{color:#111!important}
+  .card{border:1px solid #ddd!important;box-shadow:none!important;background:#fff!important}
+  .report-sheet .stat-value{color:#111!important}
+}
 </style>
 </head>
 <body>
@@ -55,7 +73,7 @@ const fmt=d=>{const dt=toUTC(d);return dt?dt.toLocaleDateString("en-US",{month:"
 const fmtF=d=>{const dt=toUTC(d);return dt?dt.toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit",timeZone:TZ,timeZoneName:"short"}):"—"};
 const fmtD=s=>{if(!s&&s!==0)return"—";s=Number(s);if(!isFinite(s))return"—";const m=Math.floor(s/60);return`${m}m ${String(Math.round(s%60)).padStart(2,"0")}s`};
 const sClr=s=>{if(s==null)return"#4b5563";if(s>=8)return"#34d399";if(s>=6)return"#fbbf24";return"#ef4444"};
-const stClr=s=>({SCORED:["#052e16","#22c55e","#166534"],NEW:["#0c1a3d","#60a5fa","#1e40af"],REQC:["#1a0c3d","#a78bfa","#5b21b6"],ERROR:["#2a0a0a","#ef4444","#991b1b"],WAIT_RETRY_FULL:["#2a1a00","#f59e0b","#92400e"],WAIT_TRANSCRIPT:["#2a1a00","#f59e0b","#92400e"]}[s]||["#0c1a3d","#60a5fa","#1e40af"]);
+const stClr=s=>({SCORED:["#052e16","#22c55e","#166534"],NEW:["#14224a","#60a5fa","#1e40af"],REQC:["#1a0c3d","#a78bfa","#5b21b6"],ERROR:["#2a0a0a","#ef4444","#991b1b"],WAIT_RETRY_FULL:["#2a1a00","#f59e0b","#92400e"],WAIT_TRANSCRIPT:["#2a1a00","#f59e0b","#92400e"]}[s]||["#14224a","#60a5fa","#1e40af"]);
 const RC={"Matt":"#6366f1","Kevin":"#8b5cf6","Andrew":"#06b6d4","Steven":"#10b981","Anurag":"#f59e0b"};
 const CATS=["discovery","qualification","pitch","frame_control","objections_close","objections","close_next_step"];
 const CL={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",frame_control:"Frame / Control",objections_close:"Objections & Close",objections:"Objections",close_next_step:"Close / Next Step"};
@@ -72,7 +90,7 @@ function DateFilter({period,setPeriod,from,setFrom,to,setTo}){return<div style={
 function buildDQ(p,f,t){if(f||t){let s='';if(f)s+=`&from=${f}`;if(t)s+=`&to=${t}`;return s}if(p&&p!=='all')return`&period=${p}`;return''}
 
 // ── Dashboard ───────────────────────────────────────────────
-function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:qd}=useApi("/queue/status");const{data:fd}=useApi(`/calls?flagged=true&limit=5${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"}</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div><div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div><div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div></div>{data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}{fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Flagged</div>{fd.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid #111520"}}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}</div>}
+function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:qd}=useApi("/queue/status");const{data:fd}=useApi(`/calls?flagged=true&limit=5${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"}</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div><div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div><div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div></div>{data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}{fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Flagged</div>{fd.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid #2a3140"}}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}</div>}
 
 // ── Calls List ──────────────────────────────────────────────
 function CallsList({onSelect}){const[sf,sSf]=useState("ALL");const[rf,sRf]=useState("ALL");const[p,sP]=useState("");const[f,sF]=useState('');const[t,sT]=useState('');const[pg,sPg]=useState(0);const[sq,sSq]=useState('');const[searching,setSearching]=useState(false);const[searchResults,setSearchResults]=useState(null);const PER=50;const dq=buildDQ(p,f,t);const sQ=sf!=="ALL"?`&status=${sf}`:"";const rQ=rf!=="ALL"?`&rep=${rf}`:"";const{data,reload}=useApi(`/calls?limit=${PER}&offset=${pg*PER}${sQ}${rQ}${dq}&hideVm=true`,[sf,rf,p,f,t,pg]);const{data:reps}=useApi("/reps");const[sel,setSel]=useState(new Set());const[del,setDel]=useState(false);
@@ -82,12 +100,12 @@ function CallsList({onSelect}){const[sf,sSf]=useState("ALL");const[rf,sRf]=useSt
   async function bulkRescore(){if(!sel.size)return;const est=(sel.size*0.006).toFixed(3);if(!confirm(`Re-score ${sel.size} calls?\n\nEstimated cost: $${est}\nCurrent scores will be archived before re-scoring.\n\nProceed?`))return;const r=await fetch(`${API}/calls/rescore-selected`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[...sel]})}).then(r=>r.json());alert(`✓ ${r.queued} calls queued for re-score. They'll process on the next worker cycles.`);setSel(new Set());reload();}
   if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const displayCalls=searchResults?searchResults.calls:data.calls;const displayTotal=searchResults?searchResults.total:data.total;const tp=Math.ceil(displayTotal/PER);
   return<div className="flex-col gap-20"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Calls</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{displayTotal} {searchResults?`results for "${searchResults.query}"`:"calls"}</p></div><div className="flex-col gap-8"><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="text" value={sq} onChange={e=>sSq(e.target.value)} onKeyDown={e=>e.key==='Enter'&&doSearch()} placeholder="Search transcripts..." style={{minWidth:200,background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,padding:"6px 12px",color:"var(--t1)",fontSize:11}}/><button className="btn btn-primary btn-sm" onClick={doSearch} disabled={searching}>{searching?"...":"🔍"}</button>{searchResults&&<button className="btn btn-sm" onClick={clearSearch}>✕ Clear</button>}</div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><select value={sf} onChange={e=>{sSf(e.target.value);sPg(0)}}><option value="ALL">All Status</option>{["SCORED","NEW","REQC","ERROR","WAIT_RETRY_FULL","WAIT_TRANSCRIPT"].map(s=><option key={s}>{s}</option>)}</select><select value={rf} onChange={e=>{sRf(e.target.value);sPg(0)}}><option value="ALL">All Reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select><button className="btn btn-sm" onClick={()=>{reload();setSel(new Set());clearSearch()}}>↻</button>{sel.size>0&&<button className="btn btn-sm" style={{background:"#1e1b4b",color:"#a5b4fc",border:"1px solid #4338ca"}} onClick={bulkRescore}>↻ Re-score {sel.size}</button>}{sel.size>0&&<button className="btn btn-red btn-sm" onClick={bulkDel} disabled={del}>🗑 {sel.size}</button>}</div></div></div>
-    <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:600,overflowY:"auto"}}>{displayCalls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #060a10",background:sel.has(c.id)?"#111520":c.flagged?"rgba(245,158,11,.03)":"transparent"}} onClick={()=>onSelect(c)}><input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1"}}/><ScoreRing value={c.overall_score_adj} size={32} sw={2}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name||"?"}{c.flagged&&<span style={{color:"#f59e0b",marginLeft:6,fontSize:10}}>⚠</span>}</div><div style={{fontSize:10,color:"#2a3040",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.source}</div></div><div style={{textAlign:"right",flexShrink:0}}><Badge status={c.status}/><div style={{fontSize:10,color:"#2a3040",marginTop:4}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</div></div></div>)}{!displayCalls.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>{searchResults?"No results found":"No calls"}</div>}</div></div>
+    <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:600,overflowY:"auto"}}>{displayCalls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #141925",background:sel.has(c.id)?"#2a3140":c.flagged?"rgba(245,158,11,.03)":"transparent"}} onClick={()=>onSelect(c)}><input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1"}}/><ScoreRing value={c.overall_score_adj} size={32} sw={2}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name||"?"}{c.flagged&&<span style={{color:"#f59e0b",marginLeft:6,fontSize:10}}>⚠</span>}</div><div style={{fontSize:10,color:"#2a3040",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.source}</div></div><div style={{textAlign:"right",flexShrink:0}}><Badge status={c.status}/><div style={{fontSize:10,color:"#2a3040",marginTop:4}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</div></div></div>)}{!displayCalls.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>{searchResults?"No results found":"No calls"}</div>}</div></div>
     {tp>1&&<div style={{display:"flex",justifyContent:"center",gap:6,alignItems:"center"}}><button className="btn btn-sm" disabled={pg===0} onClick={()=>sPg(x=>x-1)}>← Prev</button><span style={{fontSize:11,color:"#4b5563",fontFamily:"var(--m)"}}>{pg+1}/{tp}</span><button className="btn btn-sm" disabled={pg>=tp-1} onClick={()=>sPg(x=>x+1)}>Next →</button></div>}
   </div>}
 
 // ── Call Detail ──────────────────────────────────────────────
-function CallScoreHistory({callId}){const{data}=useApi(`/calls/${callId}/history`,[callId]);if(!data||!data.history?.length)return null;return<div className="card" style={{padding:18}}><div className="section-head" style={{marginBottom:10}}>📜 Score History</div><div style={{display:"flex",flexDirection:"column",gap:8}}>{data.history.map((h,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#060a10",borderRadius:8,border:"1px solid #111520"}}><div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:50}}><div style={{fontSize:18,fontWeight:900,color:sClr(h.overall_score_adj),fontFamily:"var(--m)"}}>{h.overall_score_adj??"—"}</div><div style={{fontSize:9,color:"#4b5563"}}>/10</div></div><div style={{flex:1,minWidth:0}}><div style={{fontSize:11,fontWeight:700,color:"#c9d1d9"}}>Rubric v{h.rubric_version} · {fmtF(h.snapshot_at)}</div><div style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.quick_summary||'(no summary)'}</div></div></div>)}</div></div>}
+function CallScoreHistory({callId}){const{data}=useApi(`/calls/${callId}/history`,[callId]);if(!data||!data.history?.length)return null;return<div className="card" style={{padding:18}}><div className="section-head" style={{marginBottom:10}}>📜 Score History</div><div style={{display:"flex",flexDirection:"column",gap:8}}>{data.history.map((h,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#141925",borderRadius:8,border:"1px solid #2a3140"}}><div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:50}}><div style={{fontSize:18,fontWeight:900,color:sClr(h.overall_score_adj),fontFamily:"var(--m)"}}>{h.overall_score_adj??"—"}</div><div style={{fontSize:9,color:"#4b5563"}}>/10</div></div><div style={{flex:1,minWidth:0}}><div style={{fontSize:11,fontWeight:700,color:"#c9d1d9"}}>Rubric v{h.rubric_version} · {fmtF(h.snapshot_at)}</div><div style={{fontSize:10,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.quick_summary||'(no summary)'}</div></div></div>)}</div></div>}
 
 function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const[stx,setStx]=useState(false);const[ed,setEd]=useState(false);const{data:fc,reload}=useApi(`/calls/${initial.id}`,[initial.id]);const c=fc||initial;
   async function reqc(){setRs(true);await postApi(`/calls/${c.id}/reqc`);alert("Queued for re-score.");reload();setRs(false)}
@@ -116,9 +134,9 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
     <CallScoreHistory callId={c.id}/>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{c.strengths?.length>0&&<div className="card" style={{padding:18,background:"#041a0e",borderColor:"#166534"}}><div style={{fontSize:10,fontWeight:700,color:"#22c55e",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>✦ Strengths</div>{c.strengths.map((s,i)=><div key={i} style={{fontSize:12,color:"#a7f3d0",lineHeight:1.7}}>• {s}</div>)}</div>}{c.improvements?.length>0&&<div className="card" style={{padding:18,background:"#1a0a0a",borderColor:"#991b1b"}}><div style={{fontSize:10,fontWeight:700,color:"#ef4444",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>△ Improve</div>{c.improvements.map((s,i)=><div key={i} style={{fontSize:12,color:"#fca5a5",lineHeight:1.7}}>• {s}</div>)}</div>}</div>
     {c.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>🎯 Coaching</div><p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{c.coaching_notes}</p></div>}
-    {c.next_step_text&&<div className="card" style={{padding:16,background:"#0c1a3d",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
+    {c.next_step_text&&<div className="card" style={{padding:16,background:"#14224a",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
     {c.score_adjust_notes&&(()=>{const parts=c.score_adjust_notes.split('Confidence:');const adj=parts[0]?.replace(/\|\s*$/,'').trim();const conf=parts[1]?.trim();const confLevel=conf?.split(/[\s—-]/)[0]?.toLowerCase();const confColor=confLevel==='high'?'#22c55e':confLevel==='medium'?'#f59e0b':'#ef4444';const confBg=confLevel==='high'?'#052e16':confLevel==='medium'?'#2a1a00':'#2a0a0a';const confBd=confLevel==='high'?'#166534':confLevel==='medium'?'#92400e':'#991b1b';return<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>{conf&&<div style={{display:"flex",alignItems:"center",gap:8}}><span className="badge" style={{background:confBg,color:confColor,border:`1px solid ${confBd}`,fontSize:10}}>Confidence: {confLevel?.toUpperCase()}</span><span style={{fontSize:10,color:"#4b5563"}}>{conf.replace(/^(high|medium|low)[\s—-]*/i,'')}</span></div>}{adj&&adj!=='No adjustments'&&<div style={{fontSize:11,color:"#374151"}}>Adjustments: {adj}</div>}</div>})()}
-    <div className="card" style={{overflow:"hidden"}}><button onClick={()=>setStx(!stx)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",background:"transparent",border:"none",cursor:"pointer",color:"var(--t1)"}}><span className="section-head" style={{marginBottom:0}}>📝 Transcript</span><span style={{fontSize:12,color:"#4b5563",fontFamily:"var(--m)"}}>{stx?"▼":"▶"}</span></button>{stx&&<div style={{maxHeight:500,overflowY:"auto",padding:"16px 20px",borderTop:"1px solid #111520"}}>{!lines.length&&<div style={{color:"#374151",textAlign:"center",padding:20}}>No transcript</div>}{lines.map((line,i)=>{const m=line.match(/^\[([^\]]*)\]\s*([^:]+):\s*(.*)/);if(!m)return<div key={i} style={{fontSize:12,color:"#64748b",lineHeight:1.8}}>{line}</div>;const[,ts,sp,tx]=m;const isAg=TEAM_NAMES.has(sp.toLowerCase().trim());return<div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:"1px solid #0a0e14"}}><span style={{fontSize:10,color:"#2a3040",fontFamily:"var(--m)",minWidth:42}}>{ts}</span><div><span style={{fontSize:11,fontWeight:700,color:isAg?"#60a5fa":"#34d399",marginRight:6}}>{sp.trim()}</span><span style={{fontSize:12,color:"#94a3b8"}}>{tx}</span></div></div>})}</div>}</div>
+    <div className="card" style={{overflow:"hidden"}}><button onClick={()=>setStx(!stx)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",background:"transparent",border:"none",cursor:"pointer",color:"var(--t1)"}}><span className="section-head" style={{marginBottom:0}}>📝 Transcript</span><span style={{fontSize:12,color:"#4b5563",fontFamily:"var(--m)"}}>{stx?"▼":"▶"}</span></button>{stx&&<div style={{maxHeight:500,overflowY:"auto",padding:"16px 20px",borderTop:"1px solid #2a3140"}}>{!lines.length&&<div style={{color:"#374151",textAlign:"center",padding:20}}>No transcript</div>}{lines.map((line,i)=>{const m=line.match(/^\[([^\]]*)\]\s*([^:]+):\s*(.*)/);if(!m)return<div key={i} style={{fontSize:12,color:"#64748b",lineHeight:1.8}}>{line}</div>;const[,ts,sp,tx]=m;const isAg=TEAM_NAMES.has(sp.toLowerCase().trim());return<div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:"1px solid #1a1f2b"}}><span style={{fontSize:10,color:"#2a3040",fontFamily:"var(--m)",minWidth:42}}>{ts}</span><div><span style={{fontSize:11,fontWeight:700,color:isAg?"#60a5fa":"#34d399",marginRight:6}}>{sp.trim()}</span><span style={{fontSize:12,color:"#94a3b8"}}>{tx}</span></div></div>})}</div>}</div>
     {ed&&<EditModal call={c} onClose={()=>setEd(false)} onSave={()=>{setEd(false);reload()}}/>}
   </div>}
 
@@ -134,7 +152,7 @@ function RecordsPage(){
   const bd=data.breakdown||[];
   return<div className="flex-col gap-24">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
-      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Records</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>Voicemails, reschedules, follow-ups, and other non-scored calls — {data.total} total</p></div>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Non-Sales Calls</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>Voicemails, reschedules, follow-ups, and other non-scored calls — {data.total} total</p></div>
       <div className="flex-col gap-8">
         <DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/>
         <div style={{display:"flex",gap:8}}>
@@ -149,7 +167,7 @@ function RecordsPage(){
     </div>
     {/* Records list */}
     <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:600,overflowY:"auto"}}>
-      {data.records.map(r=><div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid #060a10"}}>
+      {data.records.map(r=><div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid #141925"}}>
         <span style={{fontSize:16,width:28,textAlign:"center"}}>{RECORD_LABELS[r.status]?.split(' ')[0]||"?"}</span>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name||"Unknown"} → {r.client_name||"Unknown"}</div>
@@ -172,7 +190,7 @@ function AnalyticsPage(){const[p,sP]=useState("week");const[f,sF]=useState('');c
     <div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div></div>
     {trends?.trends?.length>1&&<div className="card" style={{padding:24}}><div className="section-head">30-Day Trend</div><div style={{display:"flex",alignItems:"flex-end",gap:3,height:120}}>{trends.trends.map((tt,i)=>{const h=tt.scored?(tt.scored/mx)*100:2;return<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}><span style={{fontSize:9,color:sClr(tt.avg_score),fontFamily:"var(--m)",fontWeight:700}}>{tt.avg_score||""}</span><div style={{width:"100%",height:h,background:tt.avg_score>=8?"#22c55e":tt.avg_score>=6?"#f59e0b":"#ef4444",borderRadius:3,opacity:tt.scored?1:.2}} title={`${tt.period_date}: ${tt.scored} calls, avg ${tt.avg_score}`}/>{i%5===0&&<span style={{fontSize:8,color:"#2a3040",transform:"rotate(-45deg)",whiteSpace:"nowrap"}}>{tt.period_date?.slice(5)}</span>}</div>})}</div></div>}
     {dist?.distribution?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Score Distribution</div><div style={{display:"flex",alignItems:"flex-end",gap:8,height:100}}>{[0,1,2,3,4,5,6,7,8,9,10].map(b=>{const d=dist.distribution.find(x=>Number(x.score_bucket)===b);const ct=d?Number(d.count):0;const mxx=Math.max(...dist.distribution.map(x=>Number(x.count)),1);return<div key={b} style={{flex:1,textAlign:"center"}}><div style={{fontSize:9,color:"#4b5563",fontFamily:"var(--m)",marginBottom:4}}>{ct||""}</div><div style={{height:`${ct?(ct/mxx)*80:2}px`,background:sClr(b),borderRadius:3}}/><div style={{fontSize:10,color:"#374151",marginTop:4,fontFamily:"var(--m)"}}>{b}</div></div>})}</div></div>}
-    {data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Comparison</div><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Rep","Role","Calls","Avg","Dur","Ag%","Flag"].map(h=><th key={h} style={{textAlign:"left",padding:"8px 10px",fontSize:10,color:"#2a3040",fontWeight:700,borderBottom:"1px solid #111520",fontFamily:"var(--m)"}}>{h}</th>)}</tr></thead><tbody>{data.repStats.map(r=><tr key={r.rep_name}><td style={{padding:10,fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:RC[r.rep_name],marginRight:8}}/>{r.rep_name}</td><td style={{padding:10,color:"#4b5563"}}>{r.role}</td><td style={{padding:10,fontFamily:"var(--m)",color:"#4b5563"}}>{r.call_count}</td><td style={{padding:10,fontWeight:800,color:sClr(r.avg_score),fontFamily:"var(--m)"}}>{r.avg_score}</td><td style={{padding:10,fontFamily:"var(--m)",color:"#4b5563"}}>{fmtD(r.avg_duration)}</td><td style={{padding:10,fontFamily:"var(--m)",color:r.avg_agent_talk>70?"#ef4444":"#4b5563"}}>{r.avg_agent_talk?r.avg_agent_talk+"%":"—"}</td><td style={{padding:10,color:"#f59e0b",fontFamily:"var(--m)"}}>{r.flagged_count||0}</td></tr>)}</tbody></table></div></div>}
+    {data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Comparison</div><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Rep","Role","Calls","Avg","Dur","Ag%","Flag"].map(h=><th key={h} style={{textAlign:"left",padding:"8px 10px",fontSize:10,color:"#2a3040",fontWeight:700,borderBottom:"1px solid #2a3140",fontFamily:"var(--m)"}}>{h}</th>)}</tr></thead><tbody>{data.repStats.map(r=><tr key={r.rep_name}><td style={{padding:10,fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:RC[r.rep_name],marginRight:8}}/>{r.rep_name}</td><td style={{padding:10,color:"#4b5563"}}>{r.role}</td><td style={{padding:10,fontFamily:"var(--m)",color:"#4b5563"}}>{r.call_count}</td><td style={{padding:10,fontWeight:800,color:sClr(r.avg_score),fontFamily:"var(--m)"}}>{r.avg_score}</td><td style={{padding:10,fontFamily:"var(--m)",color:"#4b5563"}}>{fmtD(r.avg_duration)}</td><td style={{padding:10,fontFamily:"var(--m)",color:r.avg_agent_talk>70?"#ef4444":"#4b5563"}}>{r.avg_agent_talk?r.avg_agent_talk+"%":"—"}</td><td style={{padding:10,color:"#f59e0b",fontFamily:"var(--m)"}}>{r.flagged_count||0}</td></tr>)}</tbody></table></div></div>}
     {data.categoryAvgs&&Object.keys(data.categoryAvgs).length>0&&<div className="card" style={{padding:24}}><div className="section-head">Category Averages by Rep</div>{Object.entries(data.categoryAvgs).map(([rep,cats])=><div key={rep} style={{marginBottom:20}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9",marginBottom:8}}><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:RC[rep],marginRight:8}}/>{rep}</div>{CATS.map(cat=><div key={cat} style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}><span style={{fontSize:10,color:"#4b5563",width:90}}>{CL[cat]}</span><div style={{flex:1}}><MiniBar value={cats[cat]}/></div></div>)}</div>)}</div>}
   </div>}
 
@@ -186,7 +204,7 @@ function QueuePage(){const{data,reload}=useApi("/queue/status");const{data:error
     <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))"}}>
       {(data.queue||[]).map(qq=>{const[bg,fg,bd]=stClr(qq.status);return<div key={qq.status} style={{background:bg,border:`1px solid ${bd}`,borderRadius:10,padding:"14px 12px",textAlign:"center"}}><div style={{fontSize:22,fontWeight:900,color:fg,fontFamily:"var(--m)"}}>{Number(qq.count)}</div><div style={{fontSize:9,color:fg,opacity:.7,fontFamily:"var(--m)"}}>{qq.status.replace(/_/g," ")}</div></div>})}
     </div>
-    {errors?.calls?.length>0&&<div className="card" style={{overflow:"hidden"}}><div style={{padding:"14px 20px",borderBottom:"1px solid #111520"}}><span className="section-head" style={{marginBottom:0}}>Errors ({errors.calls.length})</span></div><div style={{maxHeight:300,overflowY:"auto"}}>{errors.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 20px",borderBottom:"1px solid #060a10"}}><Badge status={c.status}/><span style={{fontSize:12,fontWeight:600,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name||"?"}</span><span style={{flex:1,fontSize:10,color:"#ef4444",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.error?.slice(0,80)}</span></div>)}</div></div>}
+    {errors?.calls?.length>0&&<div className="card" style={{overflow:"hidden"}}><div style={{padding:"14px 20px",borderBottom:"1px solid #2a3140"}}><span className="section-head" style={{marginBottom:0}}>Errors ({errors.calls.length})</span></div><div style={{maxHeight:300,overflowY:"auto"}}>{errors.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 20px",borderBottom:"1px solid #141925"}}><Badge status={c.status}/><span style={{fontSize:12,fontWeight:600,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name||"?"}</span><span style={{flex:1,fontSize:10,color:"#ef4444",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.error?.slice(0,80)}</span></div>)}</div></div>}
   </div>}
 
 // ── Health (detailed) ───────────────────────────────────────
@@ -209,39 +227,393 @@ function HealthPage(){const{data,reload}=useApi("/health");const[rt,setRt]=useSt
       <div className="card stat-card"><div className="stat-label"><span>💰</span> Total Cost</div><div className="stat-value" style={{fontSize:18,color:"#f59e0b"}}>${Number(data.totalCost||0).toFixed(2)}</div></div>
     </div>
     {/* Daily Processing Stats */}
-    {data.dailyStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Daily Processing (Last 7 Days)</div><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Date","API Calls","Cost"].map(h=><th key={h} style={{textAlign:"left",padding:"8px 10px",fontSize:10,color:"#2a3040",fontWeight:700,borderBottom:"1px solid #111520",fontFamily:"var(--m)"}}>{h}</th>)}</tr></thead><tbody>{data.dailyStats.map(d=><tr key={d.date_key}><td style={{padding:10,fontSize:12,color:"#c9d1d9",fontFamily:"var(--m)"}}>{d.date_key}</td><td style={{padding:10,fontSize:12,color:"#60a5fa",fontFamily:"var(--m)"}}>{Number(d.full_qc_used)}</td><td style={{padding:10,fontSize:12,color:"#f59e0b",fontFamily:"var(--m)"}}>${Number(d.est_cost_usd).toFixed(4)}</td></tr>)}</tbody></table></div>}
+    {data.dailyStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Daily Processing (Last 7 Days)</div><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Date","API Calls","Cost"].map(h=><th key={h} style={{textAlign:"left",padding:"8px 10px",fontSize:10,color:"#2a3040",fontWeight:700,borderBottom:"1px solid #2a3140",fontFamily:"var(--m)"}}>{h}</th>)}</tr></thead><tbody>{data.dailyStats.map(d=><tr key={d.date_key}><td style={{padding:10,fontSize:12,color:"#c9d1d9",fontFamily:"var(--m)"}}>{d.date_key}</td><td style={{padding:10,fontSize:12,color:"#60a5fa",fontFamily:"var(--m)"}}>{Number(d.full_qc_used)}</td><td style={{padding:10,fontSize:12,color:"#f59e0b",fontFamily:"var(--m)"}}>${Number(d.est_cost_usd).toFixed(4)}</td></tr>)}</tbody></table></div>}
     {/* Recent Errors */}
     {data.recentErrors?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Recent Errors</div>{data.recentErrors.map(e=><div key={e.id} style={{padding:"12px 16px",background:"#1a0a0a",borderRadius:8,border:"1px solid #991b1b",marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,fontWeight:700,color:"#fca5a5"}}>{e.rep_name} → {e.client_name||"?"}</span><span style={{fontSize:10,color:"#2a3040"}}>{fmt(e.received_at)}</span></div><div style={{fontSize:11,color:"#ef4444",wordBreak:"break-all"}}>{e.error}</div></div>)}</div>}
     {/* Webhook Health Monitor */}
-    {data.webhookHealth?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Webhook Sources</div>{data.webhookHealth.map(wh=>{const hrs=wh.last_received?Math.round((Date.now()-new Date(wh.last_received+'Z').getTime())/(1000*60*60)):null;const stale=hrs!==null&&hrs>24;return<div key={wh.base_source} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#060a10",borderRadius:10,border:`1px solid ${stale?"#991b1b":"#111520"}`,marginBottom:8}}><div style={{width:10,height:10,borderRadius:"50%",background:stale?"#ef4444":"#22c55e",boxShadow:`0 0 8px ${stale?"#ef444455":"#22c55e55"}`}}/><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{wh.base_source}</div><div style={{fontSize:11,color:"#374151"}}>Last received: {wh.last_received?fmtF(wh.last_received):'Never'}{hrs!==null&&<span style={{color:stale?"#ef4444":"#4b5563"}}> ({hrs}h ago)</span>}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:800,color:"#60a5fa",fontFamily:"var(--m)"}}>{Number(wh.total_received)}</div><div style={{fontSize:9,color:"#374151"}}>total</div></div></div>})}</div>}
+    {data.webhookHealth?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Webhook Sources</div>{data.webhookHealth.map(wh=>{const hrs=wh.last_received?Math.round((Date.now()-new Date(wh.last_received+'Z').getTime())/(1000*60*60)):null;const stale=hrs!==null&&hrs>24;return<div key={wh.base_source} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#141925",borderRadius:10,border:`1px solid ${stale?"#991b1b":"#2a3140"}`,marginBottom:8}}><div style={{width:10,height:10,borderRadius:"50%",background:stale?"#ef4444":"#22c55e",boxShadow:`0 0 8px ${stale?"#ef444455":"#22c55e55"}`}}/><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{wh.base_source}</div><div style={{fontSize:11,color:"#374151"}}>Last received: {wh.last_received?fmtF(wh.last_received):'Never'}{hrs!==null&&<span style={{color:stale?"#ef4444":"#4b5563"}}> ({hrs}h ago)</span>}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:800,color:"#60a5fa",fontFamily:"var(--m)"}}>{Number(wh.total_received)}</div><div style={{fontSize:9,color:"#374151"}}>total</div></div></div>})}</div>}
     {data.webhookAlerts?.length>0&&<div className="card" style={{padding:20,background:"#1a0a0a",borderColor:"#991b1b"}}><div className="section-head" style={{color:"#ef4444"}}>⚠ Webhook Alerts</div>{data.webhookAlerts.map(a=><div key={a.source} style={{fontSize:12,color:"#fca5a5",marginBottom:6}}><b>{a.source}</b> — no webhooks received in {a.hoursSince} hours. Last: {fmtF(a.lastReceived)}. Check webhook configuration.</div>)}</div>}
+    {/* Per-Rep Webhook Health */}
+    {data.repHealth?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Webhook Health</div><div style={{fontSize:11,color:"#374151",marginBottom:14,marginTop:-4}}>When each rep's last call was pulled in. A rep going quiet usually means their webhook stopped.</div>{data.repHealth.map(rh=>{const sc={active:"#22c55e",quiet:"#f59e0b",stale:"#ef4444",none:"#4b5563"}[rh.status]||"#4b5563";const lbl={active:"Active",quiet:"Quiet",stale:"Stale",none:"No calls"}[rh.status]||"—";return<div key={rh.rep_name} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#141925",borderRadius:10,border:`1px solid ${rh.status==='stale'?"#991b1b":rh.status==='quiet'?"#92400e":"#2a3140"}`,marginBottom:8}}><div style={{width:10,height:10,borderRadius:"50%",background:sc,boxShadow:`0 0 8px ${sc}55`}}/><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{rh.rep_name} <span style={{color:"#374151",fontWeight:500,fontSize:11}}>· {rh.role}</span></div><div style={{fontSize:11,color:"#374151"}}>Last call: {rh.last_call?fmtF(rh.last_call):'Never'}{rh.hours_since!=null&&<span style={{color:rh.status==='active'?"#4b5563":sc}}> ({rh.hours_since}h ago)</span>}</div></div><div style={{textAlign:"right"}}><div style={{display:"flex",gap:12}}><div><div style={{fontSize:14,fontWeight:800,color:"#60a5fa",fontFamily:"var(--m)"}}>{rh.calls_24h}</div><div style={{fontSize:9,color:"#374151"}}>24h</div></div><div><div style={{fontSize:14,fontWeight:800,color:"#94a3b8",fontFamily:"var(--m)"}}>{rh.calls_7d}</div><div style={{fontSize:9,color:"#374151"}}>7d</div></div></div></div><span className="badge" style={{background:sc+"22",color:sc,border:`1px solid ${sc}55`,fontSize:9,marginLeft:8}}>{lbl}</span></div>})}</div>}
+    {data.repAlerts?.length>0&&<div className="card" style={{padding:20,background:"#1a1400",borderColor:"#92400e"}}><div className="section-head" style={{color:"#f59e0b"}}>⚠ Reps Gone Quiet</div>{data.repAlerts.map(a=><div key={a.rep} style={{fontSize:12,color:"#fcd34d",marginBottom:6}}><b>{a.rep}</b> ({a.role}) — no calls in {a.hoursSince}h. {a.status==='stale'?'Likely a webhook issue.':'Worth a glance.'}</div>)}</div>}
+    {/* Live System Metrics */}
+    <div className="card" style={{padding:24}}><div className="section-head">Live System Metrics</div><div className="grid grid-stats">
+      <div className="card stat-card"><div className="stat-label"><span>🗄</span> DB Latency</div><div className="stat-value" style={{fontSize:20,color:data.dbLatencyMs<300?"#22c55e":data.dbLatencyMs<800?"#f59e0b":"#ef4444"}}>{data.dbLatencyMs!=null?data.dbLatencyMs+"ms":"—"}</div><div className="stat-sub">Supabase query time</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>✓</span> Last Scored</div><div className="stat-value" style={{fontSize:14}}>{data.lastScoredAt?fmtF(data.lastScoredAt):"—"}</div><div className="stat-sub">most recent score</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>💵</span> Today's Cost</div><div className="stat-value" style={{fontSize:18,color:"#f59e0b"}}>${Number(data.today?.cost||0).toFixed(3)}</div><div className="stat-sub">{data.today?.budget>0?`of $${data.today.budget} budget`:`${data.today?.scored||0} scored today`}</div></div>
+      <div className="card stat-card"><div className="stat-label"><span>⚙</span> Engine</div><div className="stat-value" style={{fontSize:16,color:"#818cf8"}}>{data.engine?.toUpperCase()}</div><div className="stat-sub">scoring model</div></div>
+    </div></div>
     {/* Safeguards */}
     <div className="card" style={{padding:24}}><div className="section-head">Safeguards</div>{[
       {n:"Call Classification",d:"Reschedules, follow-ups, and wrong numbers auto-detected and skipped",i:"🏷"},
       {n:"Voicemail Detection",d:"6 methods: Aloware flags, short+outbound, transcript phrases, single speaker",i:"📵"},
       {n:"Duplicate Prevention",d:"SHA-256 hash + Aloware call ID linking",i:"🛡"},
       {n:"Auto-Retry",d:"Failed calls retried every 2 minutes with backoff",i:"🔄"},
-      {n:"Persistent Database",d:"Turso cloud — no data loss on deploys or restarts",i:"💾"},
-    ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#060a10",borderRadius:10,border:"1px solid #111520",marginBottom:8}}><span style={{fontSize:20}}>{s.i}</span><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{s.n}</div><div style={{fontSize:11,color:"#374151"}}>{s.d}</div></div><span style={{fontSize:10,fontWeight:700,color:"#22c55e",fontFamily:"var(--m)",padding:"3px 10px",background:"#052e16",borderRadius:5,border:"1px solid #166534"}}>ACTIVE</span></div>)}</div>
+      {n:"Persistent Database",d:"Supabase Postgres — no data loss on deploys or restarts",i:"💾"},
+    ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#141925",borderRadius:10,border:"1px solid #2a3140",marginBottom:8}}><span style={{fontSize:20}}>{s.i}</span><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{s.n}</div><div style={{fontSize:11,color:"#374151"}}>{s.d}</div></div><span style={{fontSize:10,fontWeight:700,color:"#22c55e",fontFamily:"var(--m)",padding:"3px 10px",background:"#052e16",borderRadius:5,border:"1px solid #166534"}}>ACTIVE</span></div>)}</div>
   </div>}
 
 // ── Coaching ─────────────────────────────────────────────────
+function CoachingCard({c}){
+  const[open,setOpen]=useState(false);
+  const note=c.coaching_notes||"";
+  const preview=note.length>120?note.slice(0,120).trim()+"…":note;
+  return<div onClick={()=>setOpen(!open)} style={{padding:"14px 16px",background:"#141925",borderRadius:10,border:"1px solid #2a3140",marginBottom:10,cursor:"pointer"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:open?10:6}}>
+      <span style={{fontSize:12,fontWeight:700,color:"#aab4c5"}}>{c.rep_name} → {c.client_name||"?"}</span>
+      <div style={{display:"flex",alignItems:"center",gap:10}}><ScoreRing value={c.overall_score_adj} size={26} sw={2}/><span style={{fontSize:14,color:"#6b7686",transform:open?"rotate(180deg)":"none",transition:"transform .15s"}}>⌄</span></div>
+    </div>
+    <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{open?note:preview}</div>
+  </div>
+}
+
 function CoachingPage(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const{data:reps}=useApi("/reps");const[tab,setTab]=useState("team");const roleF=tab==="closers"?"&role=Closer":tab==="setters"?"&role=Setter":tab.startsWith("rep:")?`&rep=${tab.split(":")[1]}`:"";const dq=buildDQ(p,f,t);const{data}=useApi(`/calls?status=SCORED&limit=100${roleF}${dq}`,[p,f,t,tab]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const calls=data.calls||[];const av=arr=>{const ff=arr.filter(v=>v!=null&&isFinite(v));return ff.length?+(ff.reduce((a,b)=>a+b,0)/ff.length).toFixed(1):0};const catAvgs=Object.fromEntries(CATS.map(c=>[c,av(calls.map(x=>x.category_scores?.[c]))]));const sorted=Object.entries(catAvgs).sort((a,b)=>a[1]-b[1]);const impFreq={};calls.forEach(c=>(c.improvements||[]).forEach(i=>{impFreq[i]=(impFreq[i]||0)+1}));const topImps=Object.entries(impFreq).sort((a,b)=>b[1]-a[1]).slice(0,5);const TABS=[{id:"team",l:"Team"},{id:"closers",l:"Closers"},{id:"setters",l:"Setters"},...(reps||[]).map(r=>({id:`rep:${r.name}`,l:r.name}))];
   return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Coaching</h2><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{TABS.map(tt=><button key={tt.id} className={`tab-btn${tab===tt.id?" active":""}`} onClick={()=>setTab(tt.id)} style={tab===tt.id?{background:RC[tt.l]||"#f59e0b",borderColor:RC[tt.l]||"#f59e0b"}:{}}>{tt.l}</button>)}</div>
     <div className="grid" style={{gridTemplateColumns:"1fr 1fr 1fr"}}><div className="card stat-card"><div className="stat-label">Scored</div><div className="stat-value" style={{color:"#60a5fa"}}>{calls.length}</div></div>{sorted[0]&&sorted[0][1]>0&&<div className="card stat-card" style={{background:"#1a0a0a",borderColor:"#991b1b"}}><div style={{fontSize:10,color:"#ef4444",fontWeight:700,fontFamily:"var(--m)",marginBottom:4}}>FOCUS</div><div style={{fontSize:20,fontWeight:900,color:"#fca5a5"}}>{CL[sorted[0][0]]}</div><div style={{fontSize:12,color:"#ef4444",opacity:.7}}>Avg: {sorted[0][1]}</div></div>}{sorted.length>0&&sorted[sorted.length-1][1]>0&&<div className="card stat-card" style={{background:"#041a0e",borderColor:"#166534"}}><div style={{fontSize:10,color:"#22c55e",fontWeight:700,fontFamily:"var(--m)",marginBottom:4}}>STRONGEST</div><div style={{fontSize:20,fontWeight:900,color:"#a7f3d0"}}>{CL[sorted[sorted.length-1][0]]}</div><div style={{fontSize:12,color:"#22c55e",opacity:.7}}>Avg: {sorted[sorted.length-1][1]}</div></div>}</div>
     {calls.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Category Averages</div>{CATS.map(cat=><div key={cat} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontSize:11,color:"#64748b",fontWeight:600,width:100}}>{CL[cat]}</span><div style={{flex:1}}><MiniBar value={catAvgs[cat]}/></div></div>)}</div>}
-    {topImps.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Recurring Improvements</div>{topImps.map(([imp,ct],i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#060a10",borderRadius:8,border:"1px solid #111520",marginBottom:8}}><span style={{fontSize:18,fontWeight:900,color:"#ef4444",fontFamily:"var(--m)",width:28,textAlign:"center",opacity:.5}}>{ct}×</span><span style={{fontSize:13,color:"#94a3b8"}}>{imp}</span></div>)}</div>}
-    {calls.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Coaching Notes</div>{calls.slice(0,8).filter(c=>c.coaching_notes).map(c=><div key={c.id} style={{padding:"14px 16px",background:"#060a10",borderRadius:10,border:"1px solid #111520",marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:"#64748b"}}>{c.rep_name} → {c.client_name||"?"}</span><ScoreRing value={c.overall_score_adj} size={26} sw={2}/></div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{c.coaching_notes}</div></div>)}</div>}
+    {topImps.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Recurring Improvements</div>{topImps.map(([imp,ct],i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#141925",borderRadius:8,border:"1px solid #2a3140",marginBottom:8}}><span style={{fontSize:18,fontWeight:900,color:"#ef4444",fontFamily:"var(--m)",width:28,textAlign:"center",opacity:.5}}>{ct}×</span><span style={{fontSize:13,color:"#94a3b8"}}>{imp}</span></div>)}</div>}
+    {calls.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Coaching Notes</div><div style={{fontSize:11,color:"#64748b",marginTop:-8,marginBottom:14}}>Tap any call to read the full coaching note.</div>{calls.slice(0,12).filter(c=>c.coaching_notes).map(c=><CoachingCard key={c.id} c={c}/>)}</div>}
   </div>}
 
-function ExportPage(){const[sc,setSc]=useState("team");const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const{data:reps}=useApi("/reps");const dq=buildDQ(p,f,t);const rQ=sc==="closers"?"&role=Closer":sc==="setters"?"&role=Setter":sc.startsWith("rep:")?`&rep=${sc.split(":")[1]}`:"";const{data}=useApi(`/analytics?_=1${dq}${rQ}`,[p,f,t,sc]);const{data:cd}=useApi(`/calls?status=SCORED&limit=500${dq}${rQ}`,[p,f,t,sc]);
-  function gen(){if(!data||!cd)return;const s=data.stats||{};const lines=["BNB TURNKEY QC REPORT","The Rise Collective","","Scope: "+sc,"Period: "+(f?`${f} to ${t||"now"}`:(p||"all")),"Generated: "+new Date().toLocaleString(),"","Scored: "+(s.scored||0),"Avg Score: "+(s.avg_score||"—")+"/10","Flagged: "+(s.flagged||0),""];if(data.repStats?.length){lines.push("── REPS ──");data.repStats.forEach(r=>lines.push(`${r.rep_name} (${r.role}): ${r.avg_score}/10 | ${r.call_count} calls`));lines.push("")}if(cd?.calls?.length){lines.push("── CALLS ──");cd.calls.forEach(c=>{lines.push(`\n${c.rep_name} → ${c.client_name||"?"} | ${fmtF(c.received_at)} | ${c.overall_score_adj??"-"}/10 | ${fmtD(c.call_duration_sec)}`);if(c.quick_summary)lines.push("  "+c.quick_summary);if(c.strengths?.length)lines.push("  ✦ "+c.strengths.join("; "));if(c.improvements?.length)lines.push("  △ "+c.improvements.join("; "))})}const b=new Blob([lines.join("\n")],{type:"text/plain"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`QC_Report_${sc}_${new Date().toISOString().slice(0,10)}.txt`;a.click()}
-  return<div className="flex-col gap-24"><h2 style={{fontSize:24,fontWeight:900}}>Export</h2><div className="card" style={{padding:24}}><div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:16}}><div><label style={{fontSize:11,color:"#4b5563",display:"block",marginBottom:4}}>Scope</label><select value={sc} onChange={e=>setSc(e.target.value)}><option value="team">Team</option><option value="closers">Closers</option><option value="setters">Setters</option>{(reps||[]).map(r=><option key={r.id} value={`rep:${r.name}`}>{r.name}</option>)}</select></div></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/><button className="btn btn-primary" onClick={gen} style={{marginTop:16,padding:"12px 32px"}}>📥 Download</button></div></div>}
+function ExportPage(){
+  const[mode,setMode]=useState("digest");
+  const[days,setDays]=useState(7);
+  const[rep,setRep]=useState("");
+  const{data:reps}=useApi("/reps");
+  const[report,setReport]=useState(null);
+  const[loading,setLoading]=useState(false);
+  async function load(){setLoading(true);const qs=`?days=${days}`+(rep?`&rep=${encodeURIComponent(rep)}`:"");const r=await fetch(`${API}/report${qs}`).then(r=>r.json()).catch(()=>null);setReport(r);setLoading(false);}
+  React.useEffect(()=>{load()},[days,rep]);
+  const arrow=d=>d==null?"":d>0?`▲ +${d}`:d<0?`▼ ${d}`:"– 0";
+  const aClr=d=>d==null?"#64748b":d>0?"#22c55e":d<0?"#ef4444":"#64748b";
+  const maxT=Math.max(1,...((report?.trend)||[]).map(t=>Number(t.avg_adj)||0));
+  return<div className="flex-col gap-20">
+    <div className="no-print" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Reports</h2><p style={{fontSize:12,color:"#64748b",marginTop:4}}>Per-rep report cards, weekly digest, and trends — print any view to PDF.</p></div>
+      <button className="btn btn-primary" onClick={()=>window.print()}>⎙ Print / Save PDF</button>
+    </div>
+    <div className="no-print card" style={{padding:18,display:"flex",gap:18,flexWrap:"wrap",alignItems:"center"}}>
+      <div style={{display:"flex",gap:6}}>{[["digest","Weekly Digest"],["cards","Rep Cards"],["trends","Trends"]].map(([id,l])=><button key={id} onClick={()=>setMode(id)} className="btn" style={{padding:"6px 14px",fontSize:12,background:mode===id?"#1e1b4b":"",borderColor:mode===id?"#4338ca":"",color:mode===id?"#c7d2fe":""}}>{l}</button>)}</div>
+      <div style={{display:"flex",gap:6}}>{[[7,"7d"],[14,"14d"],[30,"30d"]].map(([d,l])=><button key={d} onClick={()=>setDays(d)} className="btn" style={{padding:"6px 12px",fontSize:12,background:days===d?"#1e1b4b":"",borderColor:days===d?"#4338ca":"",color:days===d?"#c7d2fe":""}}>{l}</button>)}</div>
+      <select value={rep} onChange={e=>setRep(e.target.value)} style={{padding:"7px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="">All reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
+    </div>
+    {loading&&<div style={{padding:40,textAlign:"center",color:"#64748b"}}>Building report…</div>}
+    {report&&<div className="report-sheet flex-col gap-16">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",paddingBottom:14,borderBottom:"2px solid #2a3140"}}><div><div style={{fontSize:20,fontWeight:900,color:"#e6edf3"}}>BNB Turnkey — QC Report</div><div style={{fontSize:12,color:"#64748b",marginTop:2}}>The Rise Collective · last {report.period_days} days{report.rep?` · ${report.rep}`:""} · generated {new Date(report.generated).toLocaleDateString()}</div></div></div>
 
-function AboutPage(){return<div className="flex-col gap-24" style={{maxWidth:800}}><h2 style={{fontSize:24,fontWeight:900}}>About / SOP</h2><div className="card" style={{padding:24}}><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.8}}>BNB Turnkey QC scores every sales call against a custom rubric. Calls are classified first (sales call vs reschedule/voicemail/follow-up), then only genuine sales calls get full rubric scoring.</p></div><div className="card" style={{padding:24}}><div className="section-head">Team</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{[{n:"Matt",r:"Closer",s:"Fathom"},{n:"Kevin",r:"Closer",s:"Fathom"},{n:"Andrew",r:"Setter",s:"Aloware"},{n:"Steven",r:"Setter",s:"Aloware"},{n:"Anurag",r:"Setter",s:"Aloware"}].map(x=><div key={x.n} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#060a10",borderRadius:10,border:"1px solid #111520"}}><div style={{width:36,height:36,borderRadius:10,background:RC[x.n],display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{x.n[0]}</div><div><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{x.n}</div><div style={{fontSize:11,color:"#374151"}}>{x.r} · {x.s}</div></div></div>)}</div></div></div>}
+      {mode==="digest"&&<div className="flex-col gap-16">
+        <div className="grid grid-stats">
+          <div className="card stat-card"><div className="stat-label">Team Avg</div><div className="stat-value" style={{color:sClr(report.team?.avg_adj)}}>{report.team?.avg_adj??"—"}</div><div className="stat-sub">adjusted /10</div></div>
+          <div className="card stat-card"><div className="stat-label">Scored</div><div className="stat-value">{report.team?.scored||0}</div><div className="stat-sub">calls</div></div>
+          <div className="card stat-card"><div className="stat-label">Voicemails</div><div className="stat-value" style={{color:"#64748b"}}>{report.team?.voicemails||0}</div><div className="stat-sub">skipped</div></div>
+          <div className="card stat-card"><div className="stat-label">Reps</div><div className="stat-value">{report.reps?.length||0}</div><div className="stat-sub">active</div></div>
+        </div>
+        <div className="card" style={{padding:20}}><div className="section-head">Rep Leaderboard</div>{(report.reps||[]).map(r=><div key={r.rep_name} style={{display:"flex",alignItems:"center",gap:14,padding:"10px 0",borderBottom:"1px solid #2a3140"}}>
+          <div style={{width:32,height:32,borderRadius:9,background:RC[r.rep_name]||"#4338ca",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div>
+          <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name} <span style={{color:"#55606f",fontWeight:500,fontSize:11}}>· {r.role} · {r.scored} scored</span></div></div>
+          <span style={{fontSize:11,fontWeight:700,color:aClr(r.delta),fontFamily:"var(--m)"}}>{arrow(r.delta)}</span>
+          <span style={{fontSize:18,fontWeight:800,color:sClr(r.avg_adj),fontFamily:"var(--m)",width:42,textAlign:"right"}}>{r.avg_adj??"—"}</span>
+        </div>)}</div>
+      </div>}
 
-const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"records",icon:"📋",label:"Records",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"export",icon:"📥",label:"Export",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
+      {mode==="cards"&&<div className="flex-col gap-14">{(report.reps||[]).map(r=><div key={r.rep_name} className="card rep-card" style={{padding:22}}>
+        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
+          <div style={{width:44,height:44,borderRadius:12,background:RC[r.rep_name]||"#4338ca",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div>
+          <div style={{flex:1}}><div style={{fontSize:16,fontWeight:800,color:"#e6edf3"}}>{r.rep_name}</div><div style={{fontSize:11,color:"#64748b"}}>{r.role} · {r.scored} calls scored · {r.voicemails} voicemails</div></div>
+          <div style={{textAlign:"right"}}><div style={{fontSize:28,fontWeight:900,color:sClr(r.avg_adj),fontFamily:"var(--m)",lineHeight:1}}>{r.avg_adj??"—"}</div><div style={{fontSize:10,color:aClr(r.delta),fontWeight:700}}>{arrow(r.delta)} vs prev</div></div>
+        </div>
+        {Object.keys(r.categories||{}).length>0&&<div style={{marginBottom:14}}><div style={{fontSize:10,color:"#55606f",fontWeight:700,marginBottom:8,letterSpacing:.5}}>BY CATEGORY</div>{CATS.filter(c=>r.categories[c]!=null).map(c=><div key={c} style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}><span style={{fontSize:11,color:"#64748b",width:120}}>{CL[c]||c}</span><div style={{flex:1}}><MiniBar value={r.categories[c]}/></div></div>)}</div>}
+        {r.top_deductions?.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:10,color:"#55606f",fontWeight:700,marginBottom:6,letterSpacing:.5}}>MOST COMMON DEDUCTIONS</div>{r.top_deductions.map((d,i)=><div key={i} style={{fontSize:12,color:"#f59e0b",marginBottom:3}}>{d.count}× {d.label}</div>)}</div>}
+        {r.top_improvements?.length>0&&<div><div style={{fontSize:10,color:"#55606f",fontWeight:700,marginBottom:6,letterSpacing:.5}}>FOCUS AREAS</div>{r.top_improvements.map((m,i)=><div key={i} style={{fontSize:12,color:"#94a3b8",marginBottom:3}}>• {m.text}</div>)}</div>}
+      </div>)}</div>}
+
+      {mode==="trends"&&<div className="card" style={{padding:22}}><div className="section-head">Daily Average (adjusted)</div>
+        {(report.trend||[]).length===0&&<div style={{color:"#64748b",fontSize:13}}>No scored calls in this window.</div>}
+        <div style={{display:"flex",alignItems:"flex-end",gap:8,height:180,marginTop:10,paddingBottom:24,position:"relative"}}>
+          {(report.trend||[]).map((t,i)=>{const h=Math.round((Number(t.avg_adj)||0)/10*150);return<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",height:"100%"}}>
+            <span style={{fontSize:10,color:"#94a3b8",marginBottom:4,fontFamily:"var(--m)"}}>{t.avg_adj??""}</span>
+            <div style={{width:"100%",maxWidth:38,height:h,background:sClr(t.avg_adj),borderRadius:"5px 5px 0 0",minHeight:3}}/>
+            <span style={{fontSize:9,color:"#55606f",marginTop:6,position:"absolute",bottom:0,transform:"rotate(-40deg)",transformOrigin:"center"}}>{new Date(t.day).toLocaleDateString(undefined,{month:"numeric",day:"numeric"})}</span>
+          </div>})}
+        </div>
+        <div style={{marginTop:18,fontSize:12,color:"#64748b"}}>{report.trend?.length>1?`Each bar is one day's team average. Compare the trend direction over the last ${report.period_days} days.`:"Need a few days of data to show a trend."}</div>
+      </div>}
+    </div>}
+  </div>
+}
+function AboutPage(){return<div className="flex-col gap-24" style={{maxWidth:800}}><h2 style={{fontSize:24,fontWeight:900}}>About</h2><div className="card" style={{padding:24}}><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.8}}>This is BNB Turnkey's sales QC and training platform — a place to see how your calls measure up and get better. Every real call is scored against Sam's rubric (the 7 Beliefs, frame control, the objection-and-close framework). The <b>Trainer</b> lets you practice against an AI prospect, scored on the exact same rubric, so practice transfers directly to live calls.</p></div>
+<div className="card" style={{padding:24}}><div className="section-head">How scoring works</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.8}}>Calls are classified first (real sales call vs. voicemail / reschedule / follow-up) — only genuine sales calls get full rubric scoring. Each call gets a raw 0–10 score, then Sam's <b>deductions</b> apply (e.g. no discovery, no financial qualification, no objection handling) to produce the adjusted score that counts. Nothing is ever silently capped — every deduction is shown with its reason.</div></div>
+<div className="card" style={{padding:24}}><div className="section-head">Team</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{[{n:"Matt",r:"Closer",s:"Fathom"},{n:"Kevin",r:"Closer",s:"Fathom"},{n:"Andrew",r:"Setter",s:"Aloware"},{n:"Steven",r:"Setter",s:"Aloware"},{n:"Anurag",r:"Setter",s:"Aloware"}].map(x=><div key={x.n} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#141925",borderRadius:10,border:"1px solid #2a3140"}}><div style={{width:36,height:36,borderRadius:10,background:RC[x.n]||"#6366f1",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{x.n[0]}</div><div><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{x.n}</div><div style={{fontSize:11,color:"#374151"}}>{x.r} · {x.s}</div></div></div>)}</div></div>
+<div className="card" style={{padding:24}}><div className="section-head">Sources</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.8}}>Setter calls flow in from <b>Aloware</b>; closer calls from <b>Fathom</b>. Scoring runs on <b>Claude</b>. Data lives in <b>Supabase Postgres</b>. Check the <b>Health</b> tab for live system status and per-rep webhook health.</div></div></div>}
+
+function TrainPage() {
+  const [phase, setPhase] = React.useState("setup");        // setup | live | scored
+  const [repName, setRepName] = React.useState("");
+  const [scenarioId, setScenarioId] = React.useState("");
+  const [session, setSession] = React.useState(null);
+  const [scenario, setScenario] = React.useState(null);
+  const [messages, setMessages] = React.useState([]);
+  const [draft, setDraft] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [score, setScore] = React.useState(null);
+  const { data: scenarios } = useApi("/practice/scenarios");
+  const { data: reps } = useApi("/reps");
+  const scrollRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, busy]);
+
+  async function startSession() {
+    if (!repName || !scenarioId) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`${API}/practice/start`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rep_name: repName, scenario_id: scenarioId })
+      }).then(r => r.json());
+      setSession({ id: r.session_id });
+      setScenario(r.scenario);
+      setMessages([]);
+      setPhase("live");
+    } catch (e) { alert("Could not start: " + e.message); }
+    setBusy(false);
+  }
+
+  async function sendTurn() {
+    if (!draft.trim() || busy) return;
+    const myText = draft.trim();
+    setDraft("");
+    setMessages(m => [...m, { role: "rep", text: myText }]);
+    setBusy(true);
+    try {
+      const r = await fetch(`${API}/practice/${session.id}/message`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: myText })
+      }).then(r => r.json());
+      if (r.prospect) setMessages(m => [...m, { role: "prospect", text: r.prospect }]);
+      if (r.ended) endSession();
+    } catch (e) { alert("Error: " + e.message); }
+    setBusy(false);
+  }
+
+  async function endSession() {
+    setBusy(true);
+    try {
+      const r = await fetch(`${API}/practice/${session.id}/end`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}"
+      }).then(r => r.json());
+      const full = await fetch(`${API}/practice/${session.id}`).then(r => r.json());
+      setScore(full);
+      setPhase("scored");
+    } catch (e) { alert("Could not score: " + e.message); }
+    setBusy(false);
+  }
+
+  function reset() {
+    setPhase("setup"); setSession(null); setScenario(null);
+    setMessages([]); setScore(null); setScenarioId("");
+  }
+
+  // ─── SETUP ───
+  if (phase === "setup") {
+    return (
+      <div className="flex-col gap-24" style={{ maxWidth: 720 }}>
+        <div>
+          <h2 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>Train</h2>
+          <p style={{ fontSize: 12, color: "#374151", marginTop: 4 }}>
+            Practice against an AI prospect — scored on the same rubric as your real calls.
+          </p>
+        </div>
+        <div className="card" style={{ padding: 24 }}>
+          <div className="section-head">Who's practicing?</div>
+          <select value={repName} onChange={e => setRepName(e.target.value)}
+            style={{ width: "100%", marginBottom: 18, padding: "8px 12px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--t1)" }}>
+            <option value="">Select rep…</option>
+            {(reps || []).map(r => <option key={r.id} value={r.name}>{r.name} · {r.role}</option>)}
+          </select>
+          <div className="section-head">Pick a scenario</div>
+          <div className="flex-col gap-8">
+            {(scenarios?.scenarios || []).map(s => (
+              <div key={s.id} onClick={() => setScenarioId(s.id)}
+                style={{
+                  padding: "14px 16px", borderRadius: 10, cursor: "pointer",
+                  background: scenarioId === s.id ? "#1e1b4b" : "#060a10",
+                  border: `1px solid ${scenarioId === s.id ? "#4338ca" : "#111520"}`
+                }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#c9d1d9" }}>{s.title}</span>
+                  <span style={{ fontSize: 10, color: "#64748b" }}>{s.target_role} · Tier {s.difficulty_tier}</span>
+                </div>
+              </div>
+            ))}
+            {!scenarios?.scenarios?.length && <div style={{ color: "#374151", fontSize: 13 }}>No scenarios yet.</div>}
+          </div>
+          <button className="btn btn-primary" disabled={!repName || !scenarioId || busy}
+            onClick={startSession} style={{ marginTop: 18 }}>
+            {busy ? "Starting…" : "Start Practice Call →"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── LIVE ───
+  if (phase === "live") {
+    return (
+      <div className="flex-col gap-16" style={{ maxWidth: 760 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 900, margin: 0 }}>{scenario?.title}</h2>
+            <p style={{ fontSize: 11, color: "#374151", marginTop: 2 }}>{repName} practicing · in character</p>
+          </div>
+          <button className="btn btn-green" onClick={endSession} disabled={busy}>End & Score</button>
+        </div>
+        <div className="card" ref={scrollRef} style={{ padding: 18, height: 440, overflowY: "auto" }}>
+          {messages.length === 0 && <div style={{ color: "#374151", fontSize: 13, textAlign: "center", marginTop: 40 }}>
+            You speak first — open the call.
+          </div>}
+          {messages.map((m, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: m.role === "rep" ? "flex-end" : "flex-start", marginBottom: 10 }}>
+              <div style={{
+                maxWidth: "75%", padding: "10px 14px", borderRadius: 12, fontSize: 13, lineHeight: 1.5,
+                background: m.role === "rep" ? "#1e1b4b" : "#0d1117",
+                border: `1px solid ${m.role === "rep" ? "#4338ca" : "#1e293b"}`,
+                color: m.role === "rep" ? "#c7d2fe" : "#c9d1d9"
+              }}>
+                <div style={{ fontSize: 9, color: "#64748b", marginBottom: 3, fontWeight: 700 }}>
+                  {m.role === "rep" ? "YOU" : "PROSPECT"}
+                </div>
+                {m.text}
+              </div>
+            </div>
+          ))}
+          {busy && <div style={{ color: "#64748b", fontSize: 12, fontStyle: "italic" }}>Prospect is thinking…</div>}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input value={draft} onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && sendTurn()}
+            placeholder="Your line…" disabled={busy}
+            style={{ flex: 1, padding: "10px 14px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--t1)", fontSize: 13 }} />
+          <button className="btn btn-primary" onClick={sendTurn} disabled={busy || !draft.trim()}>Send</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── SCORED ───
+  const c = score || {};
+  const cats = c.category_scores || {};
+  return (
+    <div className="flex-col gap-20" style={{ maxWidth: 760 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h2 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>Practice Scorecard</h2>
+        <button className="btn" onClick={reset}>← New Practice</button>
+      </div>
+      <div className="card" style={{ padding: 24, display: "flex", alignItems: "center", gap: 20 }}>
+        <ScoreRing value={c.overall_score_adj} size={72} sw={4.5} />
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#c9d1d9" }}>{scenario?.title}</div>
+          <div style={{ fontSize: 11, color: "#374151", marginTop: 4 }}>
+            {repName} · scored on rubric v{c.rubric_version} · same engine as real calls
+          </div>
+        </div>
+      </div>
+      {Object.keys(cats).length > 0 && (
+        <div className="card" style={{ padding: 20 }}>
+          <div className="section-head" style={{ marginBottom: 14 }}>Categories</div>
+          {CATS.filter(cat => cats[cat] != null).map(cat => (
+            <div key={cat} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+              <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600, width: 130 }}>{CL[cat] || cat}</span>
+              <div style={{ flex: 1 }}><MiniBar value={cats[cat]} /></div>
+            </div>
+          ))}
+        </div>
+      )}
+      {c.pass_fail?.deductions?.length > 0 && (
+        <div className="card" style={{ padding: 18 }}>
+          <div className="section-head" style={{ marginBottom: 10 }}>⚠ Deductions</div>
+          {c.pass_fail.deductions.map((d, i) => (
+            <div key={i} style={{ display: "flex", gap: 10, padding: "8px 12px", marginBottom: 6, background: d.severity === "critical" ? "#1a0a0a" : "#1a1400", borderRadius: 8, border: `1px solid ${d.severity === "critical" ? "#991b1b" : "#92400e"}` }}>
+              <span style={{ fontSize: 18, fontWeight: 900, color: d.severity === "critical" ? "#ef4444" : "#f59e0b", minWidth: 36 }}>{d.points}</span>
+              <div><div style={{ fontSize: 12, fontWeight: 700, color: "#c9d1d9" }}>{d.label}</div><div style={{ fontSize: 10, color: "#64748b" }}>{d.source}</div></div>
+            </div>
+          ))}
+        </div>
+      )}
+      {c.coaching_notes && (
+        <div className="card" style={{ padding: 20 }}>
+          <div className="section-head" style={{ marginBottom: 10 }}>Coaching</div>
+          <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{c.coaching_notes}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResourcesPage(){
+  const[manuals,setManuals]=useState(null);
+  const[active,setActive]=useState(null);
+  const[content,setContent]=useState(null);
+  const[loading,setLoading]=useState(false);
+  React.useEffect(()=>{fetch(`${API}/resources`).then(r=>r.json()).then(d=>setManuals(d.manuals||[])).catch(()=>setManuals([]))},[]);
+  async function open(id){setLoading(true);setActive(id);const r=await fetch(`${API}/resources/${id}`).then(r=>r.json()).catch(()=>null);setContent(r);setLoading(false);window.scrollTo(0,0)}
+  if(active&&content){return<div className="flex-col gap-16" style={{maxWidth:820}}>
+    <button className="btn" onClick={()=>{setActive(null);setContent(null)}} style={{alignSelf:"flex-start"}}>← All manuals</button>
+    <div style={{display:"flex",alignItems:"center",gap:14}}><span style={{fontSize:32}}>{content.icon}</span><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>{content.title}</h2><p style={{fontSize:12,color:"#64748b",marginTop:2}}>{content.subtitle}</p></div></div>
+    <div className="card manual-body" style={{padding:"28px 32px"}} dangerouslySetInnerHTML={{__html:content.html}}/>
+  </div>}
+  return<div className="flex-col gap-20" style={{maxWidth:820}}>
+    <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Resources</h2><p style={{fontSize:12,color:"#64748b",marginTop:4}}>The training manuals behind the rubric. Read these to understand what great looks like — then see it reflected in your scores.</p></div>
+    {!manuals&&<div style={{padding:40,textAlign:"center",color:"#374151"}}>Loading…</div>}
+    <div className="grid" style={{gridTemplateColumns:"1fr 1fr",gap:14}}>
+      {(manuals||[]).map(m=><div key={m.id} onClick={()=>open(m.id)} className="card" style={{padding:22,cursor:"pointer",transition:"all .15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#4338ca"} onMouseLeave={e=>e.currentTarget.style.borderColor=""}>
+        <div style={{fontSize:30,marginBottom:10}}>{m.icon}</div>
+        <div style={{fontSize:15,fontWeight:800,color:"#c9d1d9",marginBottom:4}}>{m.title}</div>
+        <div style={{fontSize:12,color:"#64748b",lineHeight:1.5}}>{m.subtitle}</div>
+        <div style={{marginTop:12}}><span className="badge" style={{background:"#1e1b4b",color:"#a5b4fc",border:"1px solid #4338ca55",fontSize:9}}>{CL[m.category]||m.category}</span></div>
+      </div>)}
+    </div>
+    {loading&&<div style={{padding:20,textAlign:"center",color:"#374151"}}>Opening…</div>}
+  </div>
+}
+
+const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
+
+function RubricViewer(){
+  const[rb,setRb]=useState(null);const[role,setRole]=useState("Closer");
+  React.useEffect(()=>{fetch(`${API}/rubric`).then(r=>r.json()).then(setRb).catch(()=>setRb(null))},[]);
+  if(!rb)return null;
+  const items=(rb.items||[]).filter(i=>i.role===role);
+  const beliefs=[["Pain","A real problem or gap"],["Doubt","What's held them back from doing it themselves"],["Desire","The goals they want to achieve"],["Cost","What it's cost them in time/money"],["Money","How much they'll invest, and how"],["Support","Spouse / partner / investors involved"],["Trust","Why us vs. other companies"]];
+  return<div className="flex-col gap-16">
+    <div className="card" style={{padding:24}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div className="section-head" style={{margin:0}}>The Rubric · v{rb.version}</div>
+        <div style={{display:"flex",gap:6}}>{["Closer","Setter"].map(r=><button key={r} onClick={()=>setRole(r)} className="btn" style={{padding:"5px 14px",fontSize:12,background:role===r?"#1e1b4b":"",borderColor:role===r?"#4338ca":"",color:role===r?"#c7d2fe":""}}>{r}</button>)}</div>
+      </div>
+      <p style={{fontSize:12,color:"#64748b",marginTop:-8,marginBottom:18}}>This is exactly what the bot scores every {role.toLowerCase()} call against. Weights sum to 100. Read the Resources tab for the full how-to behind each.</p>
+      {items.map(it=><div key={it.category} style={{padding:"16px 18px",background:"#141925",borderRadius:12,border:"1px solid #2a3140",marginBottom:10}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <span style={{fontSize:15,fontWeight:800,color:"#c9d1d9"}}>{CL[it.category]||it.category}</span>
+          <span className="badge" style={{background:"#1e1b4b",color:"#a5b4fc",border:"1px solid #4338ca55"}}>{it.weight}%</span>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div style={{padding:"10px 12px",background:"#0f1a14",borderRadius:8,border:"1px solid #14331f"}}><div style={{fontSize:9,fontWeight:700,color:"#22c55e",marginBottom:4,letterSpacing:.5}}>✓ STRONG (9–10)</div><div style={{fontSize:12,color:"#94a3b8",lineHeight:1.55}}>{it.score_10||it.good}</div></div>
+          <div style={{padding:"10px 12px",background:"#140a0a",borderRadius:8,border:"1px solid #331414"}}><div style={{fontSize:9,fontWeight:700,color:"#ef4444",marginBottom:4,letterSpacing:.5}}>✗ WEAK (1–3)</div><div style={{fontSize:12,color:"#94a3b8",lineHeight:1.55}}>{it.score_1||it.bad}</div></div>
+        </div>
+      </div>)}
+    </div>
+    <div className="card" style={{padding:24}}>
+      <div className="section-head">The 7 Beliefs</div>
+      <p style={{fontSize:12,color:"#64748b",marginTop:-8,marginBottom:16}}>A 10/10 call uncovers all seven. The bot tracks which were covered on every call.</p>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        {beliefs.map(([b,d],i)=><div key={b} style={{display:"flex",gap:12,padding:"10px 14px",background:"#141925",borderRadius:10,border:"1px solid #2a3140"}}><span style={{fontSize:16,fontWeight:900,color:"#4338ca",fontFamily:"var(--m)"}}>{i+1}</span><div><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{b}</div><div style={{fontSize:11,color:"#64748b"}}>{d}</div></div></div>)}
+      </div>
+    </div>
+  </div>
+}
 
 function RubricPage(){
   const[data,setData]=useState(null);const[loading,setLoading]=useState(true);
@@ -268,18 +640,19 @@ function RubricPage(){
   const current=data?.current||[];const comparisons=data?.perCallComparisons||[];
   return<div className="flex-col gap-20">
     <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Rubric & Re-scoring</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>Re-score calls with the current rubric, compare versions, and view score history</p></div>
+    <RubricViewer/>
     
     <div className="card" style={{padding:24}}>
       <div className="section-head" style={{marginBottom:14}}>Re-score Calls</div>
-      <div style={{background:"#060a10",padding:14,borderRadius:8,border:"1px solid #111520",marginBottom:14}}>
+      <div style={{background:"#141925",padding:14,borderRadius:8,border:"1px solid #2a3140",marginBottom:14}}>
         <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Current scores are automatically archived into Score History before re-scoring. You can compare v1 vs v2 scores side-by-side after re-running.</div>
         <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
           <label style={{fontSize:11,color:"#64748b"}}>Scope:</label>
-          <select value={scope} onChange={e=>setScope(e.target.value)} style={{background:"#0a0e14",border:"1px solid #111520",borderRadius:6,padding:"6px 10px",color:"#c9d1d9",fontSize:11}}>
+          <select value={scope} onChange={e=>setScope(e.target.value)} style={{background:"#1a1f2b",border:"1px solid #2a3140",borderRadius:6,padding:"6px 10px",color:"#c9d1d9",fontSize:11}}>
             <option value="all">All scored calls</option>
             <option value="recent">Last X days</option>
           </select>
-          {scope==='recent'&&<input type="number" value={days} onChange={e=>setDays(Number(e.target.value))} min="1" max="365" style={{background:"#0a0e14",border:"1px solid #111520",borderRadius:6,padding:"6px 10px",color:"#c9d1d9",fontSize:11,width:70}}/>}
+          {scope==='recent'&&<input type="number" value={days} onChange={e=>setDays(Number(e.target.value))} min="1" max="365" style={{background:"#1a1f2b",border:"1px solid #2a3140",borderRadius:6,padding:"6px 10px",color:"#c9d1d9",fontSize:11,width:70}}/>}
           {scope==='recent'&&<span style={{fontSize:11,color:"#64748b"}}>days</span>}
         </div>
         {estimate&&<div style={{display:"flex",gap:14,alignItems:"center",fontSize:12,color:"#c9d1d9",marginBottom:10}}>
@@ -293,7 +666,7 @@ function RubricPage(){
 
     <div className="card" style={{padding:24}}>
       <div className="section-head" style={{marginBottom:14}}>Rubric Version Stats</div>
-      {current.length===0?<div style={{fontSize:12,color:"#64748b"}}>No scored calls yet</div>:<div style={{display:"flex",flexDirection:"column",gap:10}}>{current.map(v=><div key={v.rubric_version} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#060a10",borderRadius:8,border:"1px solid #111520"}}>
+      {current.length===0?<div style={{fontSize:12,color:"#64748b"}}>No scored calls yet</div>:<div style={{display:"flex",flexDirection:"column",gap:10}}>{current.map(v=><div key={v.rubric_version} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#141925",borderRadius:8,border:"1px solid #2a3140"}}>
         <div style={{minWidth:60,textAlign:"center"}}>
           <div style={{fontSize:22,fontWeight:900,color:"#a855f7",fontFamily:"var(--m)"}}>v{v.rubric_version}</div>
           <div style={{fontSize:9,color:"#4b5563"}}>rubric</div>
@@ -308,7 +681,7 @@ function RubricPage(){
     {comparisons.length>0&&<div className="card" style={{padding:24}}>
       <div className="section-head" style={{marginBottom:14}}>📈 Per-Call Comparison (v1 → v2)</div>
       <div style={{fontSize:11,color:"#64748b",marginBottom:12}}>Showing {comparisons.length} calls that have been scored under multiple rubric versions. Delta = current score minus previous score.</div>
-      <div style={{maxHeight:500,overflowY:"auto"}}>{comparisons.map(c=>{const delta=Number(c.delta)||0;const deltaColor=delta>0.5?"#22c55e":delta<-0.5?"#ef4444":"#f59e0b";return<div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderBottom:"1px solid #060a10"}}>
+      <div style={{maxHeight:500,overflowY:"auto"}}>{comparisons.map(c=>{const delta=Number(c.delta)||0;const deltaColor=delta>0.5?"#22c55e":delta<-0.5?"#ef4444":"#f59e0b";return<div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderBottom:"1px solid #141925"}}>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name||'?'}</div>
           <div style={{fontSize:10,color:"#4b5563"}}>{fmtF(c.received_at)}</div>
@@ -325,8 +698,8 @@ function RubricPage(){
 }
 
 function App(){const[pg,sPg]=useState("dashboard");const[dt,sDt]=useState(null);
-  return<><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #111520"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>{NAV.map(n=><button key={n.id} className={pg===n.id?"active":""} onClick={()=>{sPg(n.id);sDt(null)}} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}><span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>)}</nav><div style={{padding:"14px 16px",borderTop:"1px solid #111520"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
-    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
+  return<><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>{NAV.map(n=><button key={n.id} className={pg===n.id?"active":""} onClick={()=>{sPg(n.id);sDt(null)}} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}><span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>)}</nav><div style={{padding:"14px 16px",borderTop:"1px solid #2a3140"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
+    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="train"?<TrainPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
