@@ -403,6 +403,10 @@ function TrainPage() {
   const [elevenKey, setElevenKey] = React.useState("");
   const [voiceUri, setVoiceUri] = React.useState("");
   const [browserVoices, setBrowserVoices] = React.useState([]);
+  const [elevenVoices, setElevenVoices] = React.useState([]);
+  const [elevenVoiceId, setElevenVoiceId] = React.useState("");
+  const [listening, setListening] = React.useState(false);
+  const recognitionRef = React.useRef(null);
   const [scenarioId, setScenarioId] = React.useState("");
   const [session, setSession] = React.useState(null);
   const [scenario, setScenario] = React.useState(null);
@@ -425,11 +429,10 @@ function TrainPage() {
     if(window.speechSynthesis) window.speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
 
-  // Speak text — ElevenLabs if key present, else browser voice (free)
+  // Speak text — ElevenLabs (chosen voice) if key present, else browser voice (free)
   function speakText(text){
     if(elevenKey){
-      // client-side ElevenLabs (uses the pasted key)
-      fetch(`https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM`,{method:"POST",headers:{"xi-api-key":elevenKey,"Content-Type":"application/json","Accept":"audio/mpeg"},body:JSON.stringify({text,model_id:"eleven_turbo_v2"})})
+      fetch(`${API}/practice/tts`,{method:"POST",headers:{"Content-Type":"application/json","x-eleven-key":elevenKey},body:JSON.stringify({text,voiceId:elevenVoiceId||undefined})})
         .then(r=>r.ok?r.arrayBuffer():Promise.reject())
         .then(buf=>{const ctx=new (window.AudioContext||window.webkitAudioContext)();return ctx.decodeAudioData(buf).then(d=>{const s=ctx.createBufferSource();s.buffer=d;s.connect(ctx.destination);s.start(0)})})
         .catch(()=>browserSpeak(text));
@@ -442,6 +445,29 @@ function TrainPage() {
     window.speechSynthesis.speak(u);
   }
   function previewVoice(){ speakText("Hi, thanks for taking the time to chat with me today about the investment opportunity."); }
+
+  // Connect ElevenLabs — fetch the account's voices so the user can choose one
+  async function connectEleven(){
+    if(!elevenKey){alert("Paste your ElevenLabs key first.");return;}
+    try{
+      const r=await fetch(`${API}/practice/voices`,{headers:{"x-eleven-key":elevenKey}}).then(r=>r.json());
+      if(r.voices&&r.voices.length){setElevenVoices(r.voices);setElevenVoiceId(r.voices[0].id);}
+      else alert("Connected, but no voices found (check the key).");
+    }catch(e){alert("Could not connect to ElevenLabs — check the key.");}
+  }
+
+  // Speech-to-text — rep talks instead of types (voice mode)
+  function toggleListen(){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){alert("Speech recognition isn't supported in this browser. Try Chrome.");return;}
+    if(listening){ recognitionRef.current&&recognitionRef.current.stop(); setListening(false); return; }
+    const rec=new SR(); rec.lang="en-US"; rec.interimResults=true; rec.continuous=false;
+    let finalText="";
+    rec.onresult=(e)=>{let interim="";for(let i=e.resultIndex;i<e.results.length;i++){const t=e.results[i][0].transcript;if(e.results[i].isFinal)finalText+=t;else interim+=t;}setDraft((finalText+" "+interim).trim());};
+    rec.onend=()=>{setListening(false);};
+    rec.onerror=()=>{setListening(false);};
+    recognitionRef.current=rec; rec.start(); setListening(true);
+  }
 
   async function startSession() {
     if (!repName || !scenarioId) return;
@@ -560,16 +586,16 @@ function TrainPage() {
             <label style={{fontSize:10,color:"#64748b"}}>ELEVENLABS KEY <span style={{color:"#4b5563"}}>(natural AI voices — optional)</span></label>
             <div style={{display:"flex",gap:8,marginTop:6,marginBottom:14}}>
               <input value={elevenKey} onChange={e=>setElevenKey(e.target.value)} placeholder="sk_… paste key from elevenlabs.io/app/settings/api-keys" style={{flex:1,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}/>
-              <button className="btn" onClick={()=>elevenKey&&alert("ElevenLabs key set for this session. Preview to test.")}>Connect</button>
+              <button className="btn" onClick={connectEleven}>Connect</button>
             </div>
-            <label style={{fontSize:10,color:"#64748b",fontWeight:700,letterSpacing:.5}}>PROSPECT VOICE {elevenKey&&<span style={{color:"#22c55e"}}>· ElevenLabs active</span>}</label>
+            <label style={{fontSize:10,color:"#64748b",fontWeight:700,letterSpacing:.5}}>PROSPECT VOICE {elevenVoices.length>0&&<span style={{color:"#22c55e"}}>· {elevenVoices.length} ElevenLabs voices</span>}</label>
             <div style={{display:"flex",gap:8,marginTop:6}}>
-              <select value={voiceUri} onChange={e=>setVoiceUri(e.target.value)} disabled={!!elevenKey} style={{flex:1,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12,opacity:elevenKey?.5:1}}>
-                {elevenKey?<option>ElevenLabs — natural voice</option>:browserVoices.map(v=><option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
-              </select>
+              {elevenVoices.length>0
+                ? <select value={elevenVoiceId} onChange={e=>setElevenVoiceId(e.target.value)} style={{flex:1,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}>{elevenVoices.map(v=><option key={v.id} value={v.id}>{v.name}{v.labels?.accent?` · ${v.labels.accent}`:""}{v.labels?.gender?` · ${v.labels.gender}`:""}</option>)}</select>
+                : <select value={voiceUri} onChange={e=>setVoiceUri(e.target.value)} style={{flex:1,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}>{browserVoices.map(v=><option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}</select>}
               <button className="btn" onClick={previewVoice} title="Preview voice">▶</button>
             </div>
-            <p style={{fontSize:10,color:"#4b5563",marginTop:8}}>{elevenKey?"Using ElevenLabs natural AI voices.":"Using free browser voices. Add an ElevenLabs key above for natural AI voices."}</p>
+            <p style={{fontSize:10,color:"#4b5563",marginTop:8}}>{elevenVoices.length>0?"Using ElevenLabs natural AI voices — pick one above and preview it.":"Using free browser voices. Paste an ElevenLabs key and Connect for natural AI voices."}</p>
           </div>}
         </div>
 
@@ -630,9 +656,10 @@ function TrainPage() {
           {busy && <div style={{ color: "#64748b", fontSize: 12, fontStyle: "italic" }}>Prospect is thinking…</div>}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          {sessionMode==="voice"&&<button className="btn" onClick={toggleListen} title={listening?"Stop listening":"Talk to the prospect"} style={{background:listening?"#7f1d1d":"",borderColor:listening?"#ef4444":"",color:listening?"#fca5a5":"",minWidth:48}}>{listening?"⏺":"🎤"}</button>}
           <input value={draft} onChange={e => setDraft(e.target.value)}
             onKeyDown={e => e.key === "Enter" && sendTurn()}
-            placeholder="Your line…" disabled={busy}
+            placeholder={listening?"Listening… speak now":"Your line…"} disabled={busy}
             style={{ flex: 1, padding: "10px 14px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--t1)", fontSize: 13 }} />
           <button className="btn btn-primary" onClick={sendTurn} disabled={busy || !draft.trim()}>Send</button>
         </div>
