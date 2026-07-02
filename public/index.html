@@ -276,7 +276,7 @@ function HealthPage(){const{data,reload}=useApi("/health");const[rt,setRt]=useSt
     {data.recentErrors?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Recent Errors</div>{data.recentErrors.map(e=><div key={e.id} style={{padding:"12px 16px",background:"#1a0a0a",borderRadius:8,border:"1px solid #991b1b",marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,fontWeight:700,color:"#fca5a5"}}>{e.rep_name} → {e.client_name||"?"}</span><span style={{fontSize:10,color:"#2a3040"}}>{fmt(e.received_at)}</span></div><div style={{fontSize:11,color:"#ef4444",wordBreak:"break-all"}}>{e.error}</div></div>)}</div>}
     {/* Webhook Health Monitor */}
     {data.webhookHealth?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Webhook Sources</div>{data.webhookHealth.map(wh=>{const hrs=wh.last_received?Math.round((Date.now()-new Date(wh.last_received+'Z').getTime())/(1000*60*60)):null;const stale=hrs!==null&&hrs>24;return<div key={wh.base_source} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#141925",borderRadius:10,border:`1px solid ${stale?"#991b1b":"#2a3140"}`,marginBottom:8}}><div style={{width:10,height:10,borderRadius:"50%",background:stale?"#ef4444":"#22c55e",boxShadow:`0 0 8px ${stale?"#ef444455":"#22c55e55"}`}}/><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{wh.base_source}</div><div style={{fontSize:11,color:"#374151"}}>Last received: {wh.last_received?fmtF(wh.last_received):'Never'}{hrs!==null&&<span style={{color:stale?"#ef4444":"#4b5563"}}> ({hrs}h ago)</span>}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:800,color:"#60a5fa",fontFamily:"var(--m)"}}>{Number(wh.total_received)}</div><div style={{fontSize:9,color:"#374151"}}>total</div></div></div>})}</div>}
-    {data.webhookAlerts?.length>0&&<div className="card" style={{padding:20,background:"#1a0a0a",borderColor:"#991b1b"}}><div className="section-head" style={{color:"#ef4444"}}>⚠ Webhook Alerts</div>{data.webhookAlerts.map(a=><div key={a.source} style={{fontSize:12,color:"#fca5a5",marginBottom:6}}><b>{a.source}</b> — no webhooks received in {a.hoursSince} hours. Last: {fmtF(a.lastReceived)}. Check webhook configuration.</div>)}</div>}
+    {data.webhookAlerts?.length>0&&<div className="card" style={{padding:20,background:"#1a0a0a",borderColor:"#991b1b"}}><div className="section-head" style={{color:"#ef4444"}}>⚠ Webhook Alerts</div>{data.webhookAlerts.map(a=><div key={a.source} style={{fontSize:12,color:a.severity==="critical"?"#fca5a5":a.severity==="warning"?"#fcd34d":"#93c5fd",marginBottom:6}}><b>{a.source}</b> — {a.message}.{a.lastReceived?` Last: ${fmtF(a.lastReceived)}.`:""} {a.severity!=="info"?"Check webhook configuration.":""}</div>)}</div>}
     {/* Per-Rep Webhook Health */}
     {data.repHealth?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Webhook Health</div><div style={{fontSize:11,color:"#374151",marginBottom:14,marginTop:-4}}>When each rep's last call was pulled in. A rep going quiet usually means their webhook stopped.</div>{data.repHealth.map(rh=>{const sc={active:"#22c55e",quiet:"#f59e0b",stale:"#ef4444",none:"#4b5563"}[rh.status]||"#4b5563";const lbl={active:"Active",quiet:"Quiet",stale:"Stale",none:"No calls"}[rh.status]||"—";return<div key={rh.rep_name} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"#141925",borderRadius:10,border:`1px solid ${rh.status==='stale'?"#991b1b":rh.status==='quiet'?"#92400e":"#2a3140"}`,marginBottom:8}}><div style={{width:10,height:10,borderRadius:"50%",background:sc,boxShadow:`0 0 8px ${sc}55`}}/><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{rh.rep_name} <span style={{color:"#374151",fontWeight:500,fontSize:11}}>· {rh.role}</span></div><div style={{fontSize:11,color:"#374151"}}>Last call: {rh.last_call?fmtF(rh.last_call):'Never'}{rh.hours_since!=null&&<span style={{color:rh.status==='active'?"#4b5563":sc}}> ({rh.hours_since}h ago)</span>}</div></div><div style={{textAlign:"right"}}><div style={{display:"flex",gap:12}}><div><div style={{fontSize:14,fontWeight:800,color:"#60a5fa",fontFamily:"var(--m)"}}>{rh.calls_24h}</div><div style={{fontSize:9,color:"#374151"}}>24h</div></div><div><div style={{fontSize:14,fontWeight:800,color:"#94a3b8",fontFamily:"var(--m)"}}>{rh.calls_7d}</div><div style={{fontSize:9,color:"#374151"}}>7d</div></div></div></div><span className="badge" style={{background:sc+"22",color:sc,border:`1px solid ${sc}55`,fontSize:9,marginLeft:8}}>{lbl}</span></div>})}</div>}
     {data.repAlerts?.length>0&&<div className="card" style={{padding:20,background:"#1a1400",borderColor:"#92400e"}}><div className="section-head" style={{color:"#f59e0b"}}>⚠ Reps Gone Quiet</div>{data.repAlerts.map(a=><div key={a.rep} style={{fontSize:12,color:"#fcd34d",marginBottom:6}}><b>{a.rep}</b> ({a.role}) — no calls in {a.hoursSince}h. {a.status==='stale'?'Likely a webhook issue.':'Worth a glance.'}</div>)}</div>}
@@ -391,6 +391,75 @@ function AboutPage(){return<div className="flex-col gap-24" style={{maxWidth:800
 <div className="card" style={{padding:24}}><div className="section-head">Team</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{[{n:"Matt",r:"Closer",s:"Fathom"},{n:"Kevin",r:"Closer",s:"Fathom"},{n:"Andrew",r:"Setter",s:"Aloware"},{n:"Steven",r:"Setter",s:"Aloware"},{n:"Anurag",r:"Setter",s:"Aloware"}].map(x=><div key={x.n} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#141925",borderRadius:10,border:"1px solid #2a3140"}}><div style={{width:36,height:36,borderRadius:10,background:RC[x.n]||"#6366f1",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{x.n[0]}</div><div><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{x.n}</div><div style={{fontSize:11,color:"#374151"}}>{x.r} · {x.s}</div></div></div>)}</div></div>
 <div className="card" style={{padding:24}}><div className="section-head">Sources</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.8}}>Setter calls flow in from <b>Aloware</b>; closer calls from <b>Fathom</b>. Scoring runs on <b>Claude</b>. Data lives in <b>Supabase Postgres</b>. Check the <b>Health</b> tab for live system status and per-rep webhook health.</div></div></div>}
 
+function ScenarioCreator({onClose,onCreated}){
+  const[f,setF]=useState({title:"",target_role:"Setter",difficulty_tier:3,persona_name:"",persona_bg:"",persona_style:"",situation:"",stated_interest:"",hidden_truth:"",real_objection:"",obj1:"",obj2:"",obj3:"",focus:""});
+  const[busy,setBusy]=useState(false);const[err,setErr]=useState("");
+  function up(k,v){setF(s=>({...s,[k]:v}))}
+  async function save(){
+    if(!f.title.trim()){setErr("Give it a title.");return;}
+    setBusy(true);setErr("");
+    const id=f.title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40)+"-"+Date.now().toString().slice(-4);
+    const body={
+      id,title:f.title.trim(),type:"custom",target_role:f.target_role,difficulty_tier:Number(f.difficulty_tier),
+      persona:{name:f.persona_name,background:f.persona_bg,communication_style:f.persona_style},
+      situation:{summary:f.situation,stated_interest:f.stated_interest},
+      hidden_truth:{summary:f.hidden_truth,real_objection:f.real_objection},
+      layered_objections:[f.obj1,f.obj2,f.obj3].filter(x=>x.trim()),
+      scoring_focus:{notes:f.focus},author:"Sam"
+    };
+    try{
+      const r=await fetch(`${API}/practice/scenarios`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json());
+      if(r.ok){onCreated&&onCreated();onClose();}else setErr(r.error||"Failed to save.");
+    }catch(e){setErr("Failed to save.");}
+    setBusy(false);
+  }
+  const inp={width:"100%",padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13,marginTop:4};
+  const lbl={fontSize:10,color:"#64748b",fontWeight:700,letterSpacing:.5,marginTop:12,display:"block"};
+  return<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:100,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"40px 20px"}} onClick={onClose}>
+    <div className="card" style={{padding:28,maxWidth:640,width:"100%"}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <h2 style={{fontSize:20,fontWeight:900,margin:0}}>Create a Scenario</h2>
+        <span onClick={onClose} style={{fontSize:20,color:"#64748b",cursor:"pointer"}}>✕</span>
+      </div>
+      <p style={{fontSize:12,color:"#64748b",marginBottom:8}}>Build a custom practice scenario. The AI prospect will embody the persona and hidden truth you define, and reps get scored on the same rubric.</p>
+
+      <label style={lbl}>SCENARIO TITLE *</label>
+      <input style={inp} value={f.title} onChange={e=>up("title",e.target.value)} placeholder="e.g. The Skeptical Retiree"/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div><label style={lbl}>ROLE</label><select style={inp} value={f.target_role} onChange={e=>up("target_role",e.target.value)}><option>Setter</option><option>Closer</option><option>Both</option></select></div>
+        <div><label style={lbl}>DIFFICULTY TIER (1-5)</label><select style={inp} value={f.difficulty_tier} onChange={e=>up("difficulty_tier",e.target.value)}>{[1,2,3,4,5].map(n=><option key={n} value={n}>{n}</option>)}</select></div>
+      </div>
+
+      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"#c9d1d9"}}>The Prospect</b></div>
+      <label style={lbl}>NAME</label><input style={inp} value={f.persona_name} onChange={e=>up("persona_name",e.target.value)} placeholder="e.g. Robert"/>
+      <label style={lbl}>BACKGROUND</label><input style={inp} value={f.persona_bg} onChange={e=>up("persona_bg",e.target.value)} placeholder="Who they are, their situation"/>
+      <label style={lbl}>COMMUNICATION STYLE</label><input style={inp} value={f.persona_style} onChange={e=>up("persona_style",e.target.value)} placeholder="e.g. Blunt, asks a lot of questions"/>
+
+      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"#c9d1d9"}}>The Situation</b></div>
+      <label style={lbl}>WHAT'S HAPPENING</label><textarea style={{...inp,minHeight:50}} value={f.situation} onChange={e=>up("situation",e.target.value)} placeholder="The setup — where the call picks up"/>
+      <label style={lbl}>STATED INTEREST (what they SAY)</label><input style={inp} value={f.stated_interest} onChange={e=>up("stated_interest",e.target.value)} placeholder="e.g. Seems interested but noncommittal"/>
+
+      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"#c9d1d9"}}>The Hidden Truth</b> <span style={{fontSize:10,color:"#64748b"}}>(what the rep must uncover)</span></div>
+      <label style={lbl}>THE REAL TRUTH</label><textarea style={{...inp,minHeight:50}} value={f.hidden_truth} onChange={e=>up("hidden_truth",e.target.value)} placeholder="What's actually going on beneath the surface"/>
+      <label style={lbl}>THE REAL OBJECTION</label><input style={inp} value={f.real_objection} onChange={e=>up("real_objection",e.target.value)} placeholder="The true barrier"/>
+
+      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"#c9d1d9"}}>Objections They'll Raise</b></div>
+      <input style={inp} value={f.obj1} onChange={e=>up("obj1",e.target.value)} placeholder="Objection 1 (what they'll actually say)"/>
+      <input style={{...inp,marginTop:8}} value={f.obj2} onChange={e=>up("obj2",e.target.value)} placeholder="Objection 2"/>
+      <input style={{...inp,marginTop:8}} value={f.obj3} onChange={e=>up("obj3",e.target.value)} placeholder="Objection 3"/>
+
+      <label style={lbl}>SCORING FOCUS / COACHING NOTES</label>
+      <textarea style={{...inp,minHeight:50}} value={f.focus} onChange={e=>up("focus",e.target.value)} placeholder="What separates a good rep from a bad one here? What should they be rewarded/penalized for?"/>
+
+      {err&&<div style={{color:"#ef4444",fontSize:12,marginTop:12}}>{err}</div>}
+      <div style={{display:"flex",gap:10,marginTop:20}}>
+        <button className="btn btn-primary" onClick={save} disabled={busy} style={{flex:1}}>{busy?"Saving…":"Create Scenario"}</button>
+        <button className="btn" onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  </div>
+}
+
 function TrainPage() {
   const [phase, setPhase] = React.useState("setup");        // setup | live | scored
   const [voiceOn, setVoiceOn] = React.useState(false);
@@ -403,6 +472,7 @@ function TrainPage() {
   const [elevenKey, setElevenKey] = React.useState("");
   const [voiceUri, setVoiceUri] = React.useState("");
   const [browserVoices, setBrowserVoices] = React.useState([]);
+  const [showCreator, setShowCreator] = React.useState(false);
   const [elevenVoices, setElevenVoices] = React.useState([]);
   const [elevenVoiceId, setElevenVoiceId] = React.useState("");
   const [listening, setListening] = React.useState(false);
@@ -414,7 +484,7 @@ function TrainPage() {
   const [draft, setDraft] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [score, setScore] = React.useState(null);
-  const { data: scenarios } = useApi("/practice/scenarios");
+  const { data: scenarios, reload: reloadScenarios } = useApi("/practice/scenarios");
   const { data: reps } = useApi("/reps");
   const scrollRef = React.useRef(null);
 
@@ -429,7 +499,7 @@ function TrainPage() {
     if(window.speechSynthesis) window.speechSynthesis.onvoiceschanged = loadVoices;
     // Also try loading ElevenLabs voices from the SERVER key (so the team gets them without pasting)
     fetch(`${API}/practice/voices`).then(r=>r.json()).then(d=>{
-      if(d.configured && d.voices && d.voices.length){ setElevenVoices(d.voices); setElevenVoiceId(d.voices[0].id); }
+      if(d.configured && d.voices && d.voices.length){ setElevenVoices(d.voices); setElevenVoiceId(pickVoiceForPersona(d.voices, persona)); }
     }).catch(()=>{});
   }, []);
 
@@ -453,13 +523,23 @@ function TrainPage() {
     window.speechSynthesis.speak(u);
   }
   function previewVoice(){ speakText("Hi, thanks for taking the time to chat with me today about the investment opportunity."); }
+  // Pick an ElevenLabs voice matching the persona's leading gender
+  function pickVoiceForPersona(voices, p){
+    if(!voices||!voices.length) return "";
+    const wantMale = p==="male" || p==="couple_husband";
+    const wantFemale = p==="female" || p==="couple_wife";
+    const g = wantMale ? "male" : wantFemale ? "female" : null;
+    if(g){ const match = voices.find(v => (v.labels?.gender||"").toLowerCase()===g); if(match) return match.id; }
+    return voices[0].id;
+  }
+  function choosePersona(p){ setPersona(p); if(elevenVoices.length) setElevenVoiceId(pickVoiceForPersona(elevenVoices, p)); }
 
   // Connect ElevenLabs — fetch the account's voices so the user can choose one
   async function connectEleven(){
     if(!elevenKey){alert("Paste your ElevenLabs key first.");return;}
     try{
       const r=await fetch(`${API}/practice/voices`,{headers:{"x-eleven-key":elevenKey}}).then(r=>r.json());
-      if(r.voices&&r.voices.length){setElevenVoices(r.voices);setElevenVoiceId(r.voices[0].id);}
+      if(r.voices&&r.voices.length){setElevenVoices(r.voices);setElevenVoiceId(pickVoiceForPersona(r.voices, persona));}
       else alert("Connected, but no voices found (check the key).");
     }catch(e){alert("Could not connect to ElevenLabs — check the key.");}
   }
@@ -547,6 +627,7 @@ function TrainPage() {
     const scenariosForRole = (scenarios?.scenarios || []).filter(s => !repRole || s.target_role === repRole || s.target_role === "Both");
     return (
       <div className="flex-col gap-20" style={{ maxWidth: 760 }}>
+        {showCreator&&<ScenarioCreator onClose={()=>setShowCreator(false)} onCreated={reloadScenarios}/>}
         <div>
           <h2 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>Train</h2>
           <p style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>Practice against an AI prospect — scored on the same rubric as your real calls.</p>
@@ -582,7 +663,7 @@ function TrainPage() {
           <div className="section-head" style={{marginBottom:4}}>Prospect Persona</div>
           <p style={{fontSize:11,color:"#64748b",marginBottom:14}}>Choose who you're selling to. Couple mode puts both a husband and wife on the call — a common real-world challenge.</p>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {PERSONAS.map(([v,title,sub])=><div key={v} onClick={()=>setPersona(v)} style={{padding:"14px 16px",borderRadius:10,cursor:"pointer",background:persona===v?"#1e1b4b":"#141925",border:`1px solid ${persona===v?"#4338ca":"#2a3140"}`}}>
+            {PERSONAS.map(([v,title,sub])=><div key={v} onClick={()=>choosePersona(v)} style={{padding:"14px 16px",borderRadius:10,cursor:"pointer",background:persona===v?"#1e1b4b":"#141925",border:`1px solid ${persona===v?"#4338ca":"#2a3140"}`}}>
               <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{title}</div>
               <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{sub}</div>
             </div>)}
@@ -609,7 +690,7 @@ function TrainPage() {
 
         {/* Scenario */}
         <div className="card" style={{ padding: 24 }}>
-          <div className="section-head">Pick a Scenario</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div className="section-head" style={{marginBottom:0}}>Pick a Scenario</div><button className="btn" onClick={()=>setShowCreator(true)} style={{fontSize:11,padding:"5px 10px"}}>+ New Scenario</button></div>
           <div className="flex-col gap-8">
             {scenariosForRole.map(s => (
               <div key={s.id} onClick={() => setScenarioId(s.id)} style={{ padding: "14px 16px", borderRadius: 10, cursor: "pointer", background: scenarioId === s.id ? "#1e1b4b" : "#141925", border: `1px solid ${scenarioId === s.id ? "#4338ca" : "#2a3140"}` }}>
