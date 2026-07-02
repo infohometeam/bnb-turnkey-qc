@@ -586,15 +586,31 @@ router.get('/health', async (req, res) => {
     // Last successful score (freshness signal — is scoring actually happening?)
     const lastScored = await q("SELECT MAX(processed_at) AS last FROM calls WHERE status='SCORED'");
 
-    // Check for stale sources (no webhook in 24h during business hours)
+    // Source-silence alerts: warn if a source goes quiet, with severity.
+    // Expected sources so we can flag one that has sent NOTHING at all.
+    const EXPECTED_SOURCES = ['Aloware', 'Fathom'];
+    const seen = {};
+    webhookHealth.rows.forEach(w => { seen[w.base_source] = w.last_received; });
     const webhookAlerts = [];
-    for (const wh of webhookHealth.rows) {
-      if (wh.last_received) {
-        const lastTime = new Date(wh.last_received + 'Z');
-        const hoursSince = (Date.now() - lastTime.getTime()) / (1000 * 60 * 60);
-        if (hoursSince > 24) {
-          webhookAlerts.push({ source: wh.base_source, lastReceived: wh.last_received, hoursSince: Math.round(hoursSince) });
-        }
+    const nowT = Date.now();
+    const hr = new Date().getUTCHours();
+    // Rough business-hours window (13:00–01:00 UTC ≈ 8am–8pm ET). Silence during
+    // business hours is more alarming than overnight.
+    const businessHours = hr >= 13 || hr <= 1;
+
+    for (const src of EXPECTED_SOURCES) {
+      const last = seen[src];
+      if (!last) {
+        webhookAlerts.push({ source: src, severity: 'warning', hoursSince: null, message: `${src} has not sent any webhooks yet` });
+        continue;
+      }
+      const hoursSince = (nowT - new Date(last + 'Z').getTime()) / 3.6e6;
+      if (hoursSince > 48) {
+        webhookAlerts.push({ source: src, severity: 'critical', lastReceived: last, hoursSince: Math.round(hoursSince), message: `${src} silent for ${Math.round(hoursSince)}h` });
+      } else if (hoursSince > 24) {
+        webhookAlerts.push({ source: src, severity: 'warning', lastReceived: last, hoursSince: Math.round(hoursSince), message: `${src} silent for ${Math.round(hoursSince)}h` });
+      } else if (hoursSince > 4 && businessHours) {
+        webhookAlerts.push({ source: src, severity: 'info', lastReceived: last, hoursSince: Math.round(hoursSince), message: `${src} quiet ${Math.round(hoursSince)}h during business hours` });
       }
     }
 
