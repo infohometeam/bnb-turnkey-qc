@@ -507,6 +507,22 @@ router.post('/queue/retry-all', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Manually pull recent calls from Aloware/Fathom APIs (backfill for missed webhooks).
+// Safe: runs fetched calls through the same dedup-protected ingestCall path.
+// If credentials are missing or an API fails, it reports that and changes nothing.
+router.post('/queue/pull', express.json(), async (req, res) => {
+  try {
+    const { pullCalls } = require('../services/pullService');
+    const sources = (req.body && req.body.sources) || ['aloware', 'fathom'];
+    const limit = (req.body && req.body.limit) || 25;
+    const result = await pullCalls({ sources, limit });
+    res.json(result);
+  } catch (err) {
+    // Never let this crash — always return a clean error.
+    res.status(200).json({ ok: false, error: err.message, results: [] });
+  }
+});
+
 // ─── Reps ────────────────────────────────────────────────────
 router.get('/reps', async (req, res) => {
   try { res.json((await q('SELECT * FROM rep_roster WHERE active=1 ORDER BY role,name')).rows); }
