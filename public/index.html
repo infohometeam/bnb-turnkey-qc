@@ -18,7 +18,7 @@ button{font-family:var(--f)}input,select{font-family:var(--f)}
 .btn{padding:7px 16px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--t2);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}.btn:hover{background:#2a3140;color:var(--t1)}.btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-primary{background:#6366f1;border-color:#6366f1;color:#fff}.btn-primary:hover{background:#4f46e5}
 .btn-green{background:#052e16;border-color:#166534;color:#22c55e}.btn-red{background:#2a0a0a;border-color:#991b1b;color:#ef4444}.btn-sm{padding:4px 10px;font-size:10px}
-.grid{display:grid;gap:12px}.grid-stats{grid-template-columns:repeat(auto-fit,minmax(155px,1fr))}
+.grid{display:grid;gap:16px}.grid-stats{grid-template-columns:repeat(auto-fit,minmax(155px,1fr))}
 .flex-col{display:flex;flex-direction:column}.gap-24{gap:24px}.gap-20{gap:20px}.gap-12{gap:12px}.gap-8{gap:8px}
 aside{width:220px;flex-shrink:0;background:#050910;border-right:1px solid #2a3140;display:flex;flex-direction:column}
 nav button{display:flex;align-items:center;gap:11px;width:100%;padding:9px 14px;background:transparent;border:none;border-radius:8px;cursor:pointer;color:var(--t4);font-size:12px;font-weight:500;transition:all .15s;border-left:3px solid transparent;text-align:left}
@@ -344,10 +344,10 @@ function ExportPage(){
       <select value={rep} onChange={e=>setRep(e.target.value)} style={{padding:"7px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="">All reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
     </div>
     {loading&&<div style={{padding:40,textAlign:"center",color:"#64748b"}}>Building report…</div>}
-    {report&&<div className="report-sheet flex-col gap-16">
+    {report&&<div className="report-sheet flex-col gap-20">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",paddingBottom:14,borderBottom:"2px solid #2a3140"}}><div><div style={{fontSize:20,fontWeight:900,color:"#e6edf3"}}>BNB Turnkey — QC Report</div><div style={{fontSize:12,color:"#64748b",marginTop:2}}>The Rise Collective · last {report.period_days} days{report.rep?` · ${report.rep}`:""} · generated {new Date(report.generated).toLocaleDateString()}</div></div></div>
 
-      {mode==="digest"&&<div className="flex-col gap-16">
+      {mode==="digest"&&<div className="flex-col gap-20">
         <div className="grid grid-stats">
           <div className="card stat-card"><div className="stat-label">Team Avg</div><div className="stat-value" style={{color:sClr(report.team?.avg_adj)}}>{report.team?.avg_adj??"—"}</div><div className="stat-sub">adjusted /10</div></div>
           <div className="card stat-card"><div className="stat-label">Scored</div><div className="stat-value">{report.team?.scored||0}</div><div className="stat-sub">calls</div></div>
