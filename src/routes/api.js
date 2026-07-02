@@ -33,7 +33,7 @@ router.get('/calls', async (req, res) => {
   try {
     const { status, rep, role, period, flagged, from, to, limit = 500, offset = 0, hideVm = 'true' } = req.query;
     let w = '1=1', p = [];
-    if (hideVm === 'true') w += " AND status NOT IN ('SKIP_VOICEMAIL','SKIP_SHORT','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL')";
+    if (hideVm === 'true') w += " AND status NOT IN ('SKIP_VOICEMAIL','SKIP_SHORT','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL','SKIP_NOT_ROSTERED')";
     if (status && status !== 'ALL') { w += ' AND status=?'; p.push(status); }
     if (rep) { w += ' AND rep_name=?'; p.push(rep); }
     if (role) { w += ' AND role=?'; p.push(role); }
@@ -408,7 +408,7 @@ router.get('/search-calls', async (req, res) => {
 router.get('/records', async (req, res) => {
   try {
     const { type, rep, from, to, limit = 200, offset = 0 } = req.query;
-    let w = "status IN ('SKIP_VOICEMAIL','SKIP_SHORT','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL')", p = [];
+    let w = "status IN ('SKIP_VOICEMAIL','SKIP_SHORT','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL','SKIP_NOT_ROSTERED')", p = [];
     if (type && type !== 'ALL') { w = 'status=?'; p.push(type); }
     if (rep) { w += ' AND rep_name=?'; p.push(rep); }
     if (from) { w += ' AND received_at >= ?'; p.push(from); }
@@ -418,7 +418,7 @@ router.get('/records', async (req, res) => {
     const cnt = await q(`SELECT COUNT(*) as c FROM calls WHERE ${w}`, p);
 
     // Breakdown by type
-    const breakdown = await q("SELECT status, COUNT(*) as count FROM calls WHERE status IN ('SKIP_VOICEMAIL','SKIP_SHORT','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL') GROUP BY status");
+    const breakdown = await q("SELECT status, COUNT(*) as count FROM calls WHERE status IN ('SKIP_VOICEMAIL','SKIP_SHORT','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL','SKIP_NOT_ROSTERED') GROUP BY status");
 
     res.json({ records: r.rows, total: Number(cnt.rows[0].c), breakdown: breakdown.rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -543,7 +543,7 @@ router.get('/health', async (req, res) => {
       SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing,
       SUM(CASE WHEN status='NO_TRANSCRIPT' THEN 1 ELSE 0 END) as stuck_no_transcript,
       SUM(CASE WHEN status='SKIP_VOICEMAIL' THEN 1 ELSE 0 END) as voicemails,
-      SUM(CASE WHEN status IN ('SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL') THEN 1 ELSE 0 END) as classified_skipped,
+      SUM(CASE WHEN status IN ('SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL','SKIP_NOT_ROSTERED') THEN 1 ELSE 0 END) as classified_skipped,
       SUM(CASE WHEN status='SKIP_SHORT' THEN 1 ELSE 0 END) as too_short,
       SUM(CASE WHEN status IN ('NEW','REQC','WAIT_RETRY_FULL') THEN 1 ELSE 0 END) as in_queue,
       SUM(CASE WHEN status='WAIT_RETRY_FULL' THEN 1 ELSE 0 END) as retrying FROM calls`);
