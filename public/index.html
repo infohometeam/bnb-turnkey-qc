@@ -435,8 +435,12 @@ function TrainPage() {
 
   // Speak text — ElevenLabs (chosen voice) if key present, else browser voice (free)
   function speakText(text){
-    if(elevenKey){
-      fetch(`${API}/practice/tts`,{method:"POST",headers:{"Content-Type":"application/json","x-eleven-key":elevenKey},body:JSON.stringify({text,voiceId:elevenVoiceId||undefined})})
+    // Use ElevenLabs if we have a client key OR the server has voices loaded (server key present).
+    const useEleven = elevenKey || elevenVoiceId || elevenVoices.length>0;
+    if(useEleven){
+      const headers={"Content-Type":"application/json"};
+      if(elevenKey) headers["x-eleven-key"]=elevenKey; // else server uses its env key
+      fetch(`${API}/practice/tts`,{method:"POST",headers,body:JSON.stringify({text,voiceId:elevenVoiceId||undefined})})
         .then(r=>r.ok?r.arrayBuffer():Promise.reject())
         .then(buf=>{const ctx=new (window.AudioContext||window.webkitAudioContext)();return ctx.decodeAudioData(buf).then(d=>{const s=ctx.createBufferSource();s.buffer=d;s.connect(ctx.destination);s.start(0)})})
         .catch(()=>browserSpeak(text));
