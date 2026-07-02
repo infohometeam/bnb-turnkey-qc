@@ -27,7 +27,7 @@ async function detectAlowareRep(inner, transcript) {
     const r = await q('SELECT id,name,role,src_tag FROM rep_roster WHERE aloware_user_id=? AND active=1', [userId]);
     if (r.rows.length) {
       const row = r.rows[0];
-      return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role };
+      return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role, rostered: true };
     }
   }
 
@@ -37,7 +37,7 @@ async function detectAlowareRep(inner, transcript) {
     const r = await q('SELECT id,name,role,src_tag FROM rep_roster WHERE active=1 AND role=?', ['Setter']);
     for (const row of r.rows) {
       const first = String(row.name).split(' ')[0].toLowerCase();
-      if (first && email.includes(first)) return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role };
+      if (first && email.includes(first)) return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role, rostered: true };
     }
   }
 
@@ -47,14 +47,16 @@ async function detectAlowareRep(inner, transcript) {
   const setters = await q('SELECT id,name,role,src_tag FROM rep_roster WHERE active=1 AND role=?', ['Setter']);
   for (const row of setters.rows) {
     const first = String(row.name).split(' ')[0].toLowerCase();
-    if (first && eng.includes(first)) return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role };
+    if (first && eng.includes(first)) return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role, rostered: true };
   }
   for (const row of setters.rows) {
     const first = String(row.name).split(' ')[0].toLowerCase();
-    if (first && (low.match(new RegExp(first, 'g')) || []).length >= 2) return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role };
+    if (first && (low.match(new RegExp(first, 'g')) || []).length >= 2) return { name: row.name, srcTag: row.src_tag, repId: row.id, role: row.role, rostered: true };
   }
 
-  return { name: 'Unknown Setter', srcTag: 'aloware-setters', repId: null, role: 'Setter' };
+  // Not found in roster — capture the Aloware user_id/email so we know who to add later.
+  const unknownTag = userId ? `aloware-user-${userId}` : (email || 'unknown');
+  return { name: 'Unknown Setter', srcTag: 'aloware-setters', repId: null, role: 'Setter', rostered: false, unknownRef: unknownTag };
 }
 
 function detectClientName(data, inner) {
@@ -234,10 +236,12 @@ async function ingestCall(rawPayload, srcTag) {
   let repId = null, resolvedSrcTag = srcTag;
   let transcript = redact(extractTranscript(data, inner));
 
+  let notRostered = false, unknownRef = '';
   if (baseSource === 'Aloware') {
     const det = await detectAlowareRep(inner, transcript);
     repName = det.name; resolvedSrcTag = det.srcTag;
     if (det.repId) { repId = det.repId; role = det.role; }
+    if (det.rostered === false) { notRostered = true; unknownRef = det.unknownRef || ''; }
   } else if (baseSource === 'Fathom') {
     repName = data?.recorded_by?.name || data?.host?.name || '';
     if (srcTag) { const r = await q('SELECT id,name,role FROM rep_roster WHERE src_tag=? AND active=1', [srcTag]); if (r.rows.length) { repId = r.rows[0].id; repName = r.rows[0].name; role = r.rows[0].role; } }
@@ -316,6 +320,7 @@ async function ingestCall(rawPayload, srcTag) {
 
   let status = 'NEW', error = '';
   if (!data) { status = 'ERROR'; error = 'PARSE_ERROR'; }
+  else if (notRostered) { status = 'SKIP_NOT_ROSTERED'; error = `Rep not in roster (${unknownRef}). Add them to rep_roster to score their calls.`; }
   else if (isVoicemail(inner, transcript, metrics)) { status = 'SKIP_VOICEMAIL'; error = 'Voicemail detected.'; }
   else if (!transcript || transcript.trim().length < 1) { status = 'WAIT_TRANSCRIPT'; error = 'Transcript not in payload.'; }
   else if (transcript.trim().length < 120) { status = 'SKIP_SHORT'; error = 'Too short.'; }
