@@ -436,7 +436,7 @@ router.get('/analytics', async (req, res) => {
 
     const stats = await q(`SELECT COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged, SUM(CASE WHEN status IN ('NEW','REQC','WAIT_RETRY_FULL') THEN 1 ELSE 0 END) as queued, SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) as errors, SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing_transcripts, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END)::numeric,1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END)::numeric,0) as avg_duration, ROUND(AVG(CASE WHEN status='SCORED' THEN agent_talk_pct END)::numeric,1) as avg_agent_talk, ROUND(AVG(CASE WHEN status='SCORED' THEN contact_talk_pct END)::numeric,1) as avg_contact_talk FROM calls WHERE 1=1 ${df} ${rf}`, p);
 
-    const repStats = await q(`SELECT rep_name, role, COUNT(*) as call_count, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score, ROUND(AVG(call_duration_sec)::numeric,0) as avg_duration, ROUND(AVG(agent_talk_pct)::numeric,1) as avg_agent_talk, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged_count FROM calls WHERE status='SCORED' ${df} ${rf} GROUP BY rep_name, role ORDER BY avg_score DESC`, p);
+    const repStats = await q(`SELECT rep_name, role, COUNT(*) as call_count, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score, ROUND(AVG(call_duration_sec)::numeric,0) as avg_duration, ROUND(AVG(agent_talk_pct)::numeric,1) as avg_agent_talk, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged_count FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${df} ${rf} GROUP BY rep_name, role ORDER BY avg_score DESC`, p);
 
     const catAvgs = await q(`SELECT rep_name, category_scores FROM calls WHERE status='SCORED' AND category_scores IS NOT NULL ${df} ${rf}`, p);
     const repCats = {};
@@ -483,7 +483,7 @@ router.get('/queue/status', async (req, res) => {
   try {
     const dk = new Date().toISOString().slice(0, 10);
     const daily = await q('SELECT * FROM daily_counters WHERE date_key=?', [dk]);
-    const queue = await q("SELECT status, COUNT(*) as count FROM calls WHERE status NOT IN ('SCORED','SKIP_SHORT','SKIP_VOICEMAIL','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL') GROUP BY status");
+    const queue = await q("SELECT status, COUNT(*) as count FROM calls WHERE status NOT IN ('SCORED','SKIP_SHORT','SKIP_VOICEMAIL','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL','SKIP_NOT_ROSTERED') GROUP BY status");
     const scored = await q("SELECT COUNT(*) as c FROM calls WHERE status='SCORED' AND processed_at::date = CURRENT_DATE");
     const d = daily.rows[0] || { full_qc_used: 0, est_cost_usd: 0 };
     d.scored_today = Number(scored.rows[0]?.c || 0);
@@ -717,7 +717,7 @@ router.get('/report', async (req, res) => {
          COUNT(*) FILTER (WHERE status='SKIP_VOICEMAIL') AS voicemails,
          COUNT(*) AS total_calls,
          ROUND(AVG(agent_talk_pct) FILTER (WHERE status='SCORED')::numeric,0) AS avg_talk
-       FROM calls WHERE ${periodClause}${roleFilter}${repFilter}
+       FROM calls WHERE ${periodClause}${roleFilter}${repFilter} AND rep_name != 'Unknown Setter'
        GROUP BY rep_name, role ORDER BY avg_adj DESC NULLS LAST`,
       [String(days), ...baseArgs]);
 
