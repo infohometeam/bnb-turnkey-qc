@@ -387,11 +387,47 @@ function ExportPage(){
     </div>}
   </div>
 }
-function AboutPage(){return<div className="flex-col gap-24" style={{maxWidth:800}}><h2 style={{fontSize:24,fontWeight:900}}>About</h2><div className="card" style={{padding:24}}><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.8}}>This is BNB Turnkey's sales QC and training platform — a place to see how your calls measure up and get better. Every real call is scored against Sam's rubric (the 7 Beliefs, frame control, the objection-and-close framework). The <b>Trainer</b> lets you practice against an AI prospect, scored on the exact same rubric, so practice transfers directly to live calls.</p></div>
-<div className="card" style={{padding:24}}><div className="section-head">How scoring works</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.8}}>Calls are classified first (real sales call vs. voicemail / reschedule / follow-up) — only genuine sales calls get full rubric scoring. Each call gets a raw 0–10 score, then Sam's <b>deductions</b> apply (e.g. no discovery, no financial qualification, no objection handling) to produce the adjusted score that counts. Nothing is ever silently capped — every deduction is shown with its reason.</div></div>
-<div className="card" style={{padding:24}}><div className="section-head">Team</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{[{n:"Matt",r:"Closer",s:"Fathom"},{n:"Kevin",r:"Closer",s:"Fathom"},{n:"Andrew",r:"Setter",s:"Aloware"},{n:"Steven",r:"Setter",s:"Aloware"},{n:"Anurag",r:"Setter",s:"Aloware"}].map(x=><div key={x.n} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#141925",borderRadius:10,border:"1px solid #2a3140"}}><div style={{width:36,height:36,borderRadius:10,background:RC[x.n]||"#6366f1",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{x.n[0]}</div><div><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{x.n}</div><div style={{fontSize:11,color:"#374151"}}>{x.r} · {x.s}</div></div></div>)}</div></div>
-<div className="card" style={{padding:24}}><div className="section-head">Sources</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.8}}>Setter calls flow in from <b>Aloware</b>; closer calls from <b>Fathom</b>. Scoring runs on <b>Claude</b>. Data lives in <b>Supabase Postgres</b>. Check the <b>Health</b> tab for live system status and per-rep webhook health.</div></div></div>}
+function AboutPage(){
+  const cat=(n,w)=><div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#94a3b8",padding:"4px 0"}}><span>{n}</span><span style={{fontFamily:"var(--m)",color:"#7c83ff"}}>{w}</span></div>;
+  return<div className="flex-col gap-20" style={{maxWidth:820}}>
+    <h2 style={{fontSize:24,fontWeight:900,margin:0}}>About</h2>
+    <div className="card" style={{padding:24}}>
+      <p style={{fontSize:14,color:"#94a3b8",lineHeight:1.8,margin:0}}>This is BNB Turnkey's sales QC and training platform — one place to see how your calls measure up and to get better. Every real call is scored against Sam's rubric (the 7 Beliefs, frame control, the objection-and-close framework). The <b style={{color:"#c9d1d9"}}>Trainer</b> lets you practice against an AI prospect scored on the <i>exact same rubric</i>, so practice transfers straight to live calls.</p>
+    </div>
 
+    <div className="card" style={{padding:24}}>
+      <div className="section-head">How scoring works</div>
+      <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.8,marginTop:0}}>Each call is transcribed, then scored 1–10 across five categories. A raw score reflects execution; an <b style={{color:"#c9d1d9"}}>adjusted score</b> applies deductions for non-negotiables (no discovery, no financial qualification, no objection handling, dominating the call, an untailored pitch). The adjusted score is the one that matters — it reflects Sam's hard rules.</p>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,marginTop:14}}>
+        <div><div style={{fontSize:11,color:"#64748b",fontWeight:700,marginBottom:6}}>SETTER WEIGHTS</div>{cat("Discovery","25%")}{cat("Qualification","25%")}{cat("Objections & Close","25%")}{cat("Pitch","15%")}{cat("Frame / Control","10%")}</div>
+        <div><div style={{fontSize:11,color:"#64748b",fontWeight:700,marginBottom:6}}>CLOSER WEIGHTS</div>{cat("Discovery","25%")}{cat("Objections & Close","25%")}{cat("Qualification","20%")}{cat("Pitch","20%")}{cat("Frame / Control","10%")}</div>
+      </div>
+    </div>
+
+    <div className="card" style={{padding:24}}>
+      <div className="section-head">The 7 Beliefs</div>
+      <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.8,margin:0}}>Underneath the categories, every call is read against the beliefs a prospect must hold to buy: <b style={{color:"#c9d1d9"}}>Pain</b> (they feel a real problem), <b style={{color:"#c9d1d9"}}>Doubt</b> (their current path won't fix it), <b style={{color:"#c9d1d9"}}>Desire</b> (they want the outcome), <b style={{color:"#c9d1d9"}}>Cost</b> (of inaction), <b style={{color:"#c9d1d9"}}>Money</b> (they can invest), <b style={{color:"#c9d1d9"}}>Support</b> (decision-makers aligned), and <b style={{color:"#c9d1d9"}}>Trust</b> (in us). Good calls build these in order.</p>
+    </div>
+
+    <div className="card" style={{padding:24}}>
+      <div className="section-head">What's in here</div>
+      <div style={{fontSize:13,color:"#94a3b8",lineHeight:2}}>
+        <div><b style={{color:"#c9d1d9"}}>Dashboard / Analytics</b> — team and per-rep performance at a glance.</div>
+        <div><b style={{color:"#c9d1d9"}}>Calls</b> — every scored call with its transcript, breakdown, and coaching. Leave <b style={{color:"#c9d1d9"}}>Team Notes</b> on any call.</div>
+        <div><b style={{color:"#c9d1d9"}}>Coaching</b> — your recurring patterns and where to focus.</div>
+        <div><b style={{color:"#c9d1d9"}}>Train</b> — practice against an AI prospect (text or voice), 9 scenarios, difficulty tiers.</div>
+        <div><b style={{color:"#c9d1d9"}}>Practice Log</b> — review every past practice session.</div>
+        <div><b style={{color:"#c9d1d9"}}>Reports</b> — per-rep cards, weekly digest, trends, print-to-PDF.</div>
+        <div><b style={{color:"#c9d1d9"}}>Rubric</b> — the live rubric you're scored on. <b style={{color:"#c9d1d9"}}>Resources</b> — the training manuals.</div>
+      </div>
+    </div>
+
+    <div className="card" style={{padding:24}}>
+      <div className="section-head">Sources</div>
+      <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.8,margin:0}}>Setter calls flow in from <b style={{color:"#c9d1d9"}}>Aloware</b>; closer calls from <b style={{color:"#c9d1d9"}}>Fathom</b>. Calls are picked up automatically, transcribed, and scored — usually within a few minutes. Voicemails and non-sales calls are filtered out automatically.</p>
+    </div>
+  </div>
+}
 function ScenarioCreator({onClose,onCreated}){
   const[f,setF]=useState({title:"",target_role:"Setter",difficulty_tier:3,persona_name:"",persona_bg:"",persona_style:"",situation:"",stated_interest:"",hidden_truth:"",real_objection:"",obj1:"",obj2:"",obj3:"",focus:""});
   const[busy,setBusy]=useState(false);const[err,setErr]=useState("");
