@@ -389,6 +389,31 @@ router.post('/calls/rescue-false-voicemails', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Rescue mis-classified Non-Sales calls back into the scoring queue.
+// Only pulls calls that are currently in a skip status AND have a real transcript.
+// force=true  → skip re-classification and score directly (use when you KNOW it's a
+//               real sales call the classifier got wrong, e.g. a 45-min "follow up").
+// force=false → send back through classification (safe default).
+// SKIP_NOT_ROSTERED is intentionally NOT rescuable here — those are handled by the roster.
+router.post('/calls/rescue-nonsales', express.json(), async (req, res) => {
+  try {
+    const { ids, force } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Provide ids array' });
+    const RESCUABLE = "('SKIP_FOLLOWUP','SKIP_RESCHEDULE','SKIP_WRONG_NUMBER','SKIP_INTERNAL','SKIP_SHORT')";
+    // force-scored calls carry the FORCE_SCORE_RESCUED marker the worker looks for;
+    // non-forced ones go back to NEW with a plain note and get re-classified.
+    const note = force ? 'FORCE_SCORE_RESCUED' : 'Rescued from Non-Sales (re-classifying)';
+    let rescued = 0, skipped = 0;
+    for (const id of ids) {
+      const r = await q(
+        `UPDATE calls SET status='NEW', error=?, retry_count=0 WHERE id=? AND status IN ${RESCUABLE} AND transcript IS NOT NULL AND LENGTH(transcript) > 120`,
+        [note, id]);
+      if (r.rowsAffected || r.changes) rescued++; else skipped++;
+    }
+    res.json({ ok: true, rescued, skipped, forced: !!force });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Transcript Search ──────────────────────────────────────
 router.get('/search-calls', async (req, res) => {
   try {
