@@ -82,7 +82,7 @@ function isFlagged(result, adj, dur, agPct) {
 // ── Call Classification ──────────────────────────────────────
 const CLASSIFY_PROMPT = `You are a call classifier for a real estate investment sales team (BNB Turnkey / The Rise Collective).
 
-Read this transcript excerpt and classify the call into ONE of these types:
+Read this transcript (sampled from the beginning, middle, and end of the call) and classify it into ONE of these types:
 
 1. "full_sales_call" — A genuine setter or closer sales conversation. Rep is doing discovery, qualifying the investor, pitching BNB Turnkey, handling objections, or closing. This is the majority of calls.
 2. "reschedule" — The primary purpose is to reschedule or confirm an existing appointment. Very little sales content.
@@ -91,24 +91,44 @@ Read this transcript excerpt and classify the call into ONE of these types:
 5. "admin_internal" — Internal team call, not a client conversation.
 
 IMPORTANT RULES:
-- If ANY meaningful sales conversation happens (discovery questions, qualification, pitch, objection handling, or closing), classify as "full_sales_call" even if the call is short.
-- Only classify as "reschedule" if the ENTIRE call is about scheduling/rescheduling with no sales content.
-- Only classify as "follow_up" if it's a brief check-in with no substantive sales discussion.
-- When in doubt, classify as "full_sales_call" — it's better to score a borderline call than to skip a real one.
+- If ANY meaningful sales conversation happens (discovery questions, qualification, pitch, budget/returns/fee discussion, objection handling, or closing) ANYWHERE in the call, classify as "full_sales_call" — even if the call opens with long personal rapport or small talk, and even if it ends by booking a next appointment.
+- Sales calls frequently OPEN with several minutes of friendly rapport (moving, family, weather) and CLOSE by scheduling a follow-up. Do NOT let a chatty opening or a scheduled next step at the end make you classify a substantive call as "follow_up" or "reschedule." Judge the whole call, not just the opening.
+- DURATION IS A STRONG SIGNAL: a call longer than ~10 minutes is almost never a genuine "follow_up," "reschedule," or "wrong_number" — those are short by nature. If the call is long AND contains any discovery/qualification/pitch/numbers, it is a "full_sales_call."
+- Only classify as "reschedule" if the ENTIRE call is about scheduling with no sales content.
+- Only classify as "follow_up" if it is genuinely brief AND has no substantive sales discussion anywhere.
+- When in doubt, classify as "full_sales_call" — it is better to score a borderline call than to skip a real one.
 
 Return ONLY valid JSON:
 {"call_type": "full_sales_call|reschedule|follow_up|wrong_number|admin_internal", "reason": "1 sentence explaining why"}
 
-Transcript excerpt:
+Call duration and sampled transcript:
 `;
 
-async function classifyCall(transcript) {
-  const excerpt = transcript.slice(0, 2000);
+// Sample the transcript from beginning + middle + end so a long rapport intro
+// can't hide the discovery/pitch/close that happens later in the call.
+function classificationExcerpt(transcript, durationSec) {
+  const t = transcript || '';
+  const durLine = durationSec ? `[Call duration: ${Math.round(durationSec / 60)} minutes]\n\n` : '';
+  if (t.length <= 4500) return durLine + t;
+  const head = t.slice(0, 2000);
+  const midStart = Math.floor(t.length / 2) - 750;
+  const mid = t.slice(midStart, midStart + 1500);
+  const tail = t.slice(-1500);
+  return durLine + head + '\n\n[...middle of call...]\n' + mid + '\n\n[...end of call...]\n' + tail;
+}
+
+async function classifyCall(transcript, durationSec) {
+  const excerpt = classificationExcerpt(transcript, durationSec);
   try {
     const { result, usage } = await callAIJson(CLASSIFY_PROMPT + excerpt, { maxTokens: 100 });
     const cost = estimateCost(usage);
-    const callType = result?.call_type || 'full_sales_call';
+    let callType = result?.call_type || 'full_sales_call';
     const reason = result?.reason || '';
+    // Safety net: never skip a long call as a short-call type, regardless of model output.
+    if (durationSec && durationSec > 600 && ['follow_up', 'reschedule', 'wrong_number'].includes(callType)) {
+      console.log(`[QC] Overriding '${callType}' → 'full_sales_call' (call is ${Math.round(durationSec/60)} min, too long to be ${callType})`);
+      callType = 'full_sales_call';
+    }
     console.log(`[QC] Classification: ${callType} (${reason.slice(0, 80)}) $${cost}`);
     return { callType, reason, cost };
   } catch (e) {
@@ -163,7 +183,7 @@ async function processCall(row) {
   const forceScore = row.error === 'FORCE_SCORE_RESCUED';
   const classification = forceScore
     ? { callType: 'full_sales_call', reason: 'forced (rescued from Non-Sales)', cost: 0 }
-    : await classifyCall(row.transcript);
+    : await classifyCall(row.transcript, durSec);
   const ts = now();
 
   if (classification.callType !== 'full_sales_call') {
