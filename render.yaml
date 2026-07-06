@@ -8,11 +8,24 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # ── AI scoring engine (live config: Claude Haiku) ──
       - key: AI_ENGINE
-        value: gemini
-      - key: GEMINI_API_KEY
+        value: claude
+      - key: ANTHROPIC_API_KEY
         sync: false
+      - key: CLAUDE_MODEL
+        value: claude-haiku-4-5-20251001
+      # ── Trainer voice (ElevenLabs) — team-wide TTS ──
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      # ── Database (Supabase Postgres connection string) ──
+      - key: DATABASE_URL
+        sync: false
+      # ── Webhook auth key (validates incoming Aloware/Fathom calls) ──
       - key: WEBHOOK_SECRET_KEY
-        generateValue: true
+        sync: false
       - key: DAILY_BUDGET_USD
         value: "0"
+      # ── Optional Gemini fallback (only used if AI_ENGINE=gemini) ──
+      - key: GEMINI_API_KEY
+        sync: false
