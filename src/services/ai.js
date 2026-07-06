@@ -60,7 +60,7 @@ async function callGemini(prompt, opts = {}) {
 // ─── Claude (Paid / Free Credits) ────────────────────────────
 async function callClaude(prompt, opts = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const model = opts.model || process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20241022';
+  const model = opts.model || process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
   if (!apiKey) throw new Error('MISSING_ANTHROPIC_API_KEY — set AI_ENGINE=gemini for free tier');
 
   for (let attempt = 0; attempt <= 3; attempt++) {
@@ -131,7 +131,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // systemPrompt: the prospect persona (static, cached). messages: [{role:'user'|'assistant', content}]
 async function callConversation(systemPrompt, messages, opts = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const model = opts.model || process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20241022';
+  const model = opts.model || process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
   if (!apiKey) throw new Error('MISSING_ANTHROPIC_API_KEY');
 
   for (let attempt = 0; attempt <= 3; attempt++) {
