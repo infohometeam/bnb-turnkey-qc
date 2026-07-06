@@ -157,7 +157,13 @@ async function processCall(row) {
   if (engine==='claude' && !process.env.ANTHROPIC_API_KEY) throw new Error('MISSING_ANTHROPIC_API_KEY');
 
   // STEP 1: Classify
-  const classification = await classifyCall(row.transcript);
+  // Rescued calls (manually pulled back from Non-Sales) carry a marker that forces
+  // full scoring and skips re-classification — otherwise the classifier could bounce
+  // them straight back to the skip status they were rescued from.
+  const forceScore = row.error === 'FORCE_SCORE_RESCUED';
+  const classification = forceScore
+    ? { callType: 'full_sales_call', reason: 'forced (rescued from Non-Sales)', cost: 0 }
+    : await classifyCall(row.transcript);
   const ts = now();
 
   if (classification.callType !== 'full_sales_call') {
