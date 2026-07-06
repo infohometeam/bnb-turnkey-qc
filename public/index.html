@@ -189,9 +189,23 @@ function EditModal({call,onClose,onSave}){const[fm,setFm]=useState({rep_name:cal
 // ── Records (Voicemails, Reschedules, etc.) ─────────────────
 function RecordsPage(){
   const[typeF,setTypeF]=useState("ALL");const[repF,setRepF]=useState("ALL");const[p,sP]=useState("");const[f,sF]=useState('');const[t,sT]=useState('');
+  const[sel,setSel]=useState([]);const[busy,setBusy]=useState(false);
   const dq=buildDQ(p,f,t);const tQ=typeF!=="ALL"?`&type=${typeF}`:"";const rQ=repF!=="ALL"?`&rep=${repF}`:"";
   const{data,reload}=useApi(`/records?limit=200${tQ}${rQ}${dq}`,[typeF,repF,p,f,t]);
   const{data:reps}=useApi("/reps");
+  // Which statuses can be rescued back into scoring (not voicemails, not non-rostered)
+  const RESCUABLE=["SKIP_FOLLOWUP","SKIP_RESCHEDULE","SKIP_WRONG_NUMBER","SKIP_INTERNAL","SKIP_SHORT"];
+  function toggle(id){setSel(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);}
+  async function rescue(force){
+    if(!sel.length)return;
+    setBusy(true);
+    try{
+      const r=await postApi("/calls/rescue-nonsales",{ids:sel,force});
+      alert(`Rescued ${r.rescued} call(s) back into the queue${force?" (forced full scoring)":""}.${r.skipped?` ${r.skipped} skipped (no transcript or not rescuable).`:""}`);
+      setSel([]);reload();
+    }catch(e){alert("Rescue failed — nothing changed.");}
+    setBusy(false);
+  }
   if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
   const bd=data.breakdown||[];
   return<div className="flex-col gap-24">
@@ -209,20 +223,28 @@ function RecordsPage(){
     <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))"}}>
       {bd.map(b=><div key={b.status} className="card stat-card"><div className="stat-label">{RECORD_LABELS[b.status]?.split(' ')[0]||"?"} <span>{RECORD_LABELS[b.status]?.split(' ').slice(1).join(' ')||b.status}</span></div><div className="stat-value" style={{color:"#64748b"}}>{Number(b.count)}</div></div>)}
     </div>
+    {/* Rescue action bar */}
+    {sel.length>0&&<div className="card" style={{padding:"12px 18px",display:"flex",alignItems:"center",gap:12,background:"#0f1729",borderColor:"#4338ca"}}>
+      <div style={{flex:1,fontSize:13,color:"#c9d1d9"}}><b>{sel.length}</b> selected — pull back into the scoring queue?</div>
+      <button className="btn" onClick={()=>rescue(false)} disabled={busy} title="Send back through classification (safe — may re-skip if genuinely non-sales)">{busy?"…":"↩ Re-classify & Score"}</button>
+      <button className="btn btn-primary" onClick={()=>rescue(true)} disabled={busy} title="Force full scoring, skip classification (use when you know it's a real sales call)">{busy?"…":"⚡ Force Score"}</button>
+      <button className="btn" onClick={()=>setSel([])} disabled={busy}>Clear</button>
+    </div>}
     {/* Records list */}
     <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:600,overflowY:"auto"}}>
-      {data.records.map(r=><div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid #141925"}}>
+      {data.records.map(r=>{const canRescue=RESCUABLE.includes(r.status);return<div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid #141925",background:sel.includes(r.id)?"#131c30":"transparent"}}>
+        <input type="checkbox" checked={sel.includes(r.id)} disabled={!canRescue} onChange={()=>toggle(r.id)} title={canRescue?"Select to rescue":"This type can't be rescued here"} style={{width:15,height:15,cursor:canRescue?"pointer":"not-allowed",opacity:canRescue?1:.25}}/>
         <span style={{fontSize:16,width:28,textAlign:"center"}}>{RECORD_LABELS[r.status]?.split(' ')[0]||"?"}</span>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name||"Unknown"} → {r.client_name||"Unknown"}</div>
           <div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.quick_summary||r.error||r.status}</div>
         </div>
         <div style={{textAlign:"right",flexShrink:0}}>
-          <div style={{fontSize:10,color:"#4b5563",fontFamily:"var(--m)"}}>{fmtD(r.call_duration_sec)}</div>
+          <div style={{fontSize:10,color:(r.call_duration_sec>600&&(r.status==="SKIP_FOLLOWUP"||r.status==="SKIP_SHORT"))?"#f59e0b":"#4b5563",fontFamily:"var(--m)"}}>{fmtD(r.call_duration_sec)}</div>
           <div style={{fontSize:10,color:"#2a3040",marginTop:2}}>{fmt(r.received_at)}</div>
         </div>
         {r.audio_url&&r.audio_url.startsWith('http')&&<a href={r.audio_url} target="_blank" rel="noopener" style={{fontSize:10,color:"#60a5fa",textDecoration:"none"}}>▶</a>}
-      </div>)}
+      </div>})}
       {!data.records.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>No records match filters</div>}
     </div></div>
   </div>
