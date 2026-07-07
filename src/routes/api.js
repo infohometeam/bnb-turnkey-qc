@@ -554,6 +554,147 @@ router.get('/reps', async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// List ALL reps including inactive (for the roster admin table)
+router.get('/reps/all', async (req, res) => {
+  try { res.json((await q('SELECT * FROM rep_roster ORDER BY active DESC, role, name')).rows); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Suggest the next free Fathom src_tag for a new closer (fathom-closers-N).
+// Removes the guesswork of picking a unique tag.
+router.get('/reps/next-src-tag', async (req, res) => {
+  try {
+    const role = req.query.role || 'Closer';
+    if (role !== 'Closer') return res.json({ src_tag: 'aloware-setters', note: 'Setters share the Aloware webhook tag.' });
+    const rows = (await q("SELECT src_tag FROM rep_roster WHERE src_tag LIKE 'fathom-closers-%'")).rows;
+    let max = 0;
+    for (const r of rows) {
+      const m = String(r.src_tag || '').match(/fathom-closers-(\d+)/);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    res.json({ src_tag: `fathom-closers-${max + 1}` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Who's dialing through but NOT yet in the roster (the onboarding queue).
+// Groups SKIP_NOT_ROSTERED calls by the identifier captured in their error text.
+router.get('/reps/unrostered', async (req, res) => {
+  try {
+    const rows = (await q(
+      `SELECT rep_name, src_tag, base_source, error, COUNT(*) AS parked_calls, MAX(received_at) AS last_seen
+       FROM calls WHERE status='SKIP_NOT_ROSTERED'
+       GROUP BY rep_name, src_tag, base_source, error
+       ORDER BY parked_calls DESC`)).rows;
+    // Pull the identifier (e.g. "aloware-user-112769") out of the error text for convenience.
+    const out = rows.map(r => {
+      const m = String(r.error || '').match(/\(([^)]+)\)/);
+      const ref = m ? m[1] : null;
+      const uid = ref && ref.startsWith('aloware-user-') ? ref.replace('aloware-user-', '') : null;
+      return {
+        detected_ref: ref, aloware_user_id: uid,
+        base_source: r.base_source, src_tag: r.src_tag,
+        parked_calls: Number(r.parked_calls), last_seen: r.last_seen,
+        suggested_role: r.base_source === 'Aloware' ? 'Setter' : 'Closer',
+      };
+    });
+    res.json({ unrostered: out });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Add a rep. Role-aware validation:
+//  - Closer: needs a UNIQUE src_tag (maps to a dedicated Fathom webhook). aloware_user_id ignored.
+//  - Setter: src_tag defaults to 'aloware-setters'; needs a UNIQUE aloware_user_id.
+router.post('/reps', express.json(), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const name = (b.name || '').trim();
+    const role = b.role;
+    const team = (b.team || '').trim() || (role === 'Setter' ? 'Turnkey - Setters' : 'Turnkey - Closers');
+    if (!name) return res.status(400).json({ error: 'Name is required.' });
+    if (!['Setter', 'Closer', 'Both'].includes(role)) return res.status(400).json({ error: 'Role must be Setter, Closer, or Both.' });
+
+    let src_tag = (b.src_tag || '').trim();
+    let aloware_user_id = (b.aloware_user_id || '').trim() || null;
+    const color = (b.color || '').trim() || pickColor();
+
+    if (role === 'Closer') {
+      if (!src_tag) return res.status(400).json({ error: 'Closers need a unique src_tag (e.g. fathom-closers-3). Call /reps/next-src-tag for a suggestion.' });
+      const dup = await q('SELECT id,name FROM rep_roster WHERE src_tag=?', [src_tag]);
+      if (dup.rows.length) return res.status(409).json({ error: `src_tag "${src_tag}" already belongs to ${dup.rows[0].name}. Pick another.` });
+      aloware_user_id = null; // not used for closers
+    } else {
+      // Setter (or Both): share the Aloware tag, distinguished by user_id
+      if (!src_tag) src_tag = 'aloware-setters';
+      if (!aloware_user_id) return res.status(400).json({ error: 'Setters need their Aloware user_id (found in Aloware under the user profile / API).' });
+      const dup = await q('SELECT id,name FROM rep_roster WHERE aloware_user_id=?', [aloware_user_id]);
+      if (dup.rows.length) return res.status(409).json({ error: `Aloware user_id "${aloware_user_id}" already belongs to ${dup.rows[0].name}.` });
+    }
+
+    const ins = await q(
+      'INSERT INTO rep_roster (name, role, team, src_tag, aloware_user_id, color, active) VALUES (?,?,?,?,?,?,1)',
+      [name, role, team, src_tag, aloware_user_id, color]);
+
+    const created = (await q('SELECT * FROM rep_roster WHERE id=?', [ins.lastInsertRowid])).rows[0];
+    // For closers, hand back the exact webhook URL to paste into Fathom.
+    let webhook_url = null;
+    if (role === 'Closer') {
+      const base = process.env.PUBLIC_BASE_URL || 'https://bnb-turnkey-qc.onrender.com';
+      webhook_url = `${base}/api/webhook?src=${src_tag}&key=<WEBHOOK_SECRET_KEY>`;
+    }
+    res.json({ ok: true, rep: created, webhook_url });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Edit a rep (fix typo, change team/color, update user_id). Same uniqueness guards.
+router.patch('/reps/:id', express.json(), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const cur = (await q('SELECT * FROM rep_roster WHERE id=?', [id])).rows[0];
+    if (!cur) return res.status(404).json({ error: 'Rep not found.' });
+    const b = req.body || {};
+    const name = b.name != null ? String(b.name).trim() : cur.name;
+    const role = b.role != null ? b.role : cur.role;
+    const team = b.team != null ? String(b.team).trim() : cur.team;
+    const color = b.color != null ? String(b.color).trim() : cur.color;
+    let src_tag = b.src_tag != null ? String(b.src_tag).trim() : cur.src_tag;
+    let aloware_user_id = b.aloware_user_id != null ? String(b.aloware_user_id).trim() : cur.aloware_user_id;
+
+    if (role === 'Closer') {
+      if (src_tag && src_tag !== cur.src_tag) {
+        const dup = await q('SELECT id FROM rep_roster WHERE src_tag=? AND id<>?', [src_tag, id]);
+        if (dup.rows.length) return res.status(409).json({ error: `src_tag "${src_tag}" already in use.` });
+      }
+    } else if (aloware_user_id && aloware_user_id !== cur.aloware_user_id) {
+      const dup = await q('SELECT id FROM rep_roster WHERE aloware_user_id=? AND id<>?', [aloware_user_id, id]);
+      if (dup.rows.length) return res.status(409).json({ error: `Aloware user_id "${aloware_user_id}" already in use.` });
+    }
+
+    await q('UPDATE rep_roster SET name=?, role=?, team=?, src_tag=?, aloware_user_id=?, color=? WHERE id=?',
+      [name, role, team, src_tag, aloware_user_id || null, color, id]);
+    res.json({ ok: true, rep: (await q('SELECT * FROM rep_roster WHERE id=?', [id])).rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Deactivate / reactivate (never hard-delete — preserves historical call attribution).
+router.post('/reps/:id/deactivate', async (req, res) => {
+  try {
+    const r = await q('UPDATE rep_roster SET active=0 WHERE id=?', [req.params.id]);
+    res.json({ ok: true, changed: r.rowCount });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.post('/reps/:id/reactivate', async (req, res) => {
+  try {
+    const r = await q('UPDATE rep_roster SET active=1 WHERE id=?', [req.params.id]);
+    res.json({ ok: true, changed: r.rowCount });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+function pickColor() {
+  const palette = ['#6366f1','#8b5cf6','#10b981','#f59e0b','#0ea5e9','#ec4899','#14b8a6','#f43f5e','#a855f7','#22c55e'];
+  return palette[Math.floor(Math.random() * palette.length)];
+}
+
+
 router.get('/debug/webhooks', async (req, res) => {
   try { res.json((await q('SELECT id, received_at, src_tag, base_source, raw_payload FROM webhook_debug ORDER BY id DESC LIMIT 10')).rows); }
   catch (err) { res.status(500).json({ error: err.message }); }
