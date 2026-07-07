@@ -252,6 +252,37 @@ router.post('/calls/:id/override', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Read the latest override for a call (so the calibration UI can show "Sam scored this X").
+router.get('/calls/:id/override', async (req, res) => {
+  try {
+    const r = await q('SELECT * FROM score_overrides WHERE call_id=? ORDER BY id DESC LIMIT 1', [req.params.id]);
+    res.json({ override: r.rows[0] || null });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Calibration summary: all overrides joined to their calls, with the bot-vs-Sam delta.
+// This is the data that drives rubric tuning — where Sam consistently disagrees.
+router.get('/calibration', async (req, res) => {
+  try {
+    const r = await q(
+      `SELECT o.call_id, o.override_score, o.original_score, o.reason, o.override_by, o.created_at,
+              c.rep_name, c.role, c.client_name
+       FROM score_overrides o LEFT JOIN calls c ON c.id = o.call_id
+       ORDER BY o.id DESC LIMIT 200`);
+    const rows = r.rows.map(x => ({
+      ...x,
+      delta: (Number(x.override_score) - Number(x.original_score))
+    }));
+    const withDelta = rows.filter(x => isFinite(x.delta));
+    const avgDelta = withDelta.length ? withDelta.reduce((s, x) => s + x.delta, 0) / withDelta.length : 0;
+    res.json({
+      count: rows.length,
+      avg_delta: Math.round(avgDelta * 10) / 10,  // + = Sam scores higher than bot on average
+      overrides: rows,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Bulk Re-score ──────────────────────────────────────────
 // Tags calls as REQC so the worker re-processes them with current rubric.
 // Old scores are auto-archived into score_history by the worker before re-scoring.
