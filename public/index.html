@@ -88,6 +88,18 @@ function MiniBar({value,max=10}){const c=sClr(value);return<div style={{display:
 function Pill({label,ok}){return<span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 10px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"var(--m)",background:ok?"#052e16":"#2a0a0a",color:ok?"#34d399":"#ef4444",border:`1px solid ${ok?"#166534":"#991b1b"}`}}>{ok?"✓":"✗"} {label}</span>}
 function DateFilter({period,setPeriod,from,setFrom,to,setTo}){return<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><div className="period-toggle">{["day","week","month","all"].map(p=><button key={p} className={period===p&&!from?"active":""} onClick={()=>{setPeriod(p);setFrom('');setTo('')}}>{p==="day"?"Today":p==="week"?"7 Days":p==="month"?"30 Days":"All"}</button>)}</div><span style={{fontSize:10,color:"#374151"}}>or</span><input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPeriod('')}}/><span style={{fontSize:10,color:"#374151"}}>to</span><input type="date" value={to} onChange={e=>{setTo(e.target.value);setPeriod('')}}/>{(from||to)&&<button className="btn btn-sm" onClick={()=>{setFrom('');setTo('');setPeriod('week')}}>✕</button>}</div>}
 function buildDQ(p,f,t){if(f||t){let s='';if(f)s+=`&from=${f}`;if(t)s+=`&to=${t}`;return s}if(p&&p!=='all')return`&period=${p}`;return''}
+// Turn an array of objects into a CSV file and trigger a download (pure client-side).
+function downloadCSV(rows,filename){
+  if(!rows||!rows.length){alert("Nothing to export.");return;}
+  const cols=Object.keys(rows[0]);
+  const esc=v=>{if(v==null)return"";const s=String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const csv=[cols.join(","),...rows.map(r=>cols.map(c=>esc(r[c])).join(","))].join("\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=filename||"export.csv";document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(url);
+}
 
 // ── Dashboard ───────────────────────────────────────────────
 function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:qd}=useApi("/queue/status");const{data:fd}=useApi(`/calls?flagged=true&limit=5${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"}</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div><div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div><div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div></div>{data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}{fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Flagged</div>{fd.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid #2a3140"}}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}</div>}
@@ -150,6 +162,55 @@ function CallComments({callId}){
   </div>
 }
 
+function CalibrationBox({call}){
+  const{data,reload}=useApi(`/calls/${call.id}/override`,[call.id]);
+  const[open,setOpen]=useState(false);
+  const[score,setScore]=useState("");
+  const[reason,setReason]=useState("");
+  const[busy,setBusy]=useState(false);
+  const existing=data&&data.override;
+  const botScore=call.overall_score_adj;
+
+  async function save(){
+    const n=Number(score);
+    if(!(n>=0&&n<=10)){alert("Enter a score from 0 to 10.");return;}
+    setBusy(true);
+    try{
+      const r=await postApi(`/calls/${call.id}/override`,{override_score:n,reason,override_by:"Sam"});
+      if(r.ok){setOpen(false);setScore("");setReason("");reload();}
+      else alert(r.error||"Failed to save.");
+    }catch(e){alert("Failed to save.");}
+    setBusy(false);
+  }
+
+  const delta=existing?(Number(existing.override_score)-Number(existing.original_score)):null;
+  return<div className="card" style={{padding:18,borderColor:"#3730a3",background:"#12122a"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div className="section-head" style={{marginBottom:0,color:"#a5b4fc"}}>Sam's Calibration Score</div>
+      {!open&&<button className="btn" onClick={()=>{setOpen(true);setScore(existing?String(existing.override_score):"");setReason(existing?.reason||"");}} style={{fontSize:11,padding:"4px 10px"}}>{existing?"Update":"Add my score"}</button>}
+    </div>
+    {existing&&!open&&<div style={{marginTop:10,fontSize:13,color:"#c9d1d9"}}>
+      <span style={{fontFamily:"var(--m)",fontSize:18,fontWeight:800,color:"#818cf8"}}>{existing.override_score}</span>
+      <span style={{color:"#64748b"}}> vs bot's </span>
+      <span style={{fontFamily:"var(--m)",fontWeight:700}}>{existing.original_score}</span>
+      {delta!==null&&isFinite(delta)&&delta!==0&&<span style={{color:delta>0?"#34d399":"#f87171",marginLeft:8,fontSize:12}}>({delta>0?"+":""}{delta} vs bot)</span>}
+      {existing.reason&&<div style={{fontSize:12,color:"#94a3b8",marginTop:4,fontStyle:"italic"}}>"{existing.reason}"</div>}
+    </div>}
+    {!existing&&!open&&<div style={{marginTop:8,fontSize:12,color:"#64748b"}}>Score this call yourself to calibrate the bot. Your scores build the tuning data.</div>}
+    {open&&<div style={{marginTop:12}}>
+      <div style={{fontSize:11,color:"#64748b",marginBottom:8}}>Bot scored this <b style={{color:"#c9d1d9"}}>{botScore}</b>. What would you give it?</div>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <input type="number" min="0" max="10" step="0.5" value={score} onChange={e=>setScore(e.target.value)} placeholder="0-10" style={{width:80,padding:"8px 10px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:14}}/>
+        <input value={reason} onChange={e=>setReason(e.target.value)} placeholder="Why? (e.g. discovery was better than scored)" style={{flex:1,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13}}/>
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:10}}>
+        <button className="btn btn-primary" onClick={save} disabled={busy} style={{fontSize:12}}>{busy?"Saving…":"Save my score"}</button>
+        <button className="btn" onClick={()=>setOpen(false)} style={{fontSize:12}}>Cancel</button>
+      </div>
+    </div>}
+  </div>;
+}
+
 function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const[stx,setStx]=useState(false);const[ed,setEd]=useState(false);const{data:fc,reload}=useApi(`/calls/${initial.id}`,[initial.id]);const c=fc||initial;
   async function reqc(){setRs(true);await postApi(`/calls/${c.id}/reqc`);alert("Queued for re-score.");reload();setRs(false)}
   async function del(){if(!confirm("Delete permanently?"))return;await deleteApi(`/calls/${c.id}`);onBack()}
@@ -159,6 +220,7 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
     <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}><ScoreRing value={c.overall_score_adj} size={72} sw={4.5}/><div><h2 style={{fontSize:22,fontWeight:900,margin:0}}>{c.rep_name} → {c.client_name||"?"}</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{fmtF(c.received_at)} · {c.source} · {fmtD(c.call_duration_sec)}</p><div style={{display:"flex",gap:8,marginTop:8}}><Badge status={c.status}/>{c.flagged&&<span className="badge" style={{background:"#2a1a00",color:"#f59e0b",border:"1px solid #92400e"}}>⚠ FLAGGED</span>}</div></div></div>
     {c.audio_url&&c.audio_url.startsWith('http')&&<div className="card" style={{padding:16}}><a href={c.audio_url} target="_blank" rel="noopener" className="btn btn-primary" style={{textDecoration:"none"}}>▶ Recording</a></div>}
     {c.quick_summary&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>Summary</div><p style={{fontSize:14,color:"#94a3b8",lineHeight:1.7}}>{c.quick_summary}</p></div>}
+    {c.overall_score_adj!=null&&<CalibrationBox call={c}/>}
     <div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>⏱</span> Duration</div><div className="stat-value" style={{fontSize:20}}>{fmtD(c.call_duration_sec)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent</div><div className="stat-value" style={{fontSize:20,color:c.agent_talk_pct>75||c.agent_talk_pct<20?"#ef4444":"#22c55e"}}>{c.agent_talk_pct!=null?c.agent_talk_pct+"%":"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>👤</span> Contact</div><div className="stat-value" style={{fontSize:20}}>{c.contact_talk_pct!=null?c.contact_talk_pct+"%":"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>◉</span> Raw</div><div className="stat-value" style={{fontSize:20,color:sClr(c.overall_score)}}>{c.overall_score??"—"}</div></div></div>
     {c.category_scores&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:14}}>Categories</div>{activeCategories(c.category_scores).map(cat=><div key={cat} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontSize:11,color:"#64748b",fontWeight:600,width:130}}>{CL[cat]}</span><div style={{flex:1}}><MiniBar value={c.category_scores[cat]}/></div></div>)}</div>}
     {c.pass_fail&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -358,7 +420,18 @@ function ExportPage(){
   return<div className="flex-col gap-20">
     <div className="no-print" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
       <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Reports</h2><p style={{fontSize:12,color:"#64748b",marginTop:4}}>Per-rep report cards, weekly digest, and trends — print any view to PDF.</p></div>
-      <button className="btn btn-primary" onClick={()=>window.print()}>⎙ Print / Save PDF</button>
+      <div style={{display:"flex",gap:8}}>
+        <button className="btn" onClick={()=>{
+          const rows=(report&&report.perRep)||[];
+          if(!rows.length){alert("No report data to export yet.");return;}
+          downloadCSV(rows.map(r=>({
+            rep:r.rep_name,role:r.role,scored:r.scored,
+            avg_adjusted:r.avg_adj,avg_raw:r.avg_raw,
+            voicemails:r.voicemails,total_calls:r.total_calls,avg_talk_pct:r.avg_talk
+          })),`qc-report-${days}d-${new Date().toISOString().slice(0,10)}.csv`);
+        }}>⤓ Download CSV</button>
+        <button className="btn btn-primary" onClick={()=>window.print()}>⎙ Print / Save PDF</button>
+      </div>
     </div>
     <div className="no-print card" style={{padding:18,display:"flex",gap:18,flexWrap:"wrap",alignItems:"center"}}>
       <div style={{display:"flex",gap:6}}>{[["digest","Weekly Digest"],["cards","Rep Cards"],["trends","Trends"]].map(([id,l])=><button key={id} onClick={()=>setMode(id)} className="btn" style={{padding:"6px 14px",fontSize:12,background:mode===id?"#1e1b4b":"",borderColor:mode===id?"#4338ca":"",color:mode===id?"#c7d2fe":""}}>{l}</button>)}</div>
@@ -1218,7 +1291,21 @@ function RubricPage(){
   </div>
 }
 
-function App(){const[pg,sPg]=useState("dashboard");const[dt,sDt]=useState(null);
+function App(){
+  const validPages=NAV.map(n=>n.id);
+  const pageFromHash=()=>{const h=(window.location.hash||"").replace(/^#\/?/,"");return validPages.includes(h)?h:"dashboard";};
+  const[pg,sPgRaw]=useState(pageFromHash());const[dt,sDt]=useState(null);
+  // Navigating sets the hash; a hashchange listener (below) syncs state — so this
+  // also covers browser back/forward and direct links like yoursite.com/#/team
+  const sPg=(id)=>{ if(typeof id==="function")id=id(pg); window.location.hash="/"+id; sPgRaw(id); };
+  useEffect(()=>{
+    const onHash=()=>{const p=pageFromHash(); sPgRaw(p); sDt(null);};
+    window.addEventListener("hashchange",onHash);
+    // ensure the hash reflects the initial page on first load
+    if(!window.location.hash) window.location.hash="/"+pg;
+    return()=>window.removeEventListener("hashchange",onHash);
+  // eslint-disable-next-line
+  },[]);
   return<><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>{NAV.map(n=><button key={n.id} className={pg===n.id?"active":""} onClick={()=>{sPg(n.id);sDt(null)}} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}><span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>)}</nav><div style={{padding:"14px 16px",borderTop:"1px solid #2a3140"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
     <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
