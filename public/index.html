@@ -409,6 +409,179 @@ function ExportPage(){
     </div>}
   </div>
 }
+function TeamPage(){
+  const{data:reps,reload}=useApi("/reps/all");
+  const{data:unrostered,reload:reloadUnrostered}=useApi("/reps/unrostered");
+  const[showForm,setShowForm]=useState(false);
+  const[prefill,setPrefill]=useState(null);
+  const[editing,setEditing]=useState(null);
+  const[busy,setBusy]=useState(false);
+
+  async function toggleActive(rep){
+    setBusy(true);
+    try{ await postApi(`/reps/${rep.id}/${rep.active?"deactivate":"reactivate"}`); reload(); }
+    catch(e){ alert("Failed to update."); }
+    setBusy(false);
+  }
+  function onboardFromUnrostered(u){
+    setPrefill({
+      role:u.suggested_role,
+      aloware_user_id:u.aloware_user_id||"",
+      src_tag:u.suggested_role==="Closer"?"":undefined,
+      _fromUnrostered:true,
+    });
+    setEditing(null); setShowForm(true);
+  }
+
+  if(!reps)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  const active=reps.filter(r=>r.active);const inactive=reps.filter(r=>!r.active);
+
+  return<div className="flex-col gap-20" style={{maxWidth:900}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Team</h2>
+        <div style={{fontSize:13,color:"#64748b",marginTop:2}}>Manage reps, add new hires, onboard from the unrostered queue.</div></div>
+      <button className="btn btn-primary" onClick={()=>{setEditing(null);setPrefill(null);setShowForm(true);}}>+ Add Rep</button>
+    </div>
+
+    {showForm&&<RepForm editing={editing} prefill={prefill}
+      onClose={()=>{setShowForm(false);setEditing(null);setPrefill(null);}}
+      onSaved={()=>{reload();reloadUnrostered();setShowForm(false);setEditing(null);setPrefill(null);}}/>}
+
+    {/* Unrostered onboarding queue */}
+    {unrostered&&unrostered.unrostered&&unrostered.unrostered.length>0&&
+      <div className="card" style={{padding:20,background:"#161200",borderColor:"#92400e"}}>
+        <div className="section-head" style={{color:"#f59e0b"}}>⚠ Dialing through but not set up ({unrostered.unrostered.length})</div>
+        <div style={{fontSize:12,color:"#a8956b",marginBottom:12}}>These are making calls but aren't in the roster — their calls are parked (not scored). Add them to start scoring.</div>
+        {unrostered.unrostered.map((u,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderTop:i?"1px solid #2a2410":"none"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#e6d9b8"}}>{u.detected_ref||"unknown"} <span style={{fontSize:11,color:"#a8956b",fontWeight:400}}>· {u.base_source} · suggested {u.suggested_role}</span></div>
+            <div style={{fontSize:11,color:"#7c6f4a"}}>{u.parked_calls} parked call{u.parked_calls!==1?"s":""} · last {fmt(u.last_seen)}</div>
+          </div>
+          <button className="btn" onClick={()=>onboardFromUnrostered(u)} style={{fontSize:11,padding:"5px 10px"}}>Add this rep</button>
+        </div>)}
+      </div>}
+
+    {/* Active roster */}
+    <div className="card" style={{overflow:"hidden"}}>
+      <div style={{padding:"12px 18px",borderBottom:"1px solid #1a1f2e",fontSize:12,fontWeight:700,color:"#94a3b8",letterSpacing:.5}}>ACTIVE ROSTER ({active.length})</div>
+      {active.map(r=><RepRow key={r.id} rep={r} busy={busy} onEdit={()=>{setEditing(r);setPrefill(null);setShowForm(true);}} onToggle={()=>toggleActive(r)}/>)}
+    </div>
+
+    {inactive.length>0&&<div className="card" style={{overflow:"hidden",opacity:.7}}>
+      <div style={{padding:"12px 18px",borderBottom:"1px solid #1a1f2e",fontSize:12,fontWeight:700,color:"#64748b",letterSpacing:.5}}>INACTIVE ({inactive.length})</div>
+      {inactive.map(r=><RepRow key={r.id} rep={r} busy={busy} onEdit={()=>{setEditing(r);setPrefill(null);setShowForm(true);}} onToggle={()=>toggleActive(r)}/>)}
+    </div>}
+  </div>;
+}
+
+function RepRow({rep,onEdit,onToggle,busy}){
+  return<div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid #141925"}}>
+    <div style={{width:10,height:10,borderRadius:"50%",background:rep.color||"#6366f1",flexShrink:0}}/>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#c9d1d9"}}>{rep.name} <span style={{fontSize:11,fontWeight:400,color:"#64748b"}}>· {rep.role} · {rep.team}</span></div>
+      <div style={{fontSize:11,color:"#4b5563",fontFamily:"var(--m)"}}>{rep.src_tag}{rep.aloware_user_id?` · user_id ${rep.aloware_user_id}`:""}</div>
+    </div>
+    <button className="btn" onClick={onEdit} disabled={busy} style={{fontSize:11,padding:"4px 10px"}}>Edit</button>
+    <button className="btn" onClick={onToggle} disabled={busy} style={{fontSize:11,padding:"4px 10px",color:rep.active?"#f87171":"#34d399"}}>{rep.active?"Deactivate":"Reactivate"}</button>
+  </div>;
+}
+
+function RepForm({editing,prefill,onClose,onSaved}){
+  const init=editing||prefill||{};
+  const[name,setName]=useState(init.name||"");
+  const[role,setRole]=useState(init.role||"Closer");
+  const[team,setTeam]=useState(init.team||"");
+  const[srcTag,setSrcTag]=useState(init.src_tag||"");
+  const[userId,setUserId]=useState(init.aloware_user_id||"");
+  const[color,setColor]=useState(init.color||"#6366f1");
+  const[err,setErr]=useState("");const[busy,setBusy]=useState(false);
+  const[webhookUrl,setWebhookUrl]=useState("");
+
+  // When adding a closer (not editing), auto-suggest the next free src_tag
+  useEffect(()=>{
+    if(!editing&&role==="Closer"&&!srcTag){
+      fetch(API+"/reps/next-src-tag?role=Closer").then(r=>r.json()).then(d=>{if(d.src_tag)setSrcTag(d.src_tag);}).catch(()=>{});
+    }
+  // eslint-disable-next-line
+  },[role,editing]);
+
+  async function save(){
+    if(!name.trim()){setErr("Name is required.");return;}
+    setBusy(true);setErr("");
+    const body={name,role,team,color};
+    if(role==="Closer")body.src_tag=srcTag;
+    else body.aloware_user_id=userId;
+    try{
+      const r=editing?await patchApi(`/reps/${editing.id}`,body):await postApi("/reps",body);
+      if(r.ok){ if(r.webhook_url){setWebhookUrl(r.webhook_url);} else {onSaved();} }
+      else setErr(r.error||"Save failed.");
+    }catch(e){setErr("Save failed.");}
+    setBusy(false);
+  }
+
+  const inp={width:"100%",padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13,marginTop:4};
+  const lbl={fontSize:10,color:"#64748b",fontWeight:700,letterSpacing:.5,marginTop:14,display:"block"};
+
+  // Success state for a closer: show the webhook URL to paste into Fathom
+  if(webhookUrl)return<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:100,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"40px 20px"}} onClick={onSaved}>
+    <div className="card" style={{padding:28,maxWidth:560,width:"100%"}} onClick={e=>e.stopPropagation()}>
+      <h2 style={{fontSize:20,fontWeight:900,margin:0,color:"#34d399"}}>✓ {name} added</h2>
+      <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,marginTop:10}}>One more step to start scoring their calls: create a Fathom webhook pointing to this URL (replace <code>&lt;WEBHOOK_SECRET_KEY&gt;</code> with your webhook key from Render):</p>
+      <div style={{background:"#0a0e18",border:"1px solid #2a3140",borderRadius:8,padding:12,fontFamily:"var(--m)",fontSize:12,color:"#7dd3fc",wordBreak:"break-all",marginTop:6}}>{webhookUrl}</div>
+      <div style={{fontSize:12,color:"#64748b",marginTop:14,lineHeight:1.8}}>
+        <div style={{fontWeight:700,color:"#94a3b8",marginBottom:4}}>Checklist:</div>
+        ☑ Roster row created<br/>
+        ☐ Fathom webhook added (paste URL above)<br/>
+        ☐ First test call scored
+      </div>
+      <p style={{fontSize:11,color:"#64748b",marginTop:12}}>Until the webhook is added, their calls will safely park in Non-Sales (not lost). Once it's live, they'll score automatically.</p>
+      <button className="btn btn-primary" onClick={onSaved} style={{marginTop:18,width:"100%"}}>Done</button>
+    </div>
+  </div>;
+
+  const isCloser=role==="Closer";
+  return<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:100,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"40px 20px"}} onClick={onClose}>
+    <div className="card" style={{padding:28,maxWidth:560,width:"100%"}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <h2 style={{fontSize:20,fontWeight:900,margin:0}}>{editing?"Edit Rep":"Add Rep"}</h2>
+        <span onClick={onClose} style={{fontSize:20,color:"#64748b",cursor:"pointer"}}>✕</span>
+      </div>
+      {prefill&&prefill._fromUnrostered&&<div style={{fontSize:12,color:"#f59e0b",marginBottom:8}}>Onboarding from the unrostered queue — details pre-filled.</div>}
+
+      <label style={lbl}>NAME *</label>
+      <input style={inp} value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Chris Johnson"/>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div><label style={lbl}>ROLE</label>
+          <select style={inp} value={role} onChange={e=>setRole(e.target.value)} disabled={!!editing}>
+            <option>Closer</option><option>Setter</option><option>Both</option>
+          </select></div>
+        <div><label style={lbl}>COLOR</label>
+          <input type="color" style={{...inp,height:38,padding:4}} value={color} onChange={e=>setColor(e.target.value)}/></div>
+      </div>
+
+      <label style={lbl}>TEAM</label>
+      <input style={inp} value={team} onChange={e=>setTeam(e.target.value)} placeholder={isCloser?"Turnkey - Closers":"Turnkey - Setters"}/>
+
+      {isCloser?<>
+        <label style={lbl}>SRC TAG (unique — maps to a Fathom webhook)</label>
+        <input style={inp} value={srcTag} onChange={e=>setSrcTag(e.target.value)} placeholder="fathom-closers-3"/>
+        <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Auto-suggested next free tag. You'll create a Fathom webhook with this after saving.</div>
+      </>:<>
+        <label style={lbl}>ALOWARE USER ID *</label>
+        <input style={inp} value={userId} onChange={e=>setUserId(e.target.value)} placeholder="e.g. 112769"/>
+        <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Found in Aloware under the user's profile / API settings. Setters share the Aloware webhook — no new webhook needed.</div>
+      </>}
+
+      {err&&<div style={{color:"#ef4444",fontSize:12,marginTop:12}}>{err}</div>}
+      <div style={{display:"flex",gap:10,marginTop:20}}>
+        <button className="btn btn-primary" onClick={save} disabled={busy} style={{flex:1}}>{busy?"Saving…":(editing?"Save Changes":"Add Rep")}</button>
+        <button className="btn" onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  </div>;
+}
+
 function AboutPage(){
   const cat=(n,w)=><div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#94a3b8",padding:"4px 0"}}><span>{n}</span><span style={{fontFamily:"var(--m)",color:"#7c83ff"}}>{w}</span></div>;
   return<div className="flex-col gap-20" style={{maxWidth:820}}>
@@ -927,7 +1100,7 @@ function ResourcesPage(){
   </div>
 }
 
-const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
+const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"team",icon:"👥",label:"Team",color:"#818cf8"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
 
 function RubricViewer(){
   const[rb,setRb]=useState(null);const[role,setRole]=useState("Closer");
@@ -1047,7 +1220,7 @@ function RubricPage(){
 
 function App(){const[pg,sPg]=useState("dashboard");const[dt,sDt]=useState(null);
   return<><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>{NAV.map(n=><button key={n.id} className={pg===n.id?"active":""} onClick={()=>{sPg(n.id);sDt(null)}} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}><span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>)}</nav><div style={{padding:"14px 16px",borderTop:"1px solid #2a3140"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
-    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
+    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
