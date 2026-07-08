@@ -252,7 +252,22 @@ router.post('/calls/:id/override', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Read the latest override for a call (so the calibration UI can show "Sam scored this X").
+// Read the current deduction weights (Sam's non-negotiables) + how they're set.
+// Tuning is done via Render env vars (DEDUCT_*), so this shows current values + guidance.
+router.get('/deduction-weights', async (req, res) => {
+  try {
+    const { DEDUCT } = require('../workers/qcWorker');
+    res.json({
+      weights: [
+        { rule: 'no_discovery', label: 'No Discovery', points: DEDUCT.no_discovery, env: 'DEDUCT_NO_DISCOVERY', default: 3, severity: 'critical' },
+        { rule: 'no_financial_qual', label: 'No Financial Qualification', points: DEDUCT.no_financial_qual, env: 'DEDUCT_NO_FINANCIAL_QUAL', default: 2, severity: 'critical' },
+        { rule: 'no_objection_handling', label: 'No Objection Handling', points: DEDUCT.no_objection_handling, env: 'DEDUCT_NO_OBJECTION', default: 2, severity: 'critical' },
+        { rule: 'untailored_pitch', label: 'Untailored Pitch', points: DEDUCT.untailored_pitch, env: 'DEDUCT_UNTAILORED_PITCH', default: 1, severity: 'warning' },
+      ],
+      note: 'Adjust these in Render (Environment tab) using the listed env var names, then re-score to apply. Lower = more forgiving.',
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 router.get('/calls/:id/override', async (req, res) => {
   try {
     const r = await q('SELECT * FROM score_overrides WHERE call_id=? ORDER BY id DESC LIMIT 1', [req.params.id]);
@@ -632,7 +647,47 @@ router.get('/reps/unrostered', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Add a rep. Role-aware validation:
+// A single rep's progress: trend over time, category averages, recent calls.
+// Powers the rep-facing "My Progress" view.
+router.get('/reps/:id/progress', async (req, res) => {
+  try {
+    const days = Number(req.query.days) || 30;
+    const rep = (await q('SELECT * FROM rep_roster WHERE id=?', [req.params.id])).rows[0];
+    if (!rep) return res.status(404).json({ error: 'Rep not found.' });
+    const name = rep.name;
+
+    // Weekly trend (avg adjusted score per week)
+    const trend = await q(
+      `SELECT weekstart AS period, COUNT(*) AS calls, ROUND(AVG(overall_score_adj)::numeric,1) AS avg_score
+       FROM calls WHERE status='SCORED' AND rep_name=?
+         AND received_at::timestamp >= (CURRENT_DATE - (? || ' days')::interval)
+       GROUP BY weekstart ORDER BY weekstart ASC`, [name, days]);
+
+    // Overall stats + category averages (category_scores is JSON)
+    const stats = (await q(
+      `SELECT COUNT(*) AS scored, ROUND(AVG(overall_score_adj)::numeric,1) AS avg_adj,
+              ROUND(AVG(overall_score)::numeric,1) AS avg_raw, ROUND(AVG(agent_talk_pct)::numeric,0) AS avg_talk
+       FROM calls WHERE status='SCORED' AND rep_name=?`, [name])).rows[0];
+
+    // Category averages — pull from JSON in app code (portable across the 5 cats)
+    const scored = (await q(
+      `SELECT category_scores FROM calls WHERE status='SCORED' AND rep_name=? AND category_scores IS NOT NULL`, [name])).rows;
+    const catTotals = {}, catCounts = {};
+    scored.forEach(r => {
+      let cs = r.category_scores; try { if (typeof cs === 'string') cs = JSON.parse(cs); } catch(e){ cs = null; }
+      if (cs) for (const k of Object.keys(cs)) { const v = Number(cs[k]); if (isFinite(v)) { catTotals[k]=(catTotals[k]||0)+v; catCounts[k]=(catCounts[k]||0)+1; } }
+    });
+    const categories = Object.keys(catTotals).map(k => ({ category: k, avg: Math.round(catTotals[k]/catCounts[k]*10)/10 }));
+
+    // Recent calls
+    const recent = (await q(
+      `SELECT id, client_name, overall_score_adj, received_at
+       FROM calls WHERE status='SCORED' AND rep_name=? ORDER BY received_at DESC LIMIT 10`, [name])).rows;
+
+    res.json({ rep: { id: rep.id, name, role: rep.role, color: rep.color }, stats, trend: trend.rows, categories, recent });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 //  - Closer: needs a UNIQUE src_tag (maps to a dedicated Fathom webhook). aloware_user_id ignored.
 //  - Setter: src_tag defaults to 'aloware-setters'; needs a UNIQUE aloware_user_id.
 router.post('/reps', express.json(), async (req, res) => {
