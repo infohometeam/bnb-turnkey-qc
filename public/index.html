@@ -222,20 +222,45 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
     const deductions=(pf.deductions)||[];
     const CAT_LABELS={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",frame_control:"Frame/Control",objections_close:"Objections & Close"};
     const dur=c.call_duration_sec?`${Math.floor(c.call_duration_sec/60)}m ${c.call_duration_sec%60}s`:"—";
-    let md=`# QC Scorecard — ${c.rep_name||"?"} → ${c.client_name||"?"}\n\n`;
-    md+=`**Date:** ${c.received_at||"—"}  \n**Role:** ${c.role||"—"}  \n**Source:** ${c.base_source||"—"}  \n**Duration:** ${dur}  \n**Talk ratio:** agent ${c.agent_talk_pct??"—"}% / contact ${100-(c.agent_talk_pct||0)}%\n\n`;
-    md+=`## Score: ${c.overall_score_adj} / 10  (raw ${c.overall_score})\n\n`;
-    if(Object.keys(cats).length){md+=`## Categories\n`;for(const k of Object.keys(cats)){md+=`- ${CAT_LABELS[k]||k}: ${cats[k]}/10\n`;}md+=`\n`;}
-    if(deductions.length){md+=`## Deductions\n`;deductions.forEach(d=>{md+=`- ${d.label} (${d.points}) — ${d.severity}\n`;});md+=`\n`;}
-    if(c.quick_summary){md+=`## Summary\n${c.quick_summary}\n\n`;}
-    if(strengths.length){md+=`## Strengths\n`;strengths.forEach(s=>md+=`- ${s}\n`);md+=`\n`;}
-    if(improvements.length){md+=`## Areas to Improve\n`;improvements.forEach(s=>md+=`- ${s}\n`);md+=`\n`;}
-    if(c.coaching_notes){md+=`## Coaching\n${c.coaching_notes}\n\n`;}
-    if(withTranscript&&c.transcript){md+=`## Transcript\n\n${c.transcript}\n`;}
-    const safe=(s)=>String(s||"call").replace(/[^a-z0-9]+/gi,"-").replace(/^-|-$/g,"").slice(0,40);
-    const fname=`scorecard-${safe(c.rep_name)}-${safe(c.client_name)}-${(c.received_at||"").slice(0,10)}.md`;
-    const blob=new Blob([md],{type:"text/markdown;charset=utf-8;"});
-    const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=fname;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const li=(arr)=>arr.map(x=>`<li>${esc(x)}</li>`).join("");
+    const catRows=Object.keys(cats).map(k=>`<tr><td>${CAT_LABELS[k]||k}</td><td class="num">${esc(cats[k])}/10</td></tr>`).join("");
+    const dedRows=deductions.length?`<h2>Deductions</h2><ul>${deductions.map(d=>`<li><b>${esc(d.label)}</b> (${esc(d.points)}) — ${esc(d.severity)}</li>`).join("")}</ul>`:"";
+    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Scorecard — ${esc(c.rep_name)} → ${esc(c.client_name)}</title>
+    <style>
+      @page{margin:1.5cm}
+      body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e293b;line-height:1.55;max-width:760px;margin:0 auto;padding:20px}
+      h1{font-size:22px;margin:0 0 4px;color:#4338ca}
+      .meta{color:#64748b;font-size:13px;margin-bottom:18px}
+      .score{font-size:15px;margin:14px 0;padding:12px 16px;background:#f1f5f9;border-radius:8px}
+      .score b{font-size:26px;color:#4338ca}
+      h2{font-size:15px;color:#1e293b;border-bottom:2px solid #e2e8f0;padding-bottom:4px;margin:22px 0 10px}
+      table{width:100%;border-collapse:collapse;font-size:14px}
+      td{padding:6px 8px;border-bottom:1px solid #eef2f7}
+      td.num{text-align:right;font-weight:700;font-family:monospace}
+      ul{font-size:14px;margin:6px 0;padding-left:22px}
+      li{margin:3px 0}
+      .transcript{white-space:pre-wrap;font-size:12px;color:#334155;background:#f8fafc;padding:14px;border-radius:8px;margin-top:8px}
+      .footer{margin-top:30px;color:#94a3b8;font-size:11px;text-align:center}
+      @media print{.noprint{display:none}}
+    </style></head><body>
+      <h1>QC Scorecard</h1>
+      <div class="meta"><b>${esc(c.rep_name)||"?"}</b> → ${esc(c.client_name)||"?"}<br>
+        ${esc(c.received_at)} · ${esc(c.role)} · ${esc(c.base_source)} · ${dur} · talk: agent ${esc(c.agent_talk_pct)}%</div>
+      <div class="score">Score: <b>${esc(c.overall_score_adj)}</b> / 10 &nbsp; <span style="color:#64748b">(raw ${esc(c.overall_score)})</span></div>
+      ${catRows?`<h2>Categories</h2><table>${catRows}</table>`:""}
+      ${dedRows}
+      ${c.quick_summary?`<h2>Summary</h2><p style="font-size:14px">${esc(c.quick_summary)}</p>`:""}
+      ${strengths.length?`<h2>Strengths</h2><ul>${li(strengths)}</ul>`:""}
+      ${improvements.length?`<h2>Areas to Improve</h2><ul>${li(improvements)}</ul>`:""}
+      ${c.coaching_notes?`<h2>Coaching</h2><p style="font-size:14px">${esc(c.coaching_notes)}</p>`:""}
+      ${withTranscript&&c.transcript?`<h2>Transcript</h2><div class="transcript">${esc(c.transcript)}</div>`:""}
+      <div class="footer">BNB Turnkey QC · generated ${new Date().toLocaleString()}</div>
+      <script>window.onload=function(){window.print();}<\/script>
+    </body></html>`;
+    const w=window.open("","_blank");
+    if(!w){alert("Please allow pop-ups to export the PDF.");return;}
+    w.document.write(html);w.document.close();
     setExps(false);
   }
   async function reqc(){setRs(true);await postApi(`/calls/${c.id}/reqc`);alert("Queued for re-score.");reload();setRs(false)}
