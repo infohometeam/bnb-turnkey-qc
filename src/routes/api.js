@@ -33,7 +33,7 @@ router.get('/calls', async (req, res) => {
   try {
     const { status, rep, role, period, flagged, from, to, limit = 500, offset = 0, hideVm = 'true' } = req.query;
     let w = '1=1', p = [];
-    if (hideVm === 'true') w += " AND status NOT IN ('SKIP_VOICEMAIL','SKIP_SHORT','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL','SKIP_NOT_ROSTERED')";
+    if (hideVm === 'true') w += " AND status NOT IN ('SKIP_VOICEMAIL','SKIP_SHORT','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL','SKIP_NOT_ROSTERED','STITCHED')";
     if (status && status !== 'ALL') { w += ' AND status=?'; p.push(status); }
     if (rep) { w += ' AND rep_name=?'; p.push(rep); }
     if (role) { w += ' AND role=?'; p.push(role); }
@@ -594,7 +594,58 @@ router.post('/queue/pull', express.json(), async (req, res) => {
   }
 });
 
-// ─── Reps ────────────────────────────────────────────────────
+// ─── Call Stitching ──────────────────────────────────────────
+// Scan for cut-off call pairs (same rep+client, close in time, transcript cues).
+// Returns auto-mergeable + suggested pairs. Does not merge.
+router.get('/stitch/detect', async (req, res) => {
+  try {
+    const { detectStitches } = require('../services/stitchService');
+    const all = await detectStitches();
+    res.json({
+      auto: all.filter(x => x.decision === 'auto'),
+      suggested: all.filter(x => x.decision === 'suggest'),
+      checked: all.length,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Merge a specific pair (approve a suggestion, or confirm an auto).
+router.post('/stitch/merge', express.json(), async (req, res) => {
+  try {
+    const { mergeCalls } = require('../services/stitchService');
+    const { first_id, second_id, merged_by } = req.body || {};
+    if (!first_id || !second_id) return res.status(400).json({ error: 'first_id and second_id required' });
+    const r = await mergeCalls(first_id, second_id, merged_by || 'Sam');
+    res.json(r);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Undo a merge (reversibility).
+router.post('/stitch/unmerge', express.json(), async (req, res) => {
+  try {
+    const { unmergeCalls } = require('../services/stitchService');
+    const { survivor_id } = req.body || {};
+    if (!survivor_id) return res.status(400).json({ error: 'survivor_id required' });
+    const r = await unmergeCalls(survivor_id);
+    res.json(r);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Run auto-merge on all HIGH-confidence pairs (the "auto obvious ones" behavior).
+router.post('/stitch/auto-merge', async (req, res) => {
+  try {
+    const { detectStitches, mergeCalls } = require('../services/stitchService');
+    const all = await detectStitches();
+    const autos = all.filter(x => x.decision === 'auto');
+    const merged = [];
+    for (const p of autos) {
+      try { await mergeCalls(p.first_id, p.second_id, 'auto'); merged.push({ first: p.first_id, second: p.second_id }); }
+      catch (e) { /* skip already-stitched or errors */ }
+    }
+    res.json({ ok: true, auto_merged: merged.length, merged });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/reps', async (req, res) => {
   try { res.json((await q('SELECT * FROM rep_roster WHERE active=1 ORDER BY role,name')).rows); }
   catch (err) { res.status(500).json({ error: err.message }); }
