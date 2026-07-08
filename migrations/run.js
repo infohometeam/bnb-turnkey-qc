@@ -130,6 +130,11 @@ async function migrate() {
     `CREATE INDEX IF NOT EXISTS idx_calls_extkey ON calls(external_call_key)`,
     `CREATE INDEX IF NOT EXISTS idx_score_history_version ON score_history(rubric_version)`,
     `CREATE INDEX IF NOT EXISTS idx_score_history_call ON score_history(call_id)`,
+    // Call stitching: link cut-off calls that were merged into one.
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS stitched_into_id integer`,
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS stitched_from_ids text`,
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS stitch_status text`,
+    `CREATE INDEX IF NOT EXISTS idx_calls_stitch ON calls(stitch_status)`,
   ];
   for (const sql of stmts) await q(sql);
 
