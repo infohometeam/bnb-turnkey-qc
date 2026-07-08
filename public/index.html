@@ -849,6 +849,78 @@ function CalibrationPage(){
   </div>;
 }
 
+function StitchPage(){
+  const[data,setData]=useState(null);
+  const[scanning,setScanning]=useState(false);
+  const[busy,setBusy]=useState(null);
+  const[done,setDone]=useState([]);
+
+  async function scan(){
+    setScanning(true);setData(null);
+    try{const r=await fetch(API+"/stitch/detect").then(r=>r.json());setData(r);}
+    catch(e){alert("Scan failed.");}
+    setScanning(false);
+  }
+  async function merge(p){
+    setBusy(p.first_id+"-"+p.second_id);
+    try{
+      const r=await postApi("/stitch/merge",{first_id:p.first_id,second_id:p.second_id,merged_by:"Sam"});
+      if(r.ok){setDone(d=>[...d,p.first_id+"-"+p.second_id]);}
+      else alert(r.error||"Merge failed.");
+    }catch(e){alert("Merge failed.");}
+    setBusy(null);
+  }
+
+  function Pair({p,auto}){
+    const key=p.first_id+"-"+p.second_id;
+    const isDone=done.includes(key);
+    return<div className="card" style={{padding:16,opacity:isDone?.5:1,borderColor:auto?"#166534":"#92400e"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:200}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#c9d1d9"}}>{p.rep_name} → {p.client_name}</div>
+          <div style={{fontSize:12,color:"#64748b",marginTop:2}}>Call #{p.first_id} (scored {p.first_score}) + Call #{p.second_id} (scored {p.second_score}) · {p.gap_min} min apart</div>
+          <div style={{fontSize:12,color:"#94a3b8",marginTop:6,fontStyle:"italic"}}>"{p.cue.reason}"</div>
+          <div style={{fontSize:11,color:"#4b5563",marginTop:4}}>
+            {p.cue.call1_cut_off?"✓ call 1 cut off":"✗ call 1 cut off"} · {p.cue.call2_reconnects?"✓ call 2 reconnects":"✗ call 2 reconnects"} · confidence: {p.cue.confidence}
+          </div>
+        </div>
+        <div style={{flexShrink:0}}>
+          {isDone?<span style={{fontSize:12,color:"#34d399",fontWeight:700}}>✓ Merged</span>:
+            <button className="btn btn-primary" onClick={()=>merge(p)} disabled={busy===key} style={{fontSize:12}}>{busy===key?"Merging…":"Merge into one"}</button>}
+        </div>
+      </div>
+    </div>;
+  }
+
+  return<div className="flex-col gap-20" style={{maxWidth:860}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Call Stitching</h2>
+        <div style={{fontSize:13,color:"#64748b",marginTop:2}}>Finds cut-off calls that were redialed and merges them into one score.</div></div>
+      <button className="btn btn-primary" onClick={scan} disabled={scanning}>{scanning?"Scanning…":"⟳ Scan for cut-off calls"}</button>
+    </div>
+
+    {!data&&!scanning&&<div className="card" style={{padding:40,textAlign:"center",color:"#64748b"}}>
+      Click <b style={{color:"#94a3b8"}}>Scan</b> to look for calls that dropped and were redialed within {60} minutes. Same rep, same client, with the transcript showing a cut-off and reconnect.
+    </div>}
+
+    {data&&<>
+      {data.auto.length>0&&<div>
+        <div style={{fontSize:12,fontWeight:700,color:"#4ade80",letterSpacing:.5,marginBottom:10}}>HIGH CONFIDENCE — CLEAR CUT-OFF PAIRS ({data.auto.length})</div>
+        <div className="flex-col gap-12">{data.auto.map(p=><Pair key={p.first_id+"-"+p.second_id} p={p} auto/>)}</div>
+      </div>}
+
+      {data.suggested.length>0&&<div>
+        <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",letterSpacing:.5,marginBottom:10,marginTop:8}}>WORTH A LOOK — POSSIBLE PAIRS ({data.suggested.length})</div>
+        <div className="flex-col gap-12">{data.suggested.map(p=><Pair key={p.first_id+"-"+p.second_id} p={p}/>)}</div>
+      </div>}
+
+      {data.auto.length===0&&data.suggested.length===0&&<div className="card" style={{padding:40,textAlign:"center",color:"#64748b"}}>
+        No cut-off pairs found. Checked {data.checked} candidate{data.checked!==1?"s":""}.
+      </div>}
+    </>}
+  </div>;
+}
+
 function AboutPage(){
   const cat=(n,w)=><div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#94a3b8",padding:"4px 0"}}><span>{n}</span><span style={{fontFamily:"var(--m)",color:"#7c83ff"}}>{w}</span></div>;
   return<div className="flex-col gap-20" style={{maxWidth:820}}>
@@ -1367,7 +1439,7 @@ function ResourcesPage(){
   </div>
 }
 
-const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"progress",icon:"📈",label:"My Progress",color:"#4ade80"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"team",icon:"👥",label:"Team",color:"#818cf8"},{id:"calibration",icon:"🎯",label:"Calibration",color:"#a5b4fc"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
+const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"progress",icon:"📈",label:"My Progress",color:"#4ade80"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"team",icon:"👥",label:"Team",color:"#818cf8"},{id:"stitch",icon:"🔗",label:"Stitching",color:"#2dd4bf"},{id:"calibration",icon:"🎯",label:"Calibration",color:"#a5b4fc"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
 
 function RubricViewer(){
   const[rb,setRb]=useState(null);const[role,setRole]=useState("Closer");
@@ -1501,7 +1573,7 @@ function App(){
   // eslint-disable-next-line
   },[]);
   return<><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>{NAV.map(n=><button key={n.id} className={pg===n.id?"active":""} onClick={()=>{sPg(n.id);sDt(null)}} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}><span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>)}</nav><div style={{padding:"14px 16px",borderTop:"1px solid #2a3140"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
-    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
+    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
