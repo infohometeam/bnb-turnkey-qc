@@ -20,28 +20,38 @@ function toNum(v) {
 // Sam's rules are now DEDUCTIONS not caps — you see the AI's honest score
 // with transparent point deductions labeled with what triggered them.
 // Each deduction is also available as a structured flag for filtering.
+// Deduction weights for Sam's non-negotiables. Tunable via env vars so they can be
+// softened/hardened without a code change (e.g. if closer scores floor too aggressively).
+// Defaults match the original hardcoded values.
+const DEDUCT = {
+  no_discovery: Math.abs(Number(process.env.DEDUCT_NO_DISCOVERY ?? 3)),
+  no_financial_qual: Math.abs(Number(process.env.DEDUCT_NO_FINANCIAL_QUAL ?? 2)),
+  no_objection_handling: Math.abs(Number(process.env.DEDUCT_NO_OBJECTION ?? 2)),
+  untailored_pitch: Math.abs(Number(process.env.DEDUCT_UNTAILORED_PITCH ?? 1)),
+};
+
 function adjustScore(ai, dur, agPct, result) {
   const deductions = []; // structured: [{rule, label, points, severity}]
   if (typeof ai !== 'number' || !isFinite(ai)) return { adjusted: ai, notes: ['No score'], deductions: [] };
   let s = ai;
 
-  // Sam's philosophy rules — deductions instead of caps
+  // Sam's philosophy rules — deductions instead of caps (weights from DEDUCT config)
   const pf = result?.pass_fail || {};
   if (pf.has_discovery === false) {
-    s -= 3;
-    deductions.push({ rule: 'no_discovery', label: 'Failed: No Discovery', points: -3, severity: 'critical', source: "Sam's philosophy" });
+    s -= DEDUCT.no_discovery;
+    deductions.push({ rule: 'no_discovery', label: 'Failed: No Discovery', points: -DEDUCT.no_discovery, severity: 'critical', source: "Sam's philosophy" });
   }
   if (pf.financial_qualification === false) {
-    s -= 2;
-    deductions.push({ rule: 'no_financial_qual', label: 'Failed: No Financial Qualification', points: -2, severity: 'critical', source: "Sam's philosophy" });
+    s -= DEDUCT.no_financial_qual;
+    deductions.push({ rule: 'no_financial_qual', label: 'Failed: No Financial Qualification', points: -DEDUCT.no_financial_qual, severity: 'critical', source: "Sam's philosophy" });
   }
   if (pf.handled_objections === false) {
-    s -= 2;
-    deductions.push({ rule: 'no_objection_handling', label: 'Failed: No Objection Handling', points: -2, severity: 'critical', source: "Sam's philosophy" });
+    s -= DEDUCT.no_objection_handling;
+    deductions.push({ rule: 'no_objection_handling', label: 'Failed: No Objection Handling', points: -DEDUCT.no_objection_handling, severity: 'critical', source: "Sam's philosophy" });
   }
   if (pf.tailored_pitch === false) {
-    s -= 1;
-    deductions.push({ rule: 'untailored_pitch', label: 'Untailored Pitch', points: -1, severity: 'warning', source: "Sam's philosophy" });
+    s -= DEDUCT.untailored_pitch;
+    deductions.push({ rule: 'untailored_pitch', label: 'Untailored Pitch', points: -DEDUCT.untailored_pitch, severity: 'warning', source: "Sam's philosophy" });
   }
 
   // Talk % adjustments — call mechanics, kept as-is
@@ -351,4 +361,4 @@ async function sweepStuckTranscripts(maxHours = 4) {
   return { swept: stuck.rows.length, ids: stuck.rows.map(r => r.id) };
 }
 
-module.exports = { processQueue, processCall, unpauseDailyRows, adjustScore, sweepStuckTranscripts };
+module.exports = { processQueue, processCall, unpauseDailyRows, adjustScore, sweepStuckTranscripts, DEDUCT };
