@@ -569,6 +569,7 @@ function RepForm({editing,prefill,onClose,onSaved}){
   const[color,setColor]=useState(init.color||"#6366f1");
   const[err,setErr]=useState("");const[busy,setBusy]=useState(false);
   const[webhookUrl,setWebhookUrl]=useState("");
+  const[copied,setCopied]=useState(false);
 
   // When adding a closer (not editing), auto-suggest the next free src_tag
   useEffect(()=>{
@@ -600,7 +601,10 @@ function RepForm({editing,prefill,onClose,onSaved}){
     <div className="card" style={{padding:28,maxWidth:560,width:"100%"}} onClick={e=>e.stopPropagation()}>
       <h2 style={{fontSize:20,fontWeight:900,margin:0,color:"#34d399"}}>✓ {name} added</h2>
       <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,marginTop:10}}>One more step to start scoring their calls: create a Fathom webhook pointing to this URL (replace <code>&lt;WEBHOOK_SECRET_KEY&gt;</code> with your webhook key from Render):</p>
-      <div style={{background:"#0a0e18",border:"1px solid #2a3140",borderRadius:8,padding:12,fontFamily:"var(--m)",fontSize:12,color:"#7dd3fc",wordBreak:"break-all",marginTop:6}}>{webhookUrl}</div>
+      <div style={{display:"flex",gap:8,alignItems:"stretch",marginTop:6}}>
+        <div style={{flex:1,background:"#0a0e18",border:"1px solid #2a3140",borderRadius:8,padding:12,fontFamily:"var(--m)",fontSize:12,color:"#7dd3fc",wordBreak:"break-all"}}>{webhookUrl}</div>
+        <button className="btn" onClick={()=>{navigator.clipboard?.writeText(webhookUrl).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1500);});}} style={{flexShrink:0,whiteSpace:"nowrap"}}>{copied?"✓ Copied":"⧉ Copy"}</button>
+      </div>
       <div style={{fontSize:12,color:"#64748b",marginTop:14,lineHeight:1.8}}>
         <div style={{fontWeight:700,color:"#94a3b8",marginBottom:4}}>Checklist:</div>
         ☑ Roster row created<br/>
@@ -652,6 +656,145 @@ function RepForm({editing,prefill,onClose,onSaved}){
         <button className="btn" onClick={onClose}>Cancel</button>
       </div>
     </div>
+  </div>;
+}
+
+function MyProgressPage(){
+  const{data:reps}=useApi("/reps");
+  const[repId,setRepId]=useState("");
+  const{data}=useApi(repId?`/reps/${repId}/progress`:null,[repId]);
+  React.useEffect(()=>{if(reps&&reps.length&&!repId)setRepId(String(reps[0].id));},[reps]);
+
+  const CAT_LABELS={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",frame_control:"Frame/Control",objections_close:"Objections & Close"};
+  return<div className="flex-col gap-20" style={{maxWidth:820}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>My Progress</h2>
+        <div style={{fontSize:13,color:"#64748b",marginTop:2}}>Track your scores and see where you're improving.</div></div>
+      {reps&&<select value={repId} onChange={e=>setRepId(e.target.value)} style={{padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,color:"var(--t1)",fontSize:13}}>
+        {reps.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+      </select>}
+    </div>
+
+    {!data?<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>:
+     data.stats.scored==0?<div className="card" style={{padding:40,textAlign:"center",color:"#94a3b8"}}>No scored calls yet for {data.rep.name}.</div>:<>
+      <div className="grid grid-stats">
+        <div className="card stat-card"><div className="stat-label">Scored calls</div><div style={{fontSize:26,fontWeight:900,color:"#c9d1d9"}}>{data.stats.scored}</div></div>
+        <div className="card stat-card"><div className="stat-label">Avg score</div><div style={{fontSize:26,fontWeight:900,color:sClr(data.stats.avg_adj)}}>{data.stats.avg_adj}</div></div>
+        <div className="card stat-card"><div className="stat-label">Avg talk %</div><div style={{fontSize:26,fontWeight:900,color:"#c9d1d9"}}>{data.stats.avg_talk}%</div></div>
+      </div>
+
+      {/* Trend over time */}
+      {data.trend.length>1&&<div className="card" style={{padding:20}}>
+        <div className="section-head" style={{marginBottom:14}}>Score trend (weekly)</div>
+        <div style={{display:"flex",alignItems:"flex-end",gap:8,height:120}}>
+          {data.trend.map((t,i)=>{const h=Math.max(6,(Number(t.avg_score)||0)/10*100);return<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+            <div style={{fontSize:11,fontWeight:700,color:sClr(t.avg_score),fontFamily:"var(--m)"}}>{t.avg_score}</div>
+            <div style={{width:"100%",maxWidth:36,height:`${h}%`,background:`linear-gradient(180deg,${sClr(t.avg_score)},${sClr(t.avg_score)}66)`,borderRadius:"4px 4px 0 0"}}/>
+            <div style={{fontSize:9,color:"#4b5563"}}>{String(t.period).slice(5)}</div>
+          </div>})}
+        </div>
+      </div>}
+
+      {/* Category breakdown */}
+      {data.categories.length>0&&<div className="card" style={{padding:20}}>
+        <div className="section-head" style={{marginBottom:14}}>Your category averages</div>
+        {data.categories.map(c=><div key={c.category} style={{marginBottom:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+            <span style={{color:"#c9d1d9"}}>{CAT_LABELS[c.category]||c.category}</span>
+            <span style={{fontFamily:"var(--m)",fontWeight:700,color:sClr(c.avg)}}>{c.avg}</span></div>
+          <div style={{height:6,background:"#141925",borderRadius:3,overflow:"hidden"}}><div style={{width:`${c.avg*10}%`,height:"100%",background:sClr(c.avg)}}/></div>
+        </div>)}
+      </div>}
+
+      {/* Recent calls */}
+      <div className="card" style={{overflow:"hidden"}}>
+        <div style={{padding:"12px 18px",borderBottom:"1px solid #1a1f2e",fontSize:12,fontWeight:700,color:"#94a3b8",letterSpacing:.5}}>RECENT CALLS</div>
+        {data.recent.map(c=><div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 18px",borderBottom:"1px solid #141925"}}>
+          <span style={{fontSize:13,color:"#c9d1d9"}}>{c.client_name||"—"}</span>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:11,color:"#4b5563"}}>{fmt(c.received_at)}</span>
+            <span style={{fontFamily:"var(--m)",fontWeight:800,color:sClr(c.overall_score_adj)}}>{c.overall_score_adj}</span>
+          </div>
+        </div>)}
+      </div>
+    </>}
+  </div>;
+}
+
+function CalibrationPage(){
+  const{data}=useApi("/calibration");
+  const{data:dw}=useApi("/deduction-weights");
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  const ovr=data.overrides||[];
+  const avg=data.avg_delta;
+  // Per-rep and per-role rollups of the gap
+  const byRole={};
+  ovr.forEach(o=>{if(!isFinite(o.delta))return;const k=o.role||"?";(byRole[k]=byRole[k]||[]).push(o.delta);});
+  const roleAvg=Object.entries(byRole).map(([role,ds])=>({role,n:ds.length,avg:Math.round(ds.reduce((a,b)=>a+b,0)/ds.length*10)/10}));
+
+  return<div className="flex-col gap-20" style={{maxWidth:900}}>
+    <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Calibration</h2>
+      <div style={{fontSize:13,color:"#64748b",marginTop:2}}>How Sam's scores compare to the bot's. This is the data that tunes the rubric.</div></div>
+
+    {ovr.length===0?<div className="card" style={{padding:40,textAlign:"center"}}>
+      <div style={{fontSize:14,color:"#94a3b8"}}>No calibration scores yet.</div>
+      <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Open any scored call and use <b style={{color:"#a5b4fc"}}>Sam's Calibration Score</b> to add one. They'll show up here.</div>
+    </div>:<>
+      {/* Summary stats */}
+      <div className="grid grid-stats">
+        <div className="card stat-card"><div className="stat-label">Calibrated calls</div><div style={{fontSize:26,fontWeight:900,color:"#818cf8"}}>{data.count}</div></div>
+        <div className="card stat-card"><div className="stat-label">Avg gap (Sam − bot)</div><div style={{fontSize:26,fontWeight:900,color:avg>0?"#34d399":avg<0?"#f87171":"#c9d1d9"}}>{avg>0?"+":""}{avg}</div></div>
+        <div className="card stat-card"><div className="stat-label">Agreement</div><div style={{fontSize:26,fontWeight:900,color:"#c9d1d9"}}>{Math.abs(avg)<=1?"Close":Math.abs(avg)<=2?"Some drift":"Diverging"}</div></div>
+      </div>
+
+      {/* Interpretation hint */}
+      <div className="card" style={{padding:16,background:avg>1?"#161200":avg<-1?"#1a0a0a":"#0d1420",borderColor:avg>1?"#92400e":avg<-1?"#991b1b":"#1e3a5f"}}>
+        <div style={{fontSize:13,color:"#c9d1d9",lineHeight:1.6}}>
+          {Math.abs(avg)<=1&&<>The bot is scoring close to Sam on average — the rubric is well calibrated. No changes needed yet.</>}
+          {avg>1&&<>Sam scores <b>{avg} higher</b> than the bot on average — the rubric or deductions may be <b>too harsh</b>. Check the Deduction Tuning page to soften where you consistently disagree.</>}
+          {avg<-1&&<>Sam scores <b>{Math.abs(avg)} lower</b> than the bot on average — the bot may be <b>too generous</b>. The rubric could use tightening.</>}
+        </div>
+      </div>
+
+      {/* Per-role gap */}
+      {roleAvg.length>0&&<div className="card" style={{padding:18}}>
+        <div className="section-head" style={{marginBottom:10}}>Gap by role</div>
+        {roleAvg.map(r=><div key={r.role} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",fontSize:13}}>
+          <span style={{color:"#c9d1d9"}}>{r.role} <span style={{color:"#64748b",fontSize:11}}>({r.n} call{r.n!==1?"s":""})</span></span>
+          <span style={{fontFamily:"var(--m)",fontWeight:700,color:r.avg>0?"#34d399":r.avg<0?"#f87171":"#c9d1d9"}}>{r.avg>0?"+":""}{r.avg}</span>
+        </div>)}
+      </div>}
+
+      {/* Per-call list */}
+      <div className="card" style={{overflow:"hidden"}}>
+        <div style={{padding:"12px 18px",borderBottom:"1px solid #1a1f2e",fontSize:12,fontWeight:700,color:"#94a3b8",letterSpacing:.5}}>EVERY CALIBRATION ({ovr.length})</div>
+        {ovr.map((o,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:"1px solid #141925"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{o.rep_name||"?"} → {o.client_name||"?"} <span style={{fontSize:11,fontWeight:400,color:"#64748b"}}>· {o.role}</span></div>
+            {o.reason&&<div style={{fontSize:11,color:"#64748b",fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>"{o.reason}"</div>}
+          </div>
+          <div style={{textAlign:"right",flexShrink:0,fontFamily:"var(--m)",fontSize:12}}>
+            <span style={{color:"#818cf8",fontWeight:800}}>{o.override_score}</span>
+            <span style={{color:"#64748b"}}> vs </span>
+            <span style={{color:"#94a3b8"}}>{o.original_score}</span>
+            {isFinite(o.delta)&&o.delta!==0&&<span style={{marginLeft:8,color:o.delta>0?"#34d399":"#f87171"}}>{o.delta>0?"+":""}{o.delta}</span>}
+          </div>
+        </div>)}
+      </div>
+    </>}
+
+    {/* Deduction weights — the tuning lever */}
+    {dw&&dw.weights&&<div className="card" style={{padding:18}}>
+      <div className="section-head" style={{marginBottom:6}}>Deduction Weights</div>
+      <div style={{fontSize:12,color:"#64748b",marginBottom:12}}>How many points each non-negotiable subtracts. If calibration shows the bot is too harsh, lower these. {dw.note}</div>
+      {dw.weights.map(w=><div key={w.rule} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderTop:"1px solid #1a1f2e"}}>
+        <div style={{flex:1}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{w.label} <span style={{fontSize:10,color:w.severity==="critical"?"#f87171":"#fbbf24"}}>· {w.severity}</span></div>
+          <div style={{fontSize:10,color:"#4b5563",fontFamily:"var(--m)"}}>{w.env}</div>
+        </div>
+        <div style={{fontFamily:"var(--m)",fontWeight:800,fontSize:18,color:"#f87171"}}>−{w.points}</div>
+      </div>)}
+    </div>}
   </div>;
 }
 
@@ -1173,7 +1316,7 @@ function ResourcesPage(){
   </div>
 }
 
-const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"team",icon:"👥",label:"Team",color:"#818cf8"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
+const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"progress",icon:"📈",label:"My Progress",color:"#4ade80"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"team",icon:"👥",label:"Team",color:"#818cf8"},{id:"calibration",icon:"🎯",label:"Calibration",color:"#a5b4fc"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
 
 function RubricViewer(){
   const[rb,setRb]=useState(null);const[role,setRole]=useState("Closer");
@@ -1307,7 +1450,7 @@ function App(){
   // eslint-disable-next-line
   },[]);
   return<><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>{NAV.map(n=><button key={n.id} className={pg===n.id?"active":""} onClick={()=>{sPg(n.id);sDt(null)}} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}><span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>)}</nav><div style={{padding:"14px 16px",borderTop:"1px solid #2a3140"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
-    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
+    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
