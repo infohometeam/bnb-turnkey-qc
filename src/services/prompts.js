@@ -3,7 +3,12 @@
 // Smart slicing for long closer calls + BNB Turnkey QC prompts
 // ═══════════════════════════════════════════════════════════════
 
-const HEAD = 3000, MID = 4000, TAIL = 5000, MAX = 12000;
+// MAX = the transcript size (chars) below which we send the WHOLE transcript to the AI.
+// Claude Haiku's context window is ~200K tokens (~600K+ chars), so a typical call —
+// even a 45-min closer call (~50K chars) — fits whole with room to spare. We only
+// fall back to slicing for genuinely massive outliers, so the AI sees the full call
+// and never misses mid-call details (discovery history, objections, qualification).
+const HEAD = 3000, MID = 4000, TAIL = 5000, MAX = 50000;
 
 const KEYWORDS = [
   'portfolio','investment','investor','goals','timeline','budget','accredited',
@@ -43,7 +48,9 @@ function findDensest(text, size) {
   return text.slice(bestStart, bestStart + size);
 }
 
-function needsTwoPass(chars, durSec) { return chars > 40000 || (durSec && durSec > 2700); }
+// Two-pass (summarize the middle) only for genuinely huge transcripts that exceed the
+// full-send threshold above. Kept well above MAX so normal long calls go through whole.
+function needsTwoPass(chars, durSec) { return chars > 70000 || (durSec && durSec > 4200); }
 
 function buildMiddleSummaryPrompt(fullText) {
   const mid = fullText.slice(HEAD, Math.min(fullText.length - TAIL, HEAD + 20000));
