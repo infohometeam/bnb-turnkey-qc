@@ -854,6 +854,10 @@ function StitchPage(){
   const[scanning,setScanning]=useState(false);
   const[busy,setBusy]=useState(null);
   const[done,setDone]=useState([]);
+  const[mA,setMA]=useState("");
+  const[mB,setMB]=useState("");
+  const[mBusy,setMBusy]=useState(false);
+  const[mMsg,setMMsg]=useState(null);
 
   async function scan(){
     setScanning(true);setData(null);
@@ -869,6 +873,17 @@ function StitchPage(){
       else alert(r.error||"Merge failed.");
     }catch(e){alert("Merge failed.");}
     setBusy(null);
+  }
+  async function manualMerge(){
+    const a=parseInt(mA,10),b=parseInt(mB,10);
+    if(!a||!b||a===b){setMMsg({err:true,text:"Enter two different call IDs."});return;}
+    setMBusy(true);setMMsg(null);
+    try{
+      const r=await postApi("/stitch/manual-merge",{id_a:a,id_b:b});
+      if(r.ok){setMMsg({err:false,text:`Merged #${a} + #${b} into one call (survivor #${r.survivor}). It's re-scoring now.${r.warning?" "+r.warning:""}`});setMA("");setMB("");}
+      else setMMsg({err:true,text:r.error||"Merge failed."});
+    }catch(e){setMMsg({err:true,text:"Merge failed."});}
+    setMBusy(false);
   }
 
   function Pair({p,auto}){
@@ -897,6 +912,19 @@ function StitchPage(){
       <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Call Stitching</h2>
         <div style={{fontSize:13,color:"#64748b",marginTop:2}}>Finds cut-off calls that were redialed and merges them into one score.</div></div>
       <button className="btn btn-primary" onClick={scan} disabled={scanning}>{scanning?"Scanning…":"⟳ Scan for cut-off calls"}</button>
+    </div>
+
+    {/* Manual merge — escape hatch for pairs auto-detect misses */}
+    <div className="card" style={{padding:16}}>
+      <div className="section-head" style={{marginBottom:6}}>Manually merge two calls</div>
+      <div style={{fontSize:12,color:"#64748b",marginBottom:10}}>Know two calls are really one cut-off conversation but the scan didn't catch them? Enter both call IDs (find them on each call's detail page). The earlier call becomes the survivor.</div>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <input value={mA} onChange={e=>setMA(e.target.value)} placeholder="Call ID" style={{width:110,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13}}/>
+        <span style={{color:"#64748b"}}>+</span>
+        <input value={mB} onChange={e=>setMB(e.target.value)} placeholder="Call ID" style={{width:110,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13}}/>
+        <button className="btn btn-primary" onClick={manualMerge} disabled={mBusy} style={{fontSize:12}}>{mBusy?"Merging…":"Merge"}</button>
+      </div>
+      {mMsg&&<div style={{marginTop:10,fontSize:12,color:mMsg.err?"#f87171":"#34d399"}}>{mMsg.text}</div>}
     </div>
 
     {!data&&!scanning&&<div className="card" style={{padding:40,textAlign:"center",color:"#64748b"}}>
