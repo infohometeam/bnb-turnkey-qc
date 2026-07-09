@@ -554,7 +554,7 @@ router.get('/queue/status', async (req, res) => {
   try {
     const dk = new Date().toISOString().slice(0, 10);
     const daily = await q('SELECT * FROM daily_counters WHERE date_key=?', [dk]);
-    const queue = await q("SELECT status, COUNT(*) as count FROM calls WHERE status NOT IN ('SCORED','SKIP_SHORT','SKIP_VOICEMAIL','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL','SKIP_NOT_ROSTERED') GROUP BY status");
+    const queue = await q("SELECT status, COUNT(*) as count FROM calls WHERE status NOT IN ('SCORED','SKIP_SHORT','SKIP_VOICEMAIL','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL','SKIP_NOT_ROSTERED','STITCHED') GROUP BY status");
     const scored = await q("SELECT COUNT(*) as c FROM calls WHERE status='SCORED' AND processed_at::date = CURRENT_DATE");
     const d = daily.rows[0] || { full_qc_used: 0, est_cost_usd: 0 };
     d.scored_today = Number(scored.rows[0]?.c || 0);
