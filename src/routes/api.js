@@ -631,7 +631,30 @@ router.post('/stitch/unmerge', express.json(), async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-// Run auto-merge on all HIGH-confidence pairs (the "auto obvious ones" behavior).
+// Manually merge two calls the user picks (escape hatch for pairs auto-detect missed).
+// Auto-orders by time (earlier = survivor) so the transcript stitches in the right order.
+// Warns (doesn't block) if rep/client differ — the user chose them deliberately.
+router.post('/stitch/manual-merge', express.json(), async (req, res) => {
+  try {
+    const { mergeCalls } = require('../services/stitchService');
+    const { id_a, id_b } = req.body || {};
+    if (!id_a || !id_b || id_a === id_b) return res.status(400).json({ error: 'Pick two different calls.' });
+    const rows = (await q('SELECT id, rep_name, client_name, received_at, status, stitch_status FROM calls WHERE id IN (?,?)', [id_a, id_b])).rows;
+    if (rows.length < 2) return res.status(404).json({ error: 'One or both calls not found.' });
+    const [a, b] = rows[0].id === id_a ? [rows[0], rows[1]] : [rows[1], rows[0]];
+    for (const c of [a, b]) {
+      if (c.stitch_status === 'MERGED' || c.stitch_status === 'STITCHED') return res.status(400).json({ error: `Call #${c.id} is already stitched.` });
+      if (c.status !== 'SCORED') return res.status(400).json({ error: `Call #${c.id} isn't scored — only scored calls can be merged.` });
+    }
+    // earlier call is the survivor
+    const ta = new Date((a.received_at || '').replace(' ', 'T') + 'Z').getTime();
+    const tb = new Date((b.received_at || '').replace(' ', 'T') + 'Z').getTime();
+    const [first, second] = ta <= tb ? [a, b] : [b, a];
+    const r = await mergeCalls(first.id, second.id, 'Sam (manual)');
+    res.json({ ...r, warning: (a.rep_name !== b.rep_name || (a.client_name||'').toLowerCase() !== (b.client_name||'').toLowerCase()) ? 'Note: these calls have different rep/client names.' : null });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 router.post('/stitch/auto-merge', async (req, res) => {
   try {
     const { detectStitches, mergeCalls } = require('../services/stitchService');
