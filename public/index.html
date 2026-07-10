@@ -364,10 +364,49 @@ function RecordsPage(){
 }
 
 // ── Analytics ────────────────────────────────────────────────
+function TrendChart({data}){
+  // Only days with scored calls form the score line; keep them in date order.
+  const pts=(data||[]).filter(d=>d.avg_score!=null).map(d=>({
+    date:d.period_date, score:Number(d.avg_score), calls:Number(d.scored||0)
+  }));
+  if(pts.length<2)return<div style={{fontSize:12,color:"#64748b",padding:20}}>Not enough scored days yet to chart a trend.</div>;
+  const W=680,H=220,padL=34,padR=16,padB=34,padT=14;
+  const iw=W-padL-padR,ih=H-padT-padB;
+  const n=pts.length;
+  const x=i=>padL+(n===1?iw/2:(i/(n-1))*iw);
+  const y=v=>padT+ih-(v/10)*ih;
+  const linePath=pts.map((p,i)=>`${i===0?"M":"L"}${x(i).toFixed(1)},${y(p.score).toFixed(1)}`).join(" ");
+  const areaPath=`${linePath} L${x(n-1).toFixed(1)},${(padT+ih).toFixed(1)} L${x(0).toFixed(1)},${(padT+ih).toFixed(1)} Z`;
+  // show ~6 evenly-spaced date labels, upright
+  const step=Math.max(1,Math.ceil(n/6));
+  const fmtDay=s=>{const d=new Date(String(s).replace(' ','T')+'Z');return d.toLocaleDateString("en-US",{month:"numeric",day:"numeric",timeZone:"America/New_York"});};
+  return<div style={{width:"100%",overflowX:"auto"}}>
+    <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",minWidth:520,display:"block"}}>
+      <defs><linearGradient id="trendfill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#6366f1" stopOpacity="0.35"/>
+        <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
+      </linearGradient></defs>
+      {/* Y gridlines + labels at 0,2,4,6,8,10 */}
+      {[0,2,4,6,8,10].map(v=><g key={v}>
+        <line x1={padL} y1={y(v)} x2={W-padR} y2={y(v)} stroke="#1e293b" strokeWidth="1"/>
+        <text x={padL-8} y={y(v)+3} textAnchor="end" fontSize="10" fill="#64748b" fontFamily="var(--m)">{v}</text>
+      </g>)}
+      {/* area + line */}
+      <path d={areaPath} fill="url(#trendfill)"/>
+      <path d={linePath} fill="none" stroke="#818cf8" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"/>
+      {/* dots colored by score */}
+      {pts.map((p,i)=><circle key={i} cx={x(i)} cy={y(p.score)} r="3.5" fill={sClr(p.score)} stroke="#0b0f1a" strokeWidth="1.5"><title>{`${fmtDay(p.date)}: avg ${p.score} (${p.calls} call${p.calls!==1?"s":""})`}</title></circle>)}
+      {/* X date labels — upright, evenly spaced */}
+      {pts.map((p,i)=> i%step===0||i===n-1 ? <text key={"x"+i} x={x(i)} y={H-12} textAnchor="middle" fontSize="10" fill="#64748b" fontFamily="var(--m)">{fmtDay(p.date)}</text> : null)}
+    </svg>
+    <div style={{fontSize:11,color:"#64748b",textAlign:"center",marginTop:2}}>Average adjusted score per day · hover a point for detail</div>
+  </div>;
+}
+
 function AnalyticsPage(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:trends}=useApi('/analytics/trends?days=30');const{data:dist}=useApi(`/analytics/distribution?_=1${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};const mx=Math.max(...(trends?.trends||[]).map(t=>t.scored||0),1);
   return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Analytics</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{s.scored||0} scored</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div>
     <div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div></div>
-    {trends?.trends?.length>1&&<div className="card" style={{padding:24}}><div className="section-head">30-Day Trend</div><div style={{display:"flex",alignItems:"flex-end",gap:3,height:120}}>{trends.trends.map((tt,i)=>{const h=tt.scored?(tt.scored/mx)*100:2;return<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}><span style={{fontSize:9,color:sClr(tt.avg_score),fontFamily:"var(--m)",fontWeight:700}}>{tt.avg_score||""}</span><div style={{width:"100%",height:h,background:tt.avg_score>=8?"#22c55e":tt.avg_score>=6?"#f59e0b":"#ef4444",borderRadius:3,opacity:tt.scored?1:.2}} title={`${tt.period_date}: ${tt.scored} calls, avg ${tt.avg_score}`}/>{i%5===0&&<span style={{fontSize:8,color:"#2a3040",transform:"rotate(-45deg)",whiteSpace:"nowrap"}}>{tt.period_date?.slice(5)}</span>}</div>})}</div></div>}
+    {trends?.trends?.length>1&&<div className="card" style={{padding:24}}><div className="section-head">30-Day Score Trend</div><TrendChart data={trends.trends}/></div>}
     {dist?.distribution?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Score Distribution</div><div style={{display:"flex",alignItems:"flex-end",gap:8,height:100}}>{[0,1,2,3,4,5,6,7,8,9,10].map(b=>{const d=dist.distribution.find(x=>Number(x.score_bucket)===b);const ct=d?Number(d.count):0;const mxx=Math.max(...dist.distribution.map(x=>Number(x.count)),1);return<div key={b} style={{flex:1,textAlign:"center"}}><div style={{fontSize:9,color:"#4b5563",fontFamily:"var(--m)",marginBottom:4}}>{ct||""}</div><div style={{height:`${ct?(ct/mxx)*80:2}px`,background:sClr(b),borderRadius:3}}/><div style={{fontSize:10,color:"#374151",marginTop:4,fontFamily:"var(--m)"}}>{b}</div></div>})}</div></div>}
     {data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Comparison</div><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Rep","Role","Calls","Avg","Dur","Ag%","Flag"].map(h=><th key={h} style={{textAlign:"left",padding:"8px 10px",fontSize:10,color:"#2a3040",fontWeight:700,borderBottom:"1px solid #2a3140",fontFamily:"var(--m)"}}>{h}</th>)}</tr></thead><tbody>{data.repStats.map(r=><tr key={r.rep_name}><td style={{padding:10,fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:RC[r.rep_name],marginRight:8}}/>{r.rep_name}</td><td style={{padding:10,color:"#4b5563"}}>{r.role}</td><td style={{padding:10,fontFamily:"var(--m)",color:"#4b5563"}}>{r.call_count}</td><td style={{padding:10,fontWeight:800,color:sClr(r.avg_score),fontFamily:"var(--m)"}}>{r.avg_score}</td><td style={{padding:10,fontFamily:"var(--m)",color:"#4b5563"}}>{fmtD(r.avg_duration)}</td><td style={{padding:10,fontFamily:"var(--m)",color:r.avg_agent_talk>70?"#ef4444":"#4b5563"}}>{r.avg_agent_talk?r.avg_agent_talk+"%":"—"}</td><td style={{padding:10,color:"#f59e0b",fontFamily:"var(--m)"}}>{r.flagged_count||0}</td></tr>)}</tbody></table></div></div>}
     {data.categoryAvgs&&Object.keys(data.categoryAvgs).length>0&&<div className="card" style={{padding:24}}><div className="section-head">Category Averages by Rep</div>{Object.entries(data.categoryAvgs).map(([rep,cats])=><div key={rep} style={{marginBottom:20}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9",marginBottom:8}}><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:RC[rep],marginRight:8}}/>{rep}</div>{CATS.map(cat=><div key={cat} style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}><span style={{fontSize:10,color:"#4b5563",width:90}}>{CL[cat]}</span><div style={{flex:1}}><MiniBar value={cats[cat]}/></div></div>)}</div>)}</div>}
@@ -521,14 +560,8 @@ function ExportPage(){
 
       {mode==="trends"&&<div className="card" style={{padding:22}}><div className="section-head">Daily Average (adjusted)</div>
         {(report.trend||[]).length===0&&<div style={{color:"#64748b",fontSize:13}}>No scored calls in this window.</div>}
-        <div style={{display:"flex",alignItems:"flex-end",gap:8,height:180,marginTop:10,paddingBottom:24,position:"relative"}}>
-          {(report.trend||[]).map((t,i)=>{const h=Math.round((Number(t.avg_adj)||0)/10*150);return<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",height:"100%"}}>
-            <span style={{fontSize:10,color:"#94a3b8",marginBottom:4,fontFamily:"var(--m)"}}>{t.avg_adj??""}</span>
-            <div style={{width:"100%",maxWidth:38,height:h,background:sClr(t.avg_adj),borderRadius:"5px 5px 0 0",minHeight:3}}/>
-            <span style={{fontSize:9,color:"#55606f",marginTop:6,position:"absolute",bottom:0,transform:"rotate(-40deg)",transformOrigin:"center"}}>{new Date(t.day).toLocaleDateString(undefined,{month:"numeric",day:"numeric"})}</span>
-          </div>})}
-        </div>
-        <div style={{marginTop:18,fontSize:12,color:"#64748b"}}>{report.trend?.length>1?`Each bar is one day's team average. Compare the trend direction over the last ${report.period_days} days.`:"Need a few days of data to show a trend."}</div>
+        {(report.trend||[]).length>1&&<TrendChart data={(report.trend||[]).map(t=>({period_date:t.day,avg_score:t.avg_adj,scored:t.calls}))}/>}
+        <div style={{marginTop:14,fontSize:12,color:"#64748b"}}>{report.trend?.length>1?`Each point is one day's team average over the last ${report.period_days} days.`:"Need a few days of data to show a trend."}</div>
       </div>}
     </div>}
   </div>
