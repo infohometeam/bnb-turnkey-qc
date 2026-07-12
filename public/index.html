@@ -74,7 +74,19 @@ const fmtF=d=>{const dt=toUTC(d);return dt?dt.toLocaleString("en-US",{month:"sho
 const fmtD=s=>{if(!s&&s!==0)return"—";s=Number(s);if(!isFinite(s))return"—";const m=Math.floor(s/60);return`${m}m ${String(Math.round(s%60)).padStart(2,"0")}s`};
 const sClr=s=>{if(s==null)return"#4b5563";if(s>=8)return"#34d399";if(s>=6)return"#fbbf24";return"#ef4444"};
 const stClr=s=>({SCORED:["#052e16","#22c55e","#166534"],NEW:["#14224a","#60a5fa","#1e40af"],REQC:["#1a0c3d","#a78bfa","#5b21b6"],ERROR:["#2a0a0a","#ef4444","#991b1b"],WAIT_RETRY_FULL:["#2a1a00","#f59e0b","#92400e"],WAIT_TRANSCRIPT:["#2a1a00","#f59e0b","#92400e"]}[s]||["#14224a","#60a5fa","#1e40af"]);
-const RC={"Matt":"#6366f1","Kevin":"#8b5cf6","Andrew":"#06b6d4","Steven":"#10b981","Anurag":"#f59e0b"};
+const RC_BASE={"Matt":"#6366f1","Kevin":"#8b5cf6","Andrew":"#06b6d4","Steven":"#10b981","Anurag":"#f59e0b"};
+// DB stores full names ("Andrew Cluney") but the map is keyed by first name — match on either,
+// then fall back to a stable hash so EVERY rep gets a colour, not grey.
+const PALETTE=["#6366f1","#8b5cf6","#06b6d4","#10b981","#f59e0b","#ec4899","#14b8a6","#f43f5e","#a855f7","#22c55e"];
+function repColor(name){
+  if(!name)return "#334155";
+  if(RC_BASE[name])return RC_BASE[name];
+  const first=String(name).split(" ")[0];
+  if(RC_BASE[first])return RC_BASE[first];
+  let h=0; for(let i=0;i<String(name).length;i++)h=(h*31+String(name).charCodeAt(i))>>>0;
+  return PALETTE[h%PALETTE.length];
+}
+const RC=new Proxy({},{get:(_,k)=>repColor(String(k))});
 const CATS=["discovery","qualification","pitch","frame_control","objections_close","objections","close_next_step"];
 const CL={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",frame_control:"Frame / Control",objections_close:"Objections & Close",objections:"Objections",close_next_step:"Close / Next Step"};
 // Only show categories that actually have scores on the current call
@@ -102,7 +114,7 @@ function downloadCSV(rows,filename){
 }
 
 // ── Dashboard ───────────────────────────────────────────────
-function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:qd}=useApi("/queue/status");const{data:fd}=useApi(`/calls?flagged=true&limit=5${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"}</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div><div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div><div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div></div>{data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}{fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Flagged</div>{fd.calls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid #2a3140"}}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}</div>}
+function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:qd}=useApi("/queue/status");const{data:fd}=useApi(`/calls?flagged=true&limit=5${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"}</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div><div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div><div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div></div>{data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} onClick={()=>goTo("rep",r.rep_name)} title={`View ${r.rep_name}`} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12,cursor:"pointer",padding:"6px 8px",margin:"0 -8px 6px",borderRadius:8}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}{fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Flagged</div>{fd.calls.map(c=><div key={c.id} onClick={()=>goTo("calls",c.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 6px",margin:"0 -6px",borderRadius:8,borderBottom:"1px solid #2a3140",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}</div>}
 
 // ── Calls List ──────────────────────────────────────────────
 function CallsList({onSelect}){const[sf,sSf]=useState("ALL");const[rf,sRf]=useState("ALL");const[p,sP]=useState("");const[f,sF]=useState('');const[t,sT]=useState('');const[pg,sPg]=useState(0);const[sq,sSq]=useState('');const[searching,setSearching]=useState(false);const[searchResults,setSearchResults]=useState(null);const PER=50;const dq=buildDQ(p,f,t);const sQ=sf!=="ALL"?`&status=${sf}`:"";const rQ=rf!=="ALL"?`&rep=${rf}`:"";const{data,reload}=useApi(`/calls?limit=${PER}&offset=${pg*PER}${sQ}${rQ}${dq}&hideVm=true`,[sf,rf,p,f,t,pg]);const{data:reps}=useApi("/reps");const[sel,setSel]=useState(new Set());const[del,setDel]=useState(false);
@@ -112,7 +124,7 @@ function CallsList({onSelect}){const[sf,sSf]=useState("ALL");const[rf,sRf]=useSt
   async function bulkRescore(){if(!sel.size)return;const est=(sel.size*0.006).toFixed(3);if(!confirm(`Re-score ${sel.size} calls?\n\nEstimated cost: $${est}\nCurrent scores will be archived before re-scoring.\n\nProceed?`))return;const r=await fetch(`${API}/calls/rescore-selected`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[...sel]})}).then(r=>r.json());alert(`✓ ${r.queued} calls queued for re-score. They'll process on the next worker cycles.`);setSel(new Set());reload();}
   if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const displayCalls=searchResults?searchResults.calls:data.calls;const displayTotal=searchResults?searchResults.total:data.total;const tp=Math.ceil(displayTotal/PER);
   return<div className="flex-col gap-20"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Calls</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{displayTotal} {searchResults?`results for "${searchResults.query}"`:"calls"}</p></div><div className="flex-col gap-8"><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="text" value={sq} onChange={e=>sSq(e.target.value)} onKeyDown={e=>e.key==='Enter'&&doSearch()} placeholder="Search transcripts..." style={{minWidth:200,background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,padding:"6px 12px",color:"var(--t1)",fontSize:11}}/><button className="btn btn-primary btn-sm" onClick={doSearch} disabled={searching}>{searching?"...":"🔍"}</button>{searchResults&&<button className="btn btn-sm" onClick={clearSearch}>✕ Clear</button>}</div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><select value={sf} onChange={e=>{sSf(e.target.value);sPg(0)}}><option value="ALL">All Status</option>{["SCORED","NEW","REQC","ERROR","WAIT_RETRY_FULL","WAIT_TRANSCRIPT"].map(s=><option key={s}>{s}</option>)}</select><select value={rf} onChange={e=>{sRf(e.target.value);sPg(0)}}><option value="ALL">All Reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select><button className="btn btn-sm" onClick={()=>{reload();setSel(new Set());clearSearch()}}>↻</button>{sel.size>0&&<button className="btn btn-sm" style={{background:"#1e1b4b",color:"#a5b4fc",border:"1px solid #4338ca"}} onClick={bulkRescore}>↻ Re-score {sel.size}</button>}{sel.size>0&&<button className="btn btn-red btn-sm" onClick={bulkDel} disabled={del}>🗑 {sel.size}</button>}</div></div></div>
-    <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:600,overflowY:"auto"}}>{displayCalls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #141925",background:sel.has(c.id)?"#2a3140":c.flagged?"rgba(245,158,11,.03)":"transparent"}} onClick={()=>onSelect(c)}><input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1"}}/><ScoreRing value={c.overall_score_adj} size={32} sw={2}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{fontFamily:"var(--m)",fontSize:10,color:"#6366f1",marginRight:6}}>#{c.id}</span>{c.rep_name} → {c.client_name||"?"}{c.flagged&&<span style={{color:"#f59e0b",marginLeft:6,fontSize:10}}>⚠</span>}</div><div style={{fontSize:10,color:"#2a3040",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.source}</div></div><div style={{textAlign:"right",flexShrink:0}}><Badge status={c.status}/><div style={{fontSize:10,color:"#2a3040",marginTop:4}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</div></div></div>)}{!displayCalls.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>{searchResults?"No results found":"No calls"}</div>}</div></div>
+    <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:"calc(100vh - 300px)",minHeight:340,overflowY:"auto"}}>{displayCalls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #141925",background:sel.has(c.id)?"#2a3140":c.flagged?"rgba(245,158,11,.03)":"transparent"}} onClick={()=>onSelect(c)}><input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1"}}/><ScoreRing value={c.overall_score_adj} size={32} sw={2}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{fontFamily:"var(--m)",fontSize:10,color:"#6366f1",marginRight:6}}>#{c.id}</span>{c.rep_name} → {c.client_name||"?"}{c.flagged&&<span style={{color:"#f59e0b",marginLeft:6,fontSize:10}}>⚠</span>}</div><div style={{fontSize:10,color:"#2a3040",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.source}</div></div><div style={{textAlign:"right",flexShrink:0}}><Badge status={c.status}/><div style={{fontSize:10,color:"#2a3040",marginTop:4}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</div></div></div>)}{!displayCalls.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>{searchResults?"No results found":"No calls"}</div>}</div></div>
     {tp>1&&<div style={{display:"flex",justifyContent:"center",gap:6,alignItems:"center"}}><button className="btn btn-sm" disabled={pg===0} onClick={()=>sPg(x=>x-1)}>← Prev</button><span style={{fontSize:11,color:"#4b5563",fontFamily:"var(--m)"}}>{pg+1}/{tp}</span><button className="btn btn-sm" disabled={pg>=tp-1} onClick={()=>sPg(x=>x+1)}>Next →</button></div>}
   </div>}
 
@@ -379,7 +391,9 @@ function TrendChart({data}){
   const areaPath=`${linePath} L${x(n-1).toFixed(1)},${(padT+ih).toFixed(1)} L${x(0).toFixed(1)},${(padT+ih).toFixed(1)} Z`;
   // show ~6 evenly-spaced date labels, upright
   const step=Math.max(1,Math.ceil(n/6));
-  const fmtDay=s=>{const d=new Date(String(s).replace(' ','T')+'Z');return d.toLocaleDateString("en-US",{month:"numeric",day:"numeric",timeZone:"America/New_York"});};
+  // toUTC handles all shapes: ISO-with-Z, "YYYY-MM-DD HH:MM:SS", and plain dates.
+  // (Naively appending 'Z' produced "...000ZZ" -> Invalid Date.)
+  const fmtDay=s=>{const d=toUTC(s);return d&&!isNaN(d)?d.toLocaleDateString("en-US",{month:"numeric",day:"numeric",timeZone:TZ}):"";};
   return<div style={{width:"100%",overflowX:"auto"}}>
     <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",minWidth:520,display:"block"}}>
       <defs><linearGradient id="trendfill" x1="0" y1="0" x2="0" y2="1">
@@ -479,8 +493,12 @@ function CoachingCard({c}){
   const preview=note.length>120?note.slice(0,120).trim()+"…":note;
   return<div onClick={()=>setOpen(!open)} style={{padding:"14px 16px",background:"#141925",borderRadius:10,border:"1px solid #2a3140",marginBottom:10,cursor:"pointer"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:open?10:6}}>
-      <span style={{fontSize:12,fontWeight:700,color:"#aab4c5"}}>{c.rep_name} → {c.client_name||"?"}</span>
-      <div style={{display:"flex",alignItems:"center",gap:10}}><ScoreRing value={c.overall_score_adj} size={26} sw={2}/><span style={{fontSize:14,color:"#6b7686",transform:open?"rotate(180deg)":"none",transition:"transform .15s"}}>⌄</span></div>
+      <span style={{fontSize:12,fontWeight:700,color:"#aab4c5"}}><span style={{fontFamily:"var(--m)",fontSize:10,color:"#6366f1",marginRight:5}}>#{c.id}</span>{c.rep_name} → {c.client_name||"?"}</span>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <button className="btn" onClick={e=>{e.stopPropagation();goTo("calls",c.id);}} title="Open this call" style={{fontSize:10,padding:"3px 8px"}}>Open call →</button>
+        <ScoreRing value={c.overall_score_adj} size={26} sw={2}/>
+        <span style={{fontSize:14,color:"#6b7686",transform:open?"rotate(180deg)":"none",transition:"transform .15s"}}>⌄</span>
+      </div>
     </div>
     <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{open?note:preview}</div>
   </div>
@@ -609,13 +627,7 @@ function TeamPage(){
       <div className="card" style={{padding:20,background:"#161200",borderColor:"#92400e"}}>
         <div className="section-head" style={{color:"#f59e0b"}}>⚠ Dialing through but not set up ({unrostered.unrostered.length})</div>
         <div style={{fontSize:12,color:"#a8956b",marginBottom:12}}>These are making calls but aren't in the roster — their calls are parked (not scored). Add them to start scoring.</div>
-        {unrostered.unrostered.map((u,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderTop:i?"1px solid #2a2410":"none"}}>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:13,fontWeight:700,color:"#e6d9b8"}}>{u.detected_ref||"unknown"} <span style={{fontSize:11,color:"#a8956b",fontWeight:400}}>· {u.base_source} · suggested {u.suggested_role}</span></div>
-            <div style={{fontSize:11,color:"#7c6f4a"}}>{u.parked_calls} parked call{u.parked_calls!==1?"s":""} · last {fmt(u.last_seen)}</div>
-          </div>
-          <button className="btn" onClick={()=>onboardFromUnrostered(u)} style={{fontSize:11,padding:"5px 10px"}}>Add this rep</button>
-        </div>)}
+        {unrostered.unrostered.map((u,i)=><UnrosteredRow key={i} u={u} first={!i} onAdd={()=>onboardFromUnrostered(u)}/>)}
       </div>}
 
     {/* Active roster */}
@@ -627,6 +639,35 @@ function TeamPage(){
     {inactive.length>0&&<div className="card" style={{overflow:"hidden",opacity:.7}}>
       <div style={{padding:"12px 18px",borderBottom:"1px solid #1a1f2e",fontSize:12,fontWeight:700,color:"#64748b",letterSpacing:.5}}>INACTIVE ({inactive.length})</div>
       {inactive.map(r=><RepRow key={r.id} rep={r} busy={busy} onEdit={()=>{setEditing(r);setPrefill(null);setShowForm(true);}} onToggle={()=>toggleActive(r)}/>)}
+    </div>}
+  </div>;
+}
+
+function UnrosteredRow({u,first,onAdd}){
+  const[open,setOpen]=useState(false);
+  // Their parked calls all sit under SKIP_NOT_ROSTERED; fetch and filter to this identifier.
+  const{data}=useApi(open?`/calls?status=SKIP_NOT_ROSTERED&limit=100&hideVm=false`:null,[open]);
+  const mine=(data?.calls||[]).filter(c=>!u.detected_ref||String(c.error||"").includes(u.detected_ref));
+  return<div style={{padding:"8px 0",borderTop:first?"none":"1px solid #2a2410"}}>
+    <div style={{display:"flex",alignItems:"center",gap:12}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#e6d9b8"}}>{u.detected_ref||"unknown"} <span style={{fontSize:11,color:"#a8956b",fontWeight:400}}>· {u.base_source} · suggested {u.suggested_role}</span></div>
+        <div style={{fontSize:11,color:"#7c6f4a"}}>{u.parked_calls} parked call{u.parked_calls!==1?"s":""} · last {fmt(u.last_seen)}</div>
+      </div>
+      <button className="btn" onClick={()=>setOpen(o=>!o)} style={{fontSize:11,padding:"5px 10px"}}>{open?"Hide calls":"View calls"}</button>
+      <button className="btn" onClick={onAdd} style={{fontSize:11,padding:"5px 10px"}}>Add this rep</button>
+    </div>
+    {open&&<div style={{marginTop:8,background:"#0f0d05",borderRadius:8,border:"1px solid #2a2410",maxHeight:260,overflowY:"auto"}}>
+      {!data&&<div style={{padding:14,fontSize:12,color:"#7c6f4a"}}>Loading calls…</div>}
+      {data&&mine.map(c=><div key={c.id} onClick={()=>goTo("calls",c.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:"1px solid #1f1a0c",cursor:"pointer"}}>
+        <span style={{fontFamily:"var(--m)",fontSize:10,color:"#f59e0b"}}>#{c.id}</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:12,color:"#e6d9b8"}}>{c.client_name||"?"}</div>
+          <div style={{fontSize:10,color:"#7c6f4a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.error}</div>
+        </div>
+        <span style={{fontSize:10,color:"#7c6f4a",flexShrink:0}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</span>
+      </div>)}
+      {data&&!mine.length&&<div style={{padding:14,fontSize:12,color:"#7c6f4a"}}>No parked calls found for this identifier.</div>}
     </div>}
   </div>;
 }
@@ -770,13 +811,7 @@ function MyProgressPage(){
       {/* Trend over time */}
       {data.trend.length>1&&<div className="card" style={{padding:20}}>
         <div className="section-head" style={{marginBottom:14}}>Score trend (weekly)</div>
-        <div style={{display:"flex",alignItems:"flex-end",gap:8,height:120}}>
-          {data.trend.map((t,i)=>{const h=Math.max(6,(Number(t.avg_score)||0)/10*100);return<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-            <div style={{fontSize:11,fontWeight:700,color:sClr(t.avg_score),fontFamily:"var(--m)"}}>{t.avg_score}</div>
-            <div style={{width:"100%",maxWidth:36,height:`${h}%`,background:`linear-gradient(180deg,${sClr(t.avg_score)},${sClr(t.avg_score)}66)`,borderRadius:"4px 4px 0 0"}}/>
-            <div style={{fontSize:9,color:"#4b5563"}}>{String(t.period).slice(5)}</div>
-          </div>})}
-        </div>
+        <TrendChart data={data.trend.map(t=>({period_date:t.period,avg_score:t.avg_score,scored:t.calls}))}/>
       </div>}
 
       {/* Category breakdown */}
@@ -979,6 +1014,71 @@ function StitchPage(){
         No cut-off pairs found. Checked {data.checked} candidate{data.checked!==1?"s":""}.
       </div>}
     </>}
+  </div>;
+}
+
+function RepDetailPage({name}){
+  const{data:reps}=useApi("/reps");
+  const rep=(reps||[]).find(r=>r.name===name);
+  const{data}=useApi(rep?`/reps/${rep.id}/progress`:null,[rep?.id]);
+  const{data:calls}=useApi(`/calls?rep=${encodeURIComponent(name)}&limit=100`,[name]);
+  const CAT_LABELS={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",frame_control:"Frame/Control",objections_close:"Objections & Close"};
+
+  if(!reps)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  if(!rep)return<div className="flex-col gap-16"><button className="btn" onClick={()=>goTo("dashboard")} style={{alignSelf:"flex-start"}}>← Back</button><div className="card" style={{padding:40,textAlign:"center",color:"#94a3b8"}}>Rep "{name}" not found.</div></div>;
+
+  const st=data?.stats||{};
+  return<div className="flex-col gap-20" style={{maxWidth:900}}>
+    <button className="btn" onClick={()=>window.history.back()} style={{alignSelf:"flex-start"}}>← Back</button>
+
+    {/* Header */}
+    <div style={{display:"flex",alignItems:"center",gap:16}}>
+      <div style={{width:56,height:56,borderRadius:14,background:rep.color||repColor(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,fontWeight:900,color:"#fff"}}>{name[0]}</div>
+      <div>
+        <h2 style={{fontSize:26,fontWeight:900,margin:0}}>{name}</h2>
+        <div style={{fontSize:13,color:"#64748b",marginTop:2}}>{rep.role} · {rep.team}{rep.src_tag?` · ${rep.src_tag}`:""}</div>
+      </div>
+    </div>
+
+    {!data?<div style={{padding:40,textAlign:"center",color:"#374151"}}>Loading stats…</div>:<>
+      <div className="grid grid-stats">
+        <div className="card stat-card"><div className="stat-label">Scored calls</div><div style={{fontSize:26,fontWeight:900,color:"#c9d1d9"}}>{st.scored||0}</div></div>
+        <div className="card stat-card"><div className="stat-label">Avg score</div><div style={{fontSize:26,fontWeight:900,color:sClr(st.avg_adj)}}>{st.avg_adj??"—"}</div></div>
+        <div className="card stat-card"><div className="stat-label">Avg raw</div><div style={{fontSize:26,fontWeight:900,color:"#94a3b8"}}>{st.avg_raw??"—"}</div></div>
+        <div className="card stat-card"><div className="stat-label">Avg talk</div><div style={{fontSize:26,fontWeight:900,color:st.avg_talk>70?"#ef4444":"#34d399"}}>{st.avg_talk?st.avg_talk+"%":"—"}</div></div>
+      </div>
+
+      {data.trend?.length>1&&<div className="card" style={{padding:20}}>
+        <div className="section-head" style={{marginBottom:12}}>Score trend</div>
+        <TrendChart data={data.trend.map(t=>({period_date:t.period,avg_score:t.avg_score,scored:t.calls}))}/>
+      </div>}
+
+      {data.categories?.length>0&&<div className="card" style={{padding:20}}>
+        <div className="section-head" style={{marginBottom:14}}>Category averages</div>
+        {data.categories.map(c=><div key={c.category} style={{marginBottom:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+            <span style={{color:"#c9d1d9"}}>{CAT_LABELS[c.category]||c.category}</span>
+            <span style={{fontFamily:"var(--m)",fontWeight:700,color:sClr(c.avg)}}>{c.avg}</span></div>
+          <div style={{height:6,background:"#141925",borderRadius:3,overflow:"hidden"}}><div style={{width:`${c.avg*10}%`,height:"100%",background:sClr(c.avg)}}/></div>
+        </div>)}
+      </div>}
+    </>}
+
+    {/* All their calls — clickable */}
+    <div className="card" style={{overflow:"hidden"}}>
+      <div style={{padding:"12px 18px",borderBottom:"1px solid #1a1f2e",fontSize:12,fontWeight:700,color:"#94a3b8",letterSpacing:.5}}>ALL CALLS ({calls?.calls?.length||0})</div>
+      <div style={{maxHeight:420,overflowY:"auto"}}>
+        {(calls?.calls||[]).map(c=><div key={c.id} onClick={()=>goTo("calls",c.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderBottom:"1px solid #141925",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+          <ScoreRing value={c.overall_score_adj} size={30} sw={2}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{fontFamily:"var(--m)",fontSize:10,color:"#6366f1",marginRight:5}}>#{c.id}</span>{c.client_name||"?"}</div>
+            <div style={{fontSize:11,color:"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.status}</div>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0,fontSize:10,color:"#4b5563"}}>{fmtD(c.call_duration_sec)}<br/>{fmt(c.received_at)}</div>
+        </div>)}
+        {!(calls?.calls||[]).length&&<div style={{padding:30,textAlign:"center",color:"#374151"}}>No calls yet.</div>}
+      </div>
+    </div>
   </div>;
 }
 
@@ -1618,23 +1718,35 @@ function RubricPage(){
   </div>
 }
 
+// Global navigation — any component can deep-link. The hashchange listener syncs state,
+// so this also gives working back/forward and shareable URLs like #/calls/474 or #/rep/Andrew%20Cluney
+function goTo(page,param){window.location.hash="/"+page+(param!=null&&param!==""?"/"+encodeURIComponent(param):"");}
+
 function App(){
-  const validPages=NAV.map(n=>n.id);
-  const pageFromHash=()=>{const h=(window.location.hash||"").replace(/^#\/?/,"");return validPages.includes(h)?h:"dashboard";};
-  const[pg,sPgRaw]=useState(pageFromHash());const[dt,sDt]=useState(null);
-  // Navigating sets the hash; a hashchange listener (below) syncs state — so this
-  // also covers browser back/forward and direct links like yoursite.com/#/team
-  const sPg=(id)=>{ if(typeof id==="function")id=id(pg); window.location.hash="/"+id; sPgRaw(id); };
+  const validPages=[...NAV.map(n=>n.id),"rep"];
+  const parseHash=()=>{
+    const h=(window.location.hash||"").replace(/^#\/?/,"");
+    const parts=h.split("/").filter(Boolean);
+    const page=validPages.includes(parts[0])?parts[0]:"dashboard";
+    const param=parts.length>1?decodeURIComponent(parts.slice(1).join("/")):null;
+    return{page,param};
+  };
+  const[route,setRoute]=useState(parseHash());
+  const pg=route.page,param=route.param;
+  const sPg=(id)=>{ if(typeof id==="function")id=id(pg); goTo(id); };
   useEffect(()=>{
-    const onHash=()=>{const p=pageFromHash(); sPgRaw(p); sDt(null);};
+    const onHash=()=>setRoute(parseHash());
     window.addEventListener("hashchange",onHash);
-    // ensure the hash reflects the initial page on first load
-    if(!window.location.hash) window.location.hash="/"+pg;
+    if(!window.location.hash) window.location.hash="/dashboard";
     return()=>window.removeEventListener("hashchange",onHash);
   // eslint-disable-next-line
   },[]);
   return<><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>{NAV.map(n=><button key={n.id} className={pg===n.id?"active":""} onClick={()=>{sPg(n.id);sDt(null)}} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}><span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>)}</nav><div style={{padding:"14px 16px",borderTop:"1px solid #2a3140"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
-    <main><div className="max-w">{dt?<CallDetail call={dt} onBack={()=>sDt(null)}/>:pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={sDt}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null}</div></main></>}
+    <main><div className="max-w">{
+      pg==="calls"&&param?<CallDetail call={{id:Number(param)}} onBack={()=>goTo("calls")}/>:
+      pg==="rep"&&param?<RepDetailPage name={param}/>:
+      pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={c=>goTo("calls",c.id)}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null
+    }</div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
