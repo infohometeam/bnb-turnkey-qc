@@ -1139,6 +1139,39 @@ router.get('/report', async (req, res) => {
       };
     });
 
+    // ── Extra digest data ──────────────────────────────────────
+    // Best & worst scored call in the window (for the digest highlight)
+    const bestWorst = await q(
+      `SELECT id, rep_name, client_name, overall_score_adj, quick_summary
+       FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter'
+         AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${roleFilter}${repFilter}
+       ORDER BY overall_score_adj DESC NULLS LAST LIMIT 1`, baseArgs);
+    const worst = await q(
+      `SELECT id, rep_name, client_name, overall_score_adj, quick_summary
+       FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter'
+         AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${roleFilter}${repFilter}
+       ORDER BY overall_score_adj ASC NULLS LAST LIMIT 1`, baseArgs);
+
+    // Non-sales breakdown in the window (what got skipped and why)
+    const nonSales = await q(
+      `SELECT status, COUNT(*) AS n FROM calls
+       WHERE status LIKE 'SKIP_%'
+         AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval)
+       GROUP BY status ORDER BY n DESC`);
+
+    // Team-wide category averages + most common deductions
+    const teamCats = await q(
+      `SELECT category_scores FROM calls
+       WHERE status='SCORED' AND rep_name != 'Unknown Setter' AND category_scores IS NOT NULL
+         AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${roleFilter}${repFilter}`, baseArgs);
+    const catTot = {}, catCnt = {};
+    teamCats.rows.forEach(r => {
+      let cs = r.category_scores; try { if (typeof cs === 'string') cs = JSON.parse(cs); } catch (e) { cs = null; }
+      if (cs) for (const k of Object.keys(cs)) { const v = Number(cs[k]); if (isFinite(v)) { catTot[k]=(catTot[k]||0)+v; catCnt[k]=(catCnt[k]||0)+1; } }
+    });
+    const teamCategories = Object.keys(catTot).map(k => ({ category: k, avg: Math.round(catTot[k]/catCnt[k]*10)/10 }))
+      .sort((a,b) => a.avg - b.avg); // weakest first — that's the coaching focus
+
     res.json({
       generated: new Date().toISOString(),
       period_days: days,
@@ -1147,6 +1180,10 @@ router.get('/report', async (req, res) => {
       team: team.rows[0],
       reps: repCards,
       trend: trend.rows,
+      best_call: bestWorst.rows[0] || null,
+      worst_call: worst.rows[0] || null,
+      non_sales: nonSales.rows,
+      team_categories: teamCategories,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
