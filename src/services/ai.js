@@ -114,7 +114,10 @@ function parseJsonSafe(text) {
   try { return JSON.parse(raw); } catch (e) {}
   const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
   if (s >= 0 && e > s) { try { return JSON.parse(raw.slice(s, e + 1)); } catch (e2) {} }
-  throw new Error('JSON_PARSE_ERROR: ' + raw.slice(0, 300));
+  // Include the TAIL too — a truncated response looks fine at the start and dies at the end.
+  // (The old 300-char head-only slice hid whether the model ran out of output tokens.)
+  const head = raw.slice(0, 400), tail = raw.length > 400 ? ' ...[TAIL]... ' + raw.slice(-200) : '';
+  throw new Error(`JSON_PARSE_ERROR (len=${raw.length}): ${head}${tail}`);
 }
 
 function estimateCost(usage) {
