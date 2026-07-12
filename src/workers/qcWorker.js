@@ -231,7 +231,11 @@ async function processCall(row) {
   });
 
   console.log(`[QC] #${row.id} scoring (${prompt.length}ch)...`);
-  const { result, usage } = await callAIJson(prompt);
+  // The QC schema is large (categories, 9 pass/fail flags, 7 beliefs, strengths,
+  // improvements, a detailed coaching paragraph, golden moments with quotes).
+  // The 2000-token default truncated the JSON mid-response on long, rich calls —
+  // which surfaced as RETRYABLE_PARSE and eventually stuck the call at MAX_RETRY.
+  const { result, usage } = await callAIJson(prompt, { maxTokens: 4000 });
   if (!result || result.overall_score === undefined) throw new Error('INVALID_RESPONSE: ' + JSON.stringify(result).slice(0,300));
 
   const scoringCost = estimateCost(usage);
