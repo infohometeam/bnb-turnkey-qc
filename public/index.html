@@ -760,15 +760,30 @@ function ExportPage(){
 
       {mode==="scorecards"&&<ScorecardPicker/>}
 
-      {mode==="cards"&&<div className="flex-col gap-14">{(report.reps||[]).map(r=><div key={r.rep_name} className="card rep-card" style={{padding:22}}>
-        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
-          <div style={{width:44,height:44,borderRadius:12,background:RC[r.rep_name]||"#4338ca",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div>
-          <div style={{flex:1}}><div style={{fontSize:16,fontWeight:800,color:"#e6edf3"}}>{r.rep_name}</div><div style={{fontSize:11,color:"#64748b"}}>{r.role} · {r.scored} calls scored · {r.voicemails} voicemails</div></div>
-          <div style={{textAlign:"right"}}><div style={{fontSize:28,fontWeight:900,color:sClr(r.avg_adj),fontFamily:"var(--m)",lineHeight:1}}>{r.avg_adj??"—"}</div><div style={{fontSize:10,color:aClr(r.delta),fontWeight:700}}>{arrow(r.delta)} vs prev</div></div>
+      {mode==="cards"&&<div style={{display:"flex",flexDirection:"column",gap:24}}>{(report.reps||[]).map(r=><div key={r.rep_name} className="card rep-card" style={{padding:28}}>
+        <div onClick={()=>goTo("rep",r.rep_name)} title={`Open ${r.rep_name}`} style={{display:"flex",alignItems:"center",gap:16,marginBottom:24,cursor:"pointer"}}>
+          <div style={{width:48,height:48,borderRadius:13,background:RC[r.rep_name],display:"flex",alignItems:"center",justifyContent:"center",fontSize:19,fontWeight:800,color:"#fff",flexShrink:0}}>{r.rep_name?.[0]}</div>
+          <div style={{flex:1,minWidth:0}}><div style={{fontSize:17,fontWeight:800,color:"#e6edf3"}}>{r.rep_name}</div><div style={{fontSize:11,color:"#64748b",marginTop:3}}>{r.role} · {r.scored} calls scored · {r.voicemails} voicemails</div></div>
+          <div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:30,fontWeight:900,color:sClr(r.avg_adj),fontFamily:"var(--m)",lineHeight:1}}>{r.avg_adj??"—"}</div><div style={{fontSize:10,color:aClr(r.delta),fontWeight:700,marginTop:4}}>{arrow(r.delta)} vs prev</div></div>
         </div>
-        {Object.keys(r.categories||{}).length>0&&<div style={{marginBottom:14}}><div style={{fontSize:10,color:"#55606f",fontWeight:700,marginBottom:8,letterSpacing:.5}}>BY CATEGORY</div>{CATS.filter(c=>r.categories[c]!=null).map(c=><div key={c} style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}><span style={{fontSize:11,color:"#64748b",width:120}}>{CL[c]||c}</span><div style={{flex:1}}><MiniBar value={r.categories[c]}/></div></div>)}</div>}
-        {r.top_deductions?.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:10,color:"#55606f",fontWeight:700,marginBottom:6,letterSpacing:.5}}>MOST COMMON DEDUCTIONS</div>{r.top_deductions.map((d,i)=><div key={i} style={{fontSize:12,color:"#f59e0b",marginBottom:3}}>{d.count}× {d.label}</div>)}</div>}
-        {r.top_improvements?.length>0&&<div><div style={{fontSize:10,color:"#55606f",fontWeight:700,marginBottom:6,letterSpacing:.5}}>FOCUS AREAS</div>{r.top_improvements.map((m,i)=><div key={i} style={{fontSize:12,color:"#94a3b8",marginBottom:3}}>• {m.text}</div>)}</div>}
+
+        {Object.keys(r.categories||{}).length>0&&<div style={{paddingTop:20,borderTop:"1px solid #1e2635"}}>
+          <div style={{fontSize:10,color:"#55606f",fontWeight:700,marginBottom:14,letterSpacing:.5}}>BY CATEGORY</div>
+          {CATS.filter(c=>r.categories[c]!=null).map(c=><div key={c} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}>
+            <span style={{fontSize:11,color:"#94a3b8",width:130,flexShrink:0}}>{CL[c]||c}</span>
+            <div style={{flex:1}}><MiniBar value={r.categories[c]}/></div>
+          </div>)}
+        </div>}
+
+        {r.top_deductions?.length>0&&<div style={{marginTop:22,paddingTop:20,borderTop:"1px solid #1e2635"}}>
+          <div style={{fontSize:10,color:"#55606f",fontWeight:700,marginBottom:10,letterSpacing:.5}}>MOST COMMON DEDUCTIONS</div>
+          {r.top_deductions.map((d,i)=><div key={i} style={{fontSize:12,color:"#f59e0b",marginBottom:7,lineHeight:1.5}}>{d.count}× {d.label}</div>)}
+        </div>}
+
+        {r.top_improvements?.length>0&&<div style={{marginTop:22,paddingTop:20,borderTop:"1px solid #1e2635"}}>
+          <div style={{fontSize:10,color:"#55606f",fontWeight:700,marginBottom:10,letterSpacing:.5}}>FOCUS AREAS</div>
+          {r.top_improvements.map((m,i)=><div key={i} style={{fontSize:12,color:"#94a3b8",marginBottom:8,lineHeight:1.6,paddingLeft:14,position:"relative"}}><span style={{position:"absolute",left:0,color:"#4338ca"}}>•</span>{m.text}</div>)}
+        </div>}
       </div>)}</div>}
 
       {mode==="trends"&&<div className="card" style={{padding:22}}><div className="section-head">Daily Average (adjusted)</div>
