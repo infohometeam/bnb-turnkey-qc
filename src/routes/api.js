@@ -478,12 +478,21 @@ router.get('/search-calls', async (req, res) => {
 // ─── Records (voicemails, reschedules, follow-ups, etc.) ────
 router.get('/records', async (req, res) => {
   try {
-    const { type, rep, from, to, limit = 200, offset = 0 } = req.query;
+    const { type, rep, period, from, to, limit = 200, offset = 0 } = req.query;
     let w = "status IN ('SKIP_VOICEMAIL','SKIP_SHORT','SKIP_RESCHEDULE','SKIP_FOLLOWUP','SKIP_WRONG_NUMBER','SKIP_INTERNAL','SKIP_NOT_ROSTERED')", p = [];
     if (type && type !== 'ALL') { w = 'status=?'; p.push(type); }
     if (rep) { w += ' AND rep_name=?'; p.push(rep); }
-    if (from) { w += ' AND received_at >= ?'; p.push(from); }
-    if (to) { w += ' AND received_at <= ?'; p.push(to + ' 23:59:59'); }
+    // Date filter: an explicit from/to range wins; otherwise use the period toggle.
+    // No period at all = "All" (no date filter). Period was previously ignored here entirely,
+    // which meant the Non-Sales date toggle did nothing.
+    if (from || to) {
+      if (from) { w += ' AND received_at >= ?'; p.push(from); }
+      if (to) { w += ' AND received_at <= ?'; p.push(to + ' 23:59:59'); }
+    } else {
+      if (period === 'day') w += " AND received_at::timestamp >= CURRENT_DATE";
+      if (period === 'week') w += " AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')";
+      if (period === 'month') w += " AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')";
+    }
 
     const r = await q(`SELECT id,received_at,source,rep_name,role,client_name,call_url,audio_url,call_duration_sec,quick_summary,status,error FROM calls WHERE ${w} ORDER BY received_at DESC LIMIT ? OFFSET ?`, [...p, Number(limit), Number(offset)]);
     const cnt = await q(`SELECT COUNT(*) as c FROM calls WHERE ${w}`, p);
@@ -498,7 +507,9 @@ router.get('/records', async (req, res) => {
 // ─── Analytics ───────────────────────────────────────────────
 router.get('/analytics', async (req, res) => {
   try {
-    const { period = 'week', role, from, to } = req.query;
+    // NOTE: no default period — an absent period means "All" (no date filter).
+    // Defaulting to 'week' here silently turned the "All" toggle into 7 days.
+    const { period, role, from, to } = req.query;
     let df = '', rf = '', p = [];
     if (from) { df = 'AND received_at >= ?'; p.push(from); if (to) { df += ' AND received_at <= ?'; p.push(to + ' 23:59:59'); } }
     else if (to) { df = 'AND received_at <= ?'; p.push(to + ' 23:59:59'); }
