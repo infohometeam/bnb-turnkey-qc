@@ -560,6 +560,27 @@ router.get('/analytics/distribution', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Rescue calls stuck at MAX_RETRY. The worker's batch query skips anything with
+// retry_count >= MAX_RETRY, so such calls are invisible to Process/Retry AND to a
+// force re-score — they need their counter reset first. This does that.
+router.post('/queue/reset-retries', express.json(), async (req, res) => {
+  try {
+    const ids = req.body?.ids;
+    let r;
+    if (Array.isArray(ids) && ids.length) {
+      let n = 0;
+      for (const id of ids) {
+        const x = await q("UPDATE calls SET retry_count=0, status='NEW', error='' WHERE id=? AND status IN ('WAIT_RETRY_FULL','ERROR')", [id]);
+        if (x.rowCount) n++;
+      }
+      return res.json({ ok: true, reset: n });
+    }
+    // No ids = reset every stuck call
+    r = await q("UPDATE calls SET retry_count=0, status='NEW', error='' WHERE status IN ('WAIT_RETRY_FULL','ERROR') AND retry_count >= 5");
+    res.json({ ok: true, reset: r.rowCount || 0 });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Queue ───────────────────────────────────────────────────
 router.get('/queue/status', async (req, res) => {
   try {
