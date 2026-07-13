@@ -681,6 +681,22 @@ router.post('/queue/pull', express.json(), async (req, res) => {
 });
 
 // ─── Call Stitching ──────────────────────────────────────────
+// Log of every merge that has happened — so you can see what was stitched, when, and by whom.
+router.get('/stitch/log', async (req, res) => {
+  try {
+    const r = await q(
+      `SELECT s.id AS survivor_id, s.rep_name, s.client_name, s.received_at,
+              s.call_duration_sec, s.overall_score_adj, s.stitched_from_ids,
+              h.id AS hidden_id, h.call_duration_sec AS hidden_duration,
+              h.received_at AS hidden_received_at
+       FROM calls s
+       LEFT JOIN calls h ON h.stitched_into_id = s.id
+       WHERE s.stitch_status = 'MERGED'
+       ORDER BY s.received_at DESC LIMIT 100`);
+    res.json({ merges: r.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Scan for cut-off call pairs (same rep+client, close in time, transcript cues).
 // Returns auto-mergeable + suggested pairs. Does not merge.
 router.get('/stitch/detect', async (req, res) => {
@@ -849,6 +865,65 @@ router.get('/tags/suggestions', async (req, res) => {
 });
 
 // A rep's outcome mix + both averages (Scored vs All Calls).
+// Rich self-insight for a rep: recurring strengths, recurring pain points,
+// their best and worst call, and their most common deductions.
+// This is what turns "here's your score" into "here's what to work on".
+router.get('/reps/:id/insights', async (req, res) => {
+  try {
+    const rep = (await q('SELECT name FROM rep_roster WHERE id=?', [req.params.id])).rows[0];
+    if (!rep) return res.status(404).json({ error: 'Rep not found' });
+    const name = rep.name;
+
+    const rows = (await q(
+      `SELECT id, client_name, overall_score_adj, strengths, improvements, pass_fail, received_at, quick_summary
+       FROM calls WHERE status='SCORED' AND rep_name=? ${EXCL_TAGGED}
+       ORDER BY received_at DESC LIMIT 60`, [name])).rows;
+
+    const tally = (field) => {
+      const counts = {};
+      rows.forEach(r => {
+        let arr = r[field];
+        try { if (typeof arr === 'string') arr = JSON.parse(arr); } catch (e) { arr = null; }
+        (Array.isArray(arr) ? arr : []).forEach(x => {
+          const k = String(x || '').trim();
+          if (k) counts[k] = (counts[k] || 0) + 1;
+        });
+      });
+      return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+        .map(([text, count]) => ({ text, count }));
+    };
+
+    // Most common deductions (the concrete, fixable failures)
+    const ded = {};
+    rows.forEach(r => {
+      let pf = r.pass_fail;
+      try { if (typeof pf === 'string') pf = JSON.parse(pf); } catch (e) { pf = null; }
+      (pf?.deductions || []).forEach(d => {
+        const k = d.label || d.rule;
+        if (k) ded[k] = (ded[k] || 0) + 1;
+      });
+    });
+    const topDeductions = Object.entries(ded).sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(([label, count]) => ({ label, count }));
+
+    const scored = rows.filter(r => r.overall_score_adj != null);
+    const best = scored.length ? scored.reduce((a, b) => (Number(b.overall_score_adj) > Number(a.overall_score_adj) ? b : a)) : null;
+    const worst = scored.length ? scored.reduce((a, b) => (Number(b.overall_score_adj) < Number(a.overall_score_adj) ? b : a)) : null;
+
+    const lite = (c) => c ? { id: c.id, client_name: c.client_name, score: c.overall_score_adj, summary: c.quick_summary, received_at: c.received_at } : null;
+
+    res.json({
+      rep: name,
+      based_on: rows.length,
+      strengths: tally('strengths'),
+      pain_points: tally('improvements'),
+      top_deductions: topDeductions,
+      best_call: lite(best),
+      worst_call: lite(worst),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/reps/:id/outcomes', async (req, res) => {
   try {
     const rep = (await q('SELECT name FROM rep_roster WHERE id=?', [req.params.id])).rows[0];
