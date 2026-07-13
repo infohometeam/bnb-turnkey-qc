@@ -178,8 +178,49 @@ Return ONLY valid JSON (no markdown). Schema:
   "coaching_notes": "detailed paragraph citing Sam's philosophy where relevant",
   "golden_moments": [{"timestamp":"mm:ss","quote":"short","why_it_matters":"coaching relevance"}],
   "confidence": "high|medium|low",
-  "confidence_reason": "1 sentence why"
+  "confidence_reason": "1 sentence why",
+  "outcome_tag": "DISQUALIFIED|NOT_READY|LONG_TERM_NURTURE|INFO_SEEKER|SHORT_TERM_NURTURE|REDZONE_HOT|HARD_NO|NONE",
+  "outcome_tag_reason": "1 sentence citing the SPECIFIC stated blocker or signal from the transcript",
+  "cross_sell_tags": ["HOTEL_TURNKEY_LEAD|BNB_LENDING_LEAD|INVESTOR_ACADEMY_LEAD|SURGE_TAX_LEAD|HOME_TEAM_MGMT_LEAD|REALTY_LEAD"],
+  "cross_sell_reason": "1 sentence per tag, or empty if none"
 }
+
+═══════════════════════════════════════════════
+OUTCOME TAG — read this carefully, it is important
+═══════════════════════════════════════════════
+Separately from the SCORE, identify WHY this call ended the way it did. The score judges the REP's execution. The outcome tag describes the LEAD's state. Do not conflate them.
+
+THE TEST: "Could a great rep have advanced this lead TODAY?"
+- NO — the lead had a real, stated blocker → tag it (the rep exercised correct judgment).
+- YES, but this rep didn't → "NONE" (that is a performance issue; the score already reflects it).
+
+TAGS THAT MEAN THE LEAD COULDN'T BE CLOSED (rep judged correctly):
+- DISQUALIFIED: hard blocker — insufficient capital, wrong profile, cannot proceed, not a real investor. Rep correctly disqualified instead of pitching on.
+- NOT_READY: real, interested, plausible fit — but CANNOT act now for a CONCRETE STATED reason (capital tied up, mid-transaction, awaiting a liquidity event). Rep parked them near-term.
+- LONG_TERM_NURTURE: same, but the horizon is LONG or indefinite (locked in for years, needs a major life/financial change). Rep appropriately parked long-term.
+- INFO_SEEKER: caller only wanted INFORMATION. Never a buyer, no investment intent, no capital discussion. Rep answered helpfully and correctly did not force a pitch on a non-buyer.
+
+TAGS THAT MEAN A REAL SALES ATTEMPT HAPPENED (still the rep's performance):
+- SHORT_TERM_NURTURE: real pitch, lead is close, needs a bit more time/info, near-term follow-up booked.
+- REDZONE_HOT: lead is HOT, close is imminent, strong buying signals. This is an EXCELLENT call.
+- HARD_NO: rep pitched a viable, present lead and the client firmly declined.
+
+CRITICAL RULES:
+1. A WEAK CALL IS NEVER A DISQUALIFICATION. If the lead was viable and present but the rep skipped discovery, gave a generic pitch, or folded on an objection — that is "NONE". The rep underperformed; do not let them off the hook.
+2. The blocker must be CONCRETE and STATED BY THE LEAD. "Seemed lukewarm" or "wasn't feeling it" is NOT a blocker. "I just sold my company and I'm locked in for four years" IS.
+3. WHEN IN DOUBT, RETURN "NONE". It is far better to score a borderline call than to let a weak call escape scoring.
+
+═══════════════════════════════════════════════
+CROSS-SELL SIGNALS (The Rise Collective ecosystem)
+═══════════════════════════════════════════════
+A lead who is wrong for BNB Turnkey may be RIGHT for a sister brand. This is additive and independent of the outcome tag — a call can be DISQUALIFIED for BNB Turnkey AND a great BNB Lending lead. Flag any that clearly apply:
+- BNB_LENDING_LEAD: financing/rates/lending is the real blocker ("I'd do it but financing is brutal").
+- INVESTOR_ACADEMY_LEAD: wants to learn or do it themselves ("I want to understand this myself first").
+- SURGE_TAX_LEAD: tax burden is the driving pain (heavy write-off / cost-seg motivation, big tax bill).
+- HOME_TEAM_MGMT_LEAD: already owns STR(s) but self-manages or has a bad manager.
+- HOTEL_TURNKEY_LEAD: interested in a larger/commercial property or a boutique hotel.
+- REALTY_LEAD: wants to buy in a Home Team Realty market (Phoenix AZ, Pinellas County FL, Texas Gulf Coast).
+Only flag a cross-sell tag when the lead ACTUALLY SAID something that supports it. Return an empty array if none apply.
 
 PASS/FAIL GUIDANCE:
 - has_discovery: true if discovery was substantive (5+ min for closer, 2+ min for setter)
