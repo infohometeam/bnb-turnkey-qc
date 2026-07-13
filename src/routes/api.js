@@ -1,5 +1,24 @@
 const express = require('express');
 const router = express.Router();
+
+// ═══════════════════════════════════════════════════════════════════════
+// SHARED TAG EXCLUSION — defined ONCE so it can never drift between queries.
+// A call carrying a CONFIRMED tag whose tag has excludes_from_average=true
+// (Disqualified / Not Ready / Long-Term Nurture / Info Seeker) does NOT count
+// toward any rep or team performance average — but it STAYS attributed to the
+// rep and stays fully visible. SUGGESTED tags have zero effect.
+//
+// ⚠️ This MUST be appended to every performance-average query. We previously
+// shipped a bug where 'Unknown Setter' was excluded from the leaderboard but
+// not the main stats, and one bad call polluted every headline number.
+// ═══════════════════════════════════════════════════════════════════════
+const NOT_TAGGED = `NOT EXISTS (SELECT 1 FROM call_tag_assignments cta JOIN call_tags ct ON ct.key = cta.tag_key WHERE cta.call_id = calls.id AND cta.status = 'CONFIRMED' AND ct.excludes_from_average = true)`;
+// For WHERE clauses:
+const EXCL_TAGGED = `AND ${NOT_TAGGED}`;
+// For use INSIDE FILTER(WHERE ...) aggregates — so a tagged call still counts as a call
+// the rep made (total_calls), but does NOT pull their AVERAGE. That distinction matters:
+// the call stays theirs, only the score stops counting.
+const SCORED_UNTAGGED = `status='SCORED' AND ${NOT_TAGGED}`;
 const { q } = require('../../migrations/run');
 const { ingestCall } = require('../services/ingestion');
 const { processQueue } = require('../workers/qcWorker');
@@ -516,9 +535,9 @@ router.get('/analytics', async (req, res) => {
     else { if (period === 'day') df = "AND received_at::timestamp >= CURRENT_DATE"; if (period === 'week') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')"; if (period === 'month') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')"; }
     if (role) { rf = 'AND role=?'; p.push(role); }
 
-    const stats = await q(`SELECT COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged, SUM(CASE WHEN status IN ('NEW','REQC','WAIT_RETRY_FULL') THEN 1 ELSE 0 END) as queued, SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) as errors, SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing_transcripts, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END)::numeric,1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END)::numeric,0) as avg_duration, ROUND(AVG(CASE WHEN status='SCORED' THEN agent_talk_pct END)::numeric,1) as avg_agent_talk, ROUND(AVG(CASE WHEN status='SCORED' THEN contact_talk_pct END)::numeric,1) as avg_contact_talk FROM calls WHERE rep_name != 'Unknown Setter' ${df} ${rf}`, p);
+    const stats = await q(`SELECT COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged, SUM(CASE WHEN status IN ('NEW','REQC','WAIT_RETRY_FULL') THEN 1 ELSE 0 END) as queued, SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) as errors, SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing_transcripts, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END)::numeric,1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END)::numeric,0) as avg_duration, ROUND(AVG(CASE WHEN status='SCORED' THEN agent_talk_pct END)::numeric,1) as avg_agent_talk, ROUND(AVG(CASE WHEN status='SCORED' THEN contact_talk_pct END)::numeric,1) as avg_contact_talk FROM calls WHERE rep_name != 'Unknown Setter' ${EXCL_TAGGED} ${df} ${rf}`, p);
 
-    const repStats = await q(`SELECT rep_name, role, COUNT(*) as call_count, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score, ROUND(AVG(call_duration_sec)::numeric,0) as avg_duration, ROUND(AVG(agent_talk_pct)::numeric,1) as avg_agent_talk, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged_count FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${df} ${rf} GROUP BY rep_name, role ORDER BY avg_score DESC`, p);
+    const repStats = await q(`SELECT rep_name, role, COUNT(*) as call_count, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score, ROUND(AVG(call_duration_sec)::numeric,0) as avg_duration, ROUND(AVG(agent_talk_pct)::numeric,1) as avg_agent_talk, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged_count FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED} ${df} ${rf} GROUP BY rep_name, role ORDER BY avg_score DESC`, p);
 
     const catAvgs = await q(`SELECT rep_name, category_scores FROM calls WHERE status='SCORED' AND category_scores IS NOT NULL ${df} ${rf}`, p);
     const repCats = {};
@@ -542,8 +561,8 @@ router.get('/analytics/trends', async (req, res) => {
     const { period = 'daily', days = 30, role } = req.query;
     let rf = '', p = []; if (role) { rf = 'AND role=?'; p.push(role); }
     const groupBy = period === 'weekly' ? 'weekstart' : "received_at::date";
-    const trends = await q(`SELECT ${groupBy} as period_date, COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END)::numeric,1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END)::numeric,0) as avg_duration, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged FROM calls WHERE rep_name != 'Unknown Setter' AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy} ORDER BY period_date ASC`, p);
-    const repTrends = await q(`SELECT ${groupBy} as period_date, rep_name, COUNT(*) as calls, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy}, rep_name ORDER BY period_date ASC`, p);
+    const trends = await q(`SELECT ${groupBy} as period_date, COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END)::numeric,1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END)::numeric,0) as avg_duration, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged FROM calls WHERE rep_name != 'Unknown Setter' ${EXCL_TAGGED} AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy} ORDER BY period_date ASC`, p);
+    const repTrends = await q(`SELECT ${groupBy} as period_date, rep_name, COUNT(*) as calls, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED} AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy}, rep_name ORDER BY period_date ASC`, p);
     res.json({ trends: trends.rows, repTrends: repTrends.rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -555,7 +574,7 @@ router.get('/analytics/distribution', async (req, res) => {
     if (from) { df = "AND received_at >= ?"; p.push(from); if (to) { df += " AND received_at <= ?"; p.push(to + ' 23:59:59'); } }
     else { if (period === 'day') df = "AND received_at::timestamp >= CURRENT_DATE"; if (period === 'week') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')"; if (period === 'month') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')"; }
     if (role) { rf = 'AND role=?'; p.push(role); }
-    const dist = await q(`SELECT CAST(overall_score_adj AS INTEGER) as score_bucket, COUNT(*) as count FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${df} ${rf} GROUP BY score_bucket ORDER BY score_bucket`, p);
+    const dist = await q(`SELECT CAST(overall_score_adj AS INTEGER) as score_bucket, COUNT(*) as count FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED} ${df} ${rf} GROUP BY score_bucket ORDER BY score_bucket`, p);
     res.json({ distribution: dist.rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -701,6 +720,203 @@ router.post('/stitch/auto-merge', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// CALL OUTCOME TAGGING
+// A tag records WHAT happened (the lead's state). excludes_from_average
+// records the CONSEQUENCE. A SUGGESTED tag changes nothing — only a human
+// CONFIRM removes a call from an average. The call always stays attributed
+// to the rep and fully visible.
+// ═══════════════════════════════════════════════════════════════
+
+router.get('/tags', async (req, res) => {
+  try {
+    const r = await q('SELECT * FROM call_tags WHERE active=true ORDER BY sort_order, label');
+    res.json({ tags: r.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/calls/:id/tags', async (req, res) => {
+  try {
+    const r = await q(
+      `SELECT a.*, t.label, t.tag_group, t.excludes_from_average, t.color, t.description
+       FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
+       WHERE a.call_id=? ORDER BY t.sort_order`, [req.params.id]);
+    res.json({ tags: r.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Apply/confirm a tag — the ONLY thing that can change an average.
+// One outcome per call: confirming an A/B tag replaces any other confirmed A/B tag.
+// Group C (routing/cross-sell) is additive — a call can be DISQUALIFIED for BNB
+// Turnkey AND a great BNB Lending lead. That's a win, not a failure.
+router.post('/calls/:id/tag', express.json(), async (req, res) => {
+  try {
+    const { tag, reason, by } = req.body || {};
+    const callId = req.params.id;
+    if (!tag) return res.status(400).json({ error: 'tag is required' });
+    const t = (await q('SELECT * FROM call_tags WHERE key=? AND active=true', [tag])).rows[0];
+    if (!t) return res.status(400).json({ error: `Unknown tag "${tag}"` });
+    const ts = new Date().toISOString().replace('T',' ').slice(0,19);
+    const who = by || 'Sam';
+    if (t.tag_group === 'A_NOT_CLOSEABLE' || t.tag_group === 'B_REAL_ATTEMPT') {
+      await q(
+        `DELETE FROM call_tag_assignments
+         WHERE call_id=? AND tag_key <> ?
+           AND tag_key IN (SELECT key FROM call_tags WHERE tag_group IN ('A_NOT_CLOSEABLE','B_REAL_ATTEMPT'))`,
+        [callId, tag]);
+    }
+    await q(
+      `INSERT INTO call_tag_assignments (call_id, tag_key, status, reason, suggested_by, confirmed_by, created_at, confirmed_at)
+       VALUES (?,?,'CONFIRMED',?,?,?,?,?)
+       ON CONFLICT (call_id, tag_key) DO UPDATE SET status='CONFIRMED',
+         reason=COALESCE(EXCLUDED.reason, call_tag_assignments.reason),
+         confirmed_by=EXCLUDED.confirmed_by, confirmed_at=EXCLUDED.confirmed_at`,
+      [callId, tag, reason || '', who, who, ts, ts]);
+    res.json({ ok: true, tag, excludes_from_average: t.excludes_from_average });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/calls/:id/untag', express.json(), async (req, res) => {
+  try {
+    const { tag } = req.body || {};
+    if (tag) await q('DELETE FROM call_tag_assignments WHERE call_id=? AND tag_key=?', [req.params.id, tag]);
+    else await q('DELETE FROM call_tag_assignments WHERE call_id=?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Dismiss a suggestion — call stays scored. The DISMISSED row also stops the bot
+// re-suggesting the same tag on a future re-score (ON CONFLICT DO NOTHING).
+router.post('/calls/:id/dismiss-tag', express.json(), async (req, res) => {
+  try {
+    const { tag } = req.body || {};
+    if (!tag) return res.status(400).json({ error: 'tag is required' });
+    await q("UPDATE call_tag_assignments SET status='DISMISSED' WHERE call_id=? AND tag_key=?", [req.params.id, tag]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Review queue: pending suggestions, worst-scored first (most unfairly penalised).
+router.get('/tags/suggestions', async (req, res) => {
+  try {
+    const r = await q(
+      `SELECT a.id, a.call_id, a.tag_key, a.reason, a.created_at,
+              t.label, t.tag_group, t.excludes_from_average, t.color,
+              c.rep_name, c.client_name, c.role, c.overall_score_adj, c.call_duration_sec, c.quick_summary
+       FROM call_tag_assignments a
+       JOIN call_tags t ON t.key = a.tag_key
+       JOIN calls c ON c.id = a.call_id
+       WHERE a.status='SUGGESTED'
+       ORDER BY t.excludes_from_average DESC, c.overall_score_adj ASC NULLS LAST, a.id DESC
+       LIMIT 200`);
+    res.json({ suggestions: r.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// A rep's outcome mix + both averages (Scored vs All Calls).
+router.get('/reps/:id/outcomes', async (req, res) => {
+  try {
+    const rep = (await q('SELECT name FROM rep_roster WHERE id=?', [req.params.id])).rows[0];
+    if (!rep) return res.status(404).json({ error: 'Rep not found' });
+    const name = rep.name;
+    const both = (await q(
+      `SELECT
+         ROUND(AVG(overall_score_adj) FILTER (WHERE ${SCORED_UNTAGGED})::numeric,1) AS scored_avg,
+         COUNT(*) FILTER (WHERE ${SCORED_UNTAGGED}) AS scored_count,
+         ROUND(AVG(overall_score_adj) FILTER (WHERE status='SCORED')::numeric,1) AS all_avg,
+         COUNT(*) FILTER (WHERE status='SCORED') AS all_count
+       FROM calls WHERE rep_name=?`, [name])).rows[0];
+    const mix = (await q(
+      `SELECT t.key, t.label, t.color, t.tag_group, t.excludes_from_average, COUNT(*) AS n
+       FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
+       JOIN calls c ON c.id=a.call_id
+       WHERE a.status='CONFIRMED' AND c.rep_name=?
+       GROUP BY t.key,t.label,t.color,t.tag_group,t.excludes_from_average
+       ORDER BY t.sort_order`, [name])).rows;
+    res.json({ rep: name, ...both, mix });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
+// ── BACKFILL ──────────────────────────────────────────────────────
+// Scan already-SCORED calls that have no tag yet, and ask the model whether they
+// were really a DQ / not-ready / nurture / info-seeker. Writes SUGGESTED only —
+// nothing is auto-applied. Sam decides call-by-call in the review queue.
+// Worst-scored first: a call scored 0-3 that's really a nurture is the most
+// unfairly penalised, so those are the ones worth Sam's attention first.
+router.post('/tags/backfill-scan', express.json(), async (req, res) => {
+  try {
+    const { callAIJson } = require('../services/ai');
+    const { saveTagSuggestions } = require('../workers/qcWorker');
+    const limit = Math.min(Number(req.body?.limit) || 15, 40);
+
+    const rows = (await q(
+      `SELECT c.id, c.rep_name, c.role, c.client_name, c.overall_score_adj, c.transcript
+       FROM calls c
+       WHERE c.status='SCORED' AND c.transcript IS NOT NULL AND LENGTH(c.transcript) > 500
+         AND NOT EXISTS (SELECT 1 FROM call_tag_assignments a WHERE a.call_id = c.id)
+       ORDER BY c.overall_score_adj ASC NULLS LAST, c.id DESC
+       LIMIT ?`, [limit])).rows;
+
+    const ts = new Date().toISOString().replace('T',' ').slice(0,19);
+    let scanned = 0, tagged = 0;
+    const results = [];
+
+    for (const c of rows) {
+      const t = String(c.transcript || '').slice(0, 50000);
+      const prompt = `You are auditing a completed sales call for BNB Turnkey (turnkey short-term-rental investment, part of The Rise Collective).
+
+The call was scored ${c.overall_score_adj}/10 on the ${c.role} rubric. Your job is NOT to re-score it. Your job is to determine WHY it ended the way it did — was it the REP's execution, or was the LEAD simply not closeable?
+
+THE TEST: "Could a great rep have advanced this lead TODAY?"
+- NO, the lead had a real STATED blocker -> tag it. The rep judged correctly.
+- YES, but this rep didn't -> "NONE". That's a performance issue and the score already reflects it.
+
+OUTCOME TAGS (lead couldn't be closed — rep judged correctly):
+- DISQUALIFIED: hard blocker — insufficient capital, wrong profile, cannot proceed, not a real investor.
+- NOT_READY: real, interested, plausible fit, but CANNOT act now for a CONCRETE STATED reason (capital tied up, mid-transaction, awaiting liquidity). Parked near-term.
+- LONG_TERM_NURTURE: same but LONG/indefinite horizon (locked in for years, needs a major life/financial change).
+- INFO_SEEKER: only wanted information. Never a buyer. No investment intent or capital discussion.
+
+OUTCOME TAGS (a real attempt happened — still the rep's performance):
+- SHORT_TERM_NURTURE: real pitch, lead is close, near-term follow-up.
+- REDZONE_HOT: lead is HOT, close imminent, strong buying signals.
+- HARD_NO: rep pitched a viable, present lead and they firmly declined.
+
+CRITICAL RULES:
+1. A WEAK CALL IS NEVER A DISQUALIFICATION. Skipped discovery / generic pitch / folded on an objection with a viable lead = "NONE".
+2. The blocker must be CONCRETE and STATED BY THE LEAD. "Seemed lukewarm" is NOT a blocker. "I just sold my company and I'm locked in four years" IS.
+3. WHEN IN DOUBT RETURN "NONE". Better to score a borderline call than let a weak call escape scoring.
+
+CROSS-SELL (Rise Collective sister brands — additive, independent of the outcome):
+BNB_LENDING_LEAD (financing is the blocker) · INVESTOR_ACADEMY_LEAD (wants to learn/DIY) · SURGE_TAX_LEAD (tax burden is the driver) · HOME_TEAM_MGMT_LEAD (owns STRs, self-manages) · HOTEL_TURNKEY_LEAD (larger/commercial/hotel) · REALTY_LEAD (wants to buy in Phoenix AZ / Pinellas FL / TX Gulf Coast).
+Only flag if the lead ACTUALLY SAID something supporting it.
+
+Return ONLY JSON:
+{"outcome_tag":"...|NONE","outcome_tag_reason":"1 sentence citing the specific stated blocker","cross_sell_tags":[],"cross_sell_reason":""}
+
+TRANSCRIPT:
+${t}`;
+
+      try {
+        const { result } = await callAIJson(prompt, { maxTokens: 400 });
+        scanned++;
+        const out = String(result?.outcome_tag || 'NONE').toUpperCase();
+        const xs = Array.isArray(result?.cross_sell_tags) ? result.cross_sell_tags : [];
+        if (out !== 'NONE' || xs.length) {
+          const r = await saveTagSuggestions(c.id, result, ts);
+          if (r.suggested) tagged++;
+          results.push({ call_id: c.id, rep: c.rep_name, client: c.client_name,
+            score: c.overall_score_adj, outcome_tag: out, reason: result?.outcome_tag_reason, cross_sell: xs });
+        }
+      } catch (e) {
+        console.warn(`[Backfill] #${c.id} failed: ${e.message}`);
+      }
+    }
+    res.json({ ok: true, scanned, tagged, remaining_untagged: rows.length === limit ? 'more available — run again' : 0, results });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/reps', async (req, res) => {
   try { res.json((await q('SELECT * FROM rep_roster WHERE active=1 ORDER BY role,name')).rows); }
   catch (err) { res.status(500).json({ error: err.message }); }
@@ -765,7 +981,7 @@ router.get('/reps/:id/progress', async (req, res) => {
     // Weekly trend (avg adjusted score per week)
     const trend = await q(
       `SELECT weekstart AS period, COUNT(*) AS calls, ROUND(AVG(overall_score_adj)::numeric,1) AS avg_score
-       FROM calls WHERE status='SCORED' AND rep_name=?
+       FROM calls WHERE status='SCORED' AND rep_name=? ${EXCL_TAGGED}
          AND received_at::timestamp >= (CURRENT_DATE - (? || ' days')::interval)
        GROUP BY weekstart ORDER BY weekstart ASC`, [name, days]);
 
@@ -773,11 +989,11 @@ router.get('/reps/:id/progress', async (req, res) => {
     const stats = (await q(
       `SELECT COUNT(*) AS scored, ROUND(AVG(overall_score_adj)::numeric,1) AS avg_adj,
               ROUND(AVG(overall_score)::numeric,1) AS avg_raw, ROUND(AVG(agent_talk_pct)::numeric,0) AS avg_talk
-       FROM calls WHERE status='SCORED' AND rep_name=?`, [name])).rows[0];
+       FROM calls WHERE status='SCORED' AND rep_name=? ${EXCL_TAGGED}`, [name])).rows[0];
 
     // Category averages — pull from JSON in app code (portable across the 5 cats)
     const scored = (await q(
-      `SELECT category_scores FROM calls WHERE status='SCORED' AND rep_name=? AND category_scores IS NOT NULL`, [name])).rows;
+      `SELECT category_scores FROM calls WHERE status='SCORED' AND rep_name=? AND category_scores IS NOT NULL ${EXCL_TAGGED}`, [name])).rows;
     const catTotals = {}, catCounts = {};
     scored.forEach(r => {
       let cs = r.category_scores; try { if (typeof cs === 'string') cs = JSON.parse(cs); } catch(e){ cs = null; }
@@ -1070,18 +1286,18 @@ router.get('/report', async (req, res) => {
     const perRep = await q(
       `SELECT rep_name, role,
          COUNT(*) FILTER (WHERE status='SCORED') AS scored,
-         ROUND(AVG(overall_score_adj) FILTER (WHERE status='SCORED')::numeric,1) AS avg_adj,
-         ROUND(AVG(overall_score) FILTER (WHERE status='SCORED')::numeric,1) AS avg_raw,
+         ROUND(AVG(overall_score_adj) FILTER (WHERE ${SCORED_UNTAGGED})::numeric,1) AS avg_adj,
+         ROUND(AVG(overall_score) FILTER (WHERE ${SCORED_UNTAGGED})::numeric,1) AS avg_raw,
          COUNT(*) FILTER (WHERE status='SKIP_VOICEMAIL') AS voicemails,
          COUNT(*) AS total_calls,
-         ROUND(AVG(agent_talk_pct) FILTER (WHERE status='SCORED')::numeric,0) AS avg_talk
+         ROUND(AVG(agent_talk_pct) FILTER (WHERE ${SCORED_UNTAGGED})::numeric,0) AS avg_talk
        FROM calls WHERE ${periodClause}${roleFilter}${repFilter} AND rep_name != 'Unknown Setter'
        GROUP BY rep_name, role ORDER BY avg_adj DESC NULLS LAST`,
       [String(days), ...baseArgs]);
 
     // Previous period avg per rep (for trend arrows)
     const prevRep = await q(
-      `SELECT rep_name, ROUND(AVG(overall_score_adj) FILTER (WHERE status='SCORED')::numeric,1) AS prev_avg
+      `SELECT rep_name, ROUND(AVG(overall_score_adj) FILTER (WHERE ${SCORED_UNTAGGED})::numeric,1) AS prev_avg
        FROM calls WHERE ${prevClause}${roleFilter}${repFilter}
        GROUP BY rep_name`,
       [String(days * 2), String(days), ...baseArgs]);
@@ -1129,7 +1345,7 @@ router.get('/report', async (req, res) => {
     const trend = await q(
       `SELECT received_at::date AS day,
          COUNT(*) FILTER (WHERE status='SCORED') AS scored,
-         ROUND(AVG(overall_score_adj) FILTER (WHERE status='SCORED')::numeric,1) AS avg_adj
+         ROUND(AVG(overall_score_adj) FILTER (WHERE ${SCORED_UNTAGGED})::numeric,1) AS avg_adj
        FROM calls WHERE ${periodClause}${roleFilter}${repFilter}
        GROUP BY received_at::date ORDER BY day`,
       [String(days), ...baseArgs]);
@@ -1137,7 +1353,7 @@ router.get('/report', async (req, res) => {
     // Team totals
     const team = await q(
       `SELECT COUNT(*) FILTER (WHERE status='SCORED') AS scored,
-         ROUND(AVG(overall_score_adj) FILTER (WHERE status='SCORED')::numeric,1) AS avg_adj,
+         ROUND(AVG(overall_score_adj) FILTER (WHERE ${SCORED_UNTAGGED})::numeric,1) AS avg_adj,
          COUNT(*) FILTER (WHERE status='SKIP_VOICEMAIL') AS voicemails,
          COUNT(*) AS total
        FROM calls WHERE ${periodClause}${roleFilter}${repFilter}`,
