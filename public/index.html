@@ -401,30 +401,43 @@ function TagBox({call}){
   const{data:reg}=useApi("/tags");
   const{data,reload}=useApi(`/calls/${call.id}/tags`,[call.id]);
   const[open,setOpen]=useState(false);
-  const[busy,setBusy]=useState(false);
+  const[busy,setBusy]=useState(null);
   const tags=data?.tags||[];
   const registry=reg?.tags||[];
-  const outcome=tags.find(t=>t.tag_group==="A_NOT_CLOSEABLE"||t.tag_group==="B_REAL_ATTEMPT");
-  const routing=tags.filter(t=>t.tag_group==="C_ROUTING");
+  const outcome=tags.find(t=>(t.tag_group==="A_NOT_CLOSEABLE"||t.tag_group==="B_REAL_ATTEMPT")&&t.status!=="DISMISSED");
+  const routing=tags.filter(t=>t.tag_group==="C_ROUTING"&&t.status!=="DISMISSED");
   const excluded=tags.some(t=>t.status==="CONFIRMED"&&t.excludes_from_average);
+  // Which tag keys are currently on this call (confirmed or suggested)
+  const applied=new Set(tags.filter(t=>t.status!=="DISMISSED").map(t=>t.tag_key));
 
-  async function apply(key){
-    setBusy(true);
-    try{ await postApi(`/calls/${call.id}/tag`,{tag:key,by:"Sam"}); reload(); setOpen(false); }
-    catch(e){ alert("Could not apply tag."); }
-    setBusy(false);
+  // Toggle: click an applied tag to remove it, click an unapplied one to add it.
+  // The picker STAYS OPEN so you can stack several tags in one go.
+  async function toggle(t){
+    setBusy(t.key);
+    try{
+      if(applied.has(t.key)) await postApi(`/calls/${call.id}/untag`,{tag:t.key});
+      else await postApi(`/calls/${call.id}/tag`,{tag:t.key,by:"Sam"});
+      reload();
+    }catch(e){ alert("Could not update tag."); }
+    setBusy(null);
   }
   async function remove(key){
-    setBusy(true);
+    setBusy(key);
     try{ await postApi(`/calls/${call.id}/untag`,{tag:key}); reload(); }
     catch(e){ alert("Could not remove tag."); }
-    setBusy(false);
+    setBusy(null);
+  }
+  async function confirmSuggested(key,reason){
+    setBusy(key);
+    try{ await postApi(`/calls/${call.id}/tag`,{tag:key,reason,by:"Sam"}); reload(); }
+    catch(e){ alert("Failed."); }
+    setBusy(null);
   }
   async function dismiss(key){
-    setBusy(true);
+    setBusy(key);
     try{ await postApi(`/calls/${call.id}/dismiss-tag`,{tag:key}); reload(); }
-    catch(e){ alert("Could not dismiss."); }
-    setBusy(false);
+    catch(e){ alert("Failed."); }
+    setBusy(null);
   }
 
   const groupA=registry.filter(t=>t.tag_group==="A_NOT_CLOSEABLE");
@@ -438,48 +451,65 @@ function TagBox({call}){
       {sug&&<span style={{fontSize:9,opacity:.8}}>suggested</span>}
       {t.label}
       {sug?<>
-        <span onClick={()=>apply(t.tag_key)} title="Confirm — this WILL change the average" style={{cursor:"pointer",color:"#34d399",fontWeight:900}}>✓</span>
+        <span onClick={()=>confirmSuggested(t.tag_key,t.reason)} title="Confirm — this WILL change the average" style={{cursor:"pointer",color:"#34d399",fontWeight:900}}>✓</span>
         <span onClick={()=>dismiss(t.tag_key)} title="Dismiss — call stays scored" style={{cursor:"pointer",color:"#f87171",fontWeight:900}}>✕</span>
       </>:<span onClick={()=>remove(t.tag_key)} title="Remove tag" style={{cursor:"pointer",opacity:.6}}>✕</span>}
     </div>;
   }
 
+  // A pickable chip in the tag picker. Applied ones are filled; click toggles.
+  function Chip({t}){
+    const on=applied.has(t.key);
+    const b=busy===t.key;
+    return<button onClick={()=>toggle(t)} disabled={b} title={t.description}
+      style={{padding:"5px 11px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+        background:on?t.color+"33":"transparent",border:`1px solid ${t.color}`,color:t.color,opacity:b?.5:1,
+        display:"inline-flex",alignItems:"center",gap:5}}>
+      {on&&<span style={{fontWeight:900}}>✓</span>}{t.label}
+    </button>;
+  }
+
   return<div className="card" style={{padding:18,borderColor:excluded?"#92400e":"#1e2635",background:excluded?"#161200":"var(--card)"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-      <div className="section-head" style={{marginBottom:0,color:excluded?"#f59e0b":"#94a3b8"}}>Call Outcome</div>
-      <button className="btn" onClick={()=>setOpen(o=>!o)} disabled={busy} style={{fontSize:11,padding:"4px 10px"}}>{open?"Close":"Tag this call"}</button>
+      <div className="section-head" style={{marginBottom:0,color:excluded?"#f59e0b":"#94a3b8"}}>Call Outcome & Tags</div>
+      <button className="btn" onClick={()=>setOpen(o=>!o)} style={{fontSize:11,padding:"4px 10px"}}>{open?"Done":"Tag this call"}</button>
     </div>
 
     {excluded&&<div style={{fontSize:12,color:"#f59e0b",marginBottom:8,lineHeight:1.5}}>
       ⓘ Not counted in <b>{call.rep_name}</b>'s scored average — the lead couldn't be closed. Still attributed to them.
     </div>}
 
-    {tags.length===0&&!open&&<div style={{fontSize:12,color:"#64748b"}}>No outcome tag. This call counts toward the rep's average as a normal call.</div>}
+    {tags.filter(t=>t.status!=="DISMISSED").length===0&&!open&&
+      <div style={{fontSize:12,color:"#64748b"}}>No tags. This call counts toward the rep's average as a normal call.</div>}
 
-    {tags.length>0&&<div style={{marginTop:4}}>
+    {(outcome||routing.length>0)&&<div style={{marginTop:4}}>
       {outcome&&<Pill t={outcome}/>}
       {routing.map(t=><Pill key={t.tag_key} t={t}/>)}
-      {tags.filter(t=>t.status==="DISMISSED").length>0&&<div style={{fontSize:10,color:"#4b5563",marginTop:4}}>
-        {tags.filter(t=>t.status==="DISMISSED").length} suggestion(s) dismissed
-      </div>}
+    </div>}
+    {tags.filter(t=>t.status==="DISMISSED").length>0&&<div style={{fontSize:10,color:"#4b5563",marginTop:2}}>
+      {tags.filter(t=>t.status==="DISMISSED").length} suggestion(s) dismissed
     </div>}
 
     {open&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #1e2635"}}>
-      <TagGroup title="Lead couldn't be closed — removes from average" sub="The rep judged correctly. Their score shouldn't suffer." tags={groupA} onPick={apply} busy={busy}/>
-      <TagGroup title="Real attempt — stays scored" sub="A genuine pitch happened, so execution is fair to judge." tags={groupB} onPick={apply} busy={busy}/>
-      <TagGroup title="Cross-sell — no effect on score" sub="Route this lead to another Rise brand. Can combine with any outcome above." tags={groupC} onPick={apply} busy={busy}/>
+      <div style={{fontSize:11,color:"#64748b",marginBottom:12,lineHeight:1.5}}>
+        Click to add or remove. You can stack as many cross-sell tags as apply — the picker stays open.
+      </div>
+      <TagGroup title="OUTCOME — lead couldn't be closed" sub="Removes the call from the rep's average. The rep judged correctly, so their score shouldn't suffer. Picking one replaces any other outcome — a call has one outcome."
+        tags={groupA} Chip={Chip}/>
+      <TagGroup title="OUTCOME — a real attempt happened" sub="Stays scored. A genuine pitch happened, so execution is fair to judge. Also replaces any other outcome."
+        tags={groupB} Chip={Chip}/>
+      <TagGroup title="CROSS-SELL — stack as many as apply" sub="No effect on the score. A call can be Disqualified for BNB Turnkey AND a great Lending + Surge Tax lead — that's a win, not a failure."
+        tags={groupC} Chip={Chip}/>
     </div>}
   </div>;
 }
 
-function TagGroup({title,sub,tags,onPick,busy}){
-  return<div style={{marginBottom:14}}>
+function TagGroup({title,sub,tags,Chip}){
+  return<div style={{marginBottom:16}}>
     <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",letterSpacing:.4}}>{title}</div>
-    <div style={{fontSize:10,color:"#4b5563",marginBottom:6}}>{sub}</div>
+    <div style={{fontSize:10,color:"#4b5563",marginBottom:7,lineHeight:1.5}}>{sub}</div>
     <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-      {tags.map(t=><button key={t.key} onClick={()=>onPick(t.key)} disabled={busy} title={t.description}
-        style={{padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
-          background:"transparent",border:`1px solid ${t.color}`,color:t.color}}>{t.label}</button>)}
+      {tags.map(t=><Chip key={t.key} t={t}/>)}
     </div>
   </div>;
 }
