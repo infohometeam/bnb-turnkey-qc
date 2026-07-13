@@ -1427,13 +1427,17 @@ router.get('/report', async (req, res) => {
       prevClause = `1=0`; // no meaningful "previous" for an arbitrary range
       useRange = true;
     } else {
-      periodClause = `received_at::timestamp >= (NOW() - (? || ' days')::interval)`;
-      prevClause = `received_at::timestamp >= (NOW() - (? || ' days')::interval) AND received_at::timestamp < (NOW() - (? || ' days')::interval)`;
+      // `days` is Number()-validated above, so inlining is injection-safe. Parameterising the
+      // interval (`(? || ' days')::interval`) made the arg count depend on the mode, and any
+      // query that passed the wrong arg list threw — 500ing the entire report.
+      const d = Math.max(1, Math.min(365, Number(days) || 7));
+      periodClause = `received_at::timestamp >= (NOW() - INTERVAL '${d} days')`;
+      prevClause = `received_at::timestamp >= (NOW() - INTERVAL '${d * 2} days') AND received_at::timestamp < (NOW() - INTERVAL '${d} days')`;
     }
-    // Arg builders — a range/preset clause has no '?' placeholders, so the day args
-    // must be omitted or the parameter positions shift and the query breaks.
-    const PA = useRange ? [...baseArgs] : [String(days), ...baseArgs];          // period args
-    const PV = useRange ? [...baseArgs] : [String(days * 2), String(days), ...baseArgs]; // prev-window args
+    // Every window clause is now literal — no placeholders — so ALL queries take the same
+    // args (just role/rep filters). One arg list, impossible to mismatch.
+    const PA = [...baseArgs];
+    const PV = [...baseArgs];
 
     // Per-rep summary for THIS period
     const perRep = await q(
@@ -1547,7 +1551,7 @@ router.get('/report', async (req, res) => {
       `SELECT status, COUNT(*) AS n FROM calls
        WHERE status LIKE 'SKIP_%'
          AND ${periodClause}
-       GROUP BY status ORDER BY n DESC`, useRange ? [] : [String(days)]);
+       GROUP BY status ORDER BY n DESC`);
 
     // Team-wide category averages + most common deductions
     const teamCats = await q(
