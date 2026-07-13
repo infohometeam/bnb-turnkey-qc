@@ -95,15 +95,24 @@ const TEAM_NAMES=new Set(["matt","kevin","andrew","steven","anurag","sam","franc
 const RECORD_LABELS={SKIP_VOICEMAIL:"📵 Voicemail",SKIP_SHORT:"📏 Too Short",SKIP_RESCHEDULE:"📅 Reschedule",SKIP_FOLLOWUP:"🔄 Follow-up",SKIP_WRONG_NUMBER:"❌ Wrong Number",SKIP_INTERNAL:"🏢 Internal"};
 
 function Badge({status}){const[bg,fg,bd]=stClr(status);return<span className="badge" style={{background:bg,color:fg,border:`1px solid ${bd}`}}>{status}</span>}
-function ScorecardPicker(){
+function ScorecardPicker({days,preset,from,to}){
   const{data:reps}=useApi("/reps");
   const[rep,setRep]=useState("");
   const[sel,setSel]=useState(new Set());
   const[withTx,setWithTx]=useState(false);
   const[busy,setBusy]=useState(false);
   const q=rep?`&rep=${encodeURIComponent(rep)}`:"";
-  const{data}=useApi(`/calls?status=SCORED&limit=100${q}`,[rep]);
+  // Honour the Reports date window so you can build e.g. "Anurag, yesterday" —
+  // then still hand-pick which of those calls go in the PDF.
+  const dq=(from||to)?`${from?`&from=${from}`:""}${to?`&to=${to}`:""}`
+          :preset==="today"?"&period=day"
+          :preset==="yesterday"?"&period=yesterday"
+          :days>=90?"" : days>=30?"&period=month" : "&period=week";
+  const{data}=useApi(`/calls?status=SCORED&limit=200${q}${dq}`,[rep,days,preset,from,to]);
   const calls=data?.calls||[];
+  // Reset selection when the window changes — otherwise you could silently export
+  // a call that's no longer in the visible list.
+  React.useEffect(()=>{setSel(new Set());},[rep,days,preset,from,to]);
 
   function toggle(id){setSel(s=>{const n=new Set(s);n.has(id)?n.delete(id):n.add(id);return n;});}
   async function generate(){
@@ -144,7 +153,7 @@ function ScorecardPicker(){
           <ScoreRing value={c.overall_score_adj} size={28} sw={2}/>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{fontFamily:"var(--m)",fontSize:10,color:"#6366f1",marginRight:5}}>#{c.id}</span>{c.rep_name} → {c.client_name||"?"}</div>
-            <div style={{fontSize:10,color:"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div>
+            <div style={{fontSize:10,color:"#8b98ab",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div>
           </div>
           <span style={{fontSize:10,color:"#4b5563",flexShrink:0}}>{fmt(c.received_at)}</span>
         </div>)}
@@ -223,7 +232,7 @@ function downloadCSV(rows,filename){
 }
 
 // ── Dashboard ───────────────────────────────────────────────
-function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:qd}=useApi("/queue/status");const{data:fd}=useApi(`/calls?flagged=true&limit=5${dq}`,[p,f,t]);const{data:rd}=useApi("/report?days=7");const{data:recent}=useApi(`/calls?status=SCORED&limit=8${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"}</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div><div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div><div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div></div>{data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} onClick={()=>goTo("rep",r.rep_name)} title={`View ${r.rep_name}`} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12,cursor:"pointer",padding:"6px 8px",margin:"0 -8px 6px",borderRadius:8}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}{fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Flagged</div>{fd.calls.map(c=><div key={c.id} onClick={()=>goTo("calls",c.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 6px",margin:"0 -6px",borderRadius:8,borderBottom:"1px solid #2a3140",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}
+function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:qd}=useApi("/queue/status");const{data:fd}=useApi(`/calls?flagged=true&limit=5${dq}`,[p,f,t]);const{data:rd}=useApi("/report?days=7");const{data:recent}=useApi(`/calls?status=SCORED&limit=8${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"}</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div><div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div><div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div></div>{data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} onClick={()=>goTo("rep",r.rep_name)} title={`View ${r.rep_name}`} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12,cursor:"pointer",padding:"6px 8px",margin:"0 -8px 6px",borderRadius:8}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}{fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Flagged</div>{fd.calls.map(c=><div key={c.id} onClick={()=>goTo("calls",c.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 6px",margin:"0 -6px",borderRadius:8,borderBottom:"1px solid #2a3140",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"#8b98ab",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}
 
     {/* Team focus areas — weakest category first */}
     {rd?.team_categories?.length>0&&<div className="card" style={{padding:24}}>
@@ -247,7 +256,7 @@ function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const
         <ScoreRing value={c.overall_score_adj} size={30} sw={2.5}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{fontFamily:"var(--m)",fontSize:10,color:"#6366f1",marginRight:5}}>#{c.id}</span>{c.rep_name} → {c.client_name||"?"}</div>
-          <div style={{fontSize:11,color:"#374151",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div>
+          <div style={{fontSize:11,color:"#8b98ab",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div>
         </div>
         <span style={{fontSize:10,color:"#2a3040",flexShrink:0}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</span>
       </div>)}
@@ -262,16 +271,20 @@ function CallsList({onSelect}){const[sf,sSf]=useState("ALL");const[rf,sRf]=useSt
   async function bulkRescore(){if(!sel.size)return;const est=(sel.size*0.006).toFixed(3);if(!confirm(`Re-score ${sel.size} calls?\n\nEstimated cost: $${est}\nCurrent scores will be archived before re-scoring.\n\nProceed?`))return;const r=await fetch(`${API}/calls/rescore-selected`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[...sel]})}).then(r=>r.json());alert(`✓ ${r.queued} calls queued for re-score. They'll process on the next worker cycles.`);setSel(new Set());reload();}
   if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const displayCalls=searchResults?searchResults.calls:data.calls;const displayTotal=searchResults?searchResults.total:data.total;const tp=Math.ceil(displayTotal/PER);
   return<div className="flex-col gap-20"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Calls</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{displayTotal} {searchResults?`results for "${searchResults.query}"`:"calls"}</p></div><div className="flex-col gap-8"><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="text" value={sq} onChange={e=>sSq(e.target.value)} onKeyDown={e=>e.key==='Enter'&&doSearch()} placeholder="Search transcripts..." style={{minWidth:200,background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,padding:"6px 12px",color:"var(--t1)",fontSize:11}}/><button className="btn btn-primary btn-sm" onClick={doSearch} disabled={searching}>{searching?"...":"🔍"}</button>{searchResults&&<button className="btn btn-sm" onClick={clearSearch}>✕ Clear</button>}</div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><select value={sf} onChange={e=>{sSf(e.target.value);sPg(0)}}><option value="ALL">All Status</option>{["SCORED","NEW","REQC","ERROR","WAIT_RETRY_FULL","WAIT_TRANSCRIPT"].map(s=><option key={s}>{s}</option>)}</select><select value={rf} onChange={e=>{sRf(e.target.value);sPg(0)}}><option value="ALL">All Reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select><button className="btn btn-sm" onClick={()=>{reload();setSel(new Set());clearSearch()}}>↻</button>{sel.size>0&&<button className="btn btn-sm" style={{background:"#1e1b4b",color:"#a5b4fc",border:"1px solid #4338ca"}} onClick={bulkRescore}>↻ Re-score {sel.size}</button>}{sel.size>0&&<button className="btn btn-red btn-sm" onClick={bulkDel} disabled={del}>🗑 {sel.size}</button>}</div></div></div>
-    <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:"calc(100vh - 300px)",minHeight:340,overflowY:"auto"}}>{displayCalls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #141925",background:sel.has(c.id)?"#2a3140":c.flagged?"rgba(245,158,11,.03)":"transparent"}} onClick={()=>onSelect(c)}><input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1"}}/><ScoreRing value={c.overall_score_adj} size={32} sw={2}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+    <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:"calc(100vh - 300px)",minHeight:340,overflowY:"auto"}}>{displayCalls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #141925",background:sel.has(c.id)?"#2a3140":c.flagged?"rgba(245,158,11,.03)":"transparent"}} onClick={()=>onSelect(c)}><input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1"}}/><ScoreRing value={c.overall_score_adj} size={32} sw={2}/><div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9",display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontFamily:"var(--m)",fontSize:10,color:"#6366f1"}}>#{c.id}</span>
           <span>{c.rep_name} → {c.client_name||"?"}</span>
           {c.flagged&&<span style={{color:"#f59e0b",fontSize:10}}>⚠</span>}
-          {c.stitch_status==="MERGED"&&<span title={`Stitched from calls ${c.stitched_from_ids||""} — a dropped call and its redial merged into one`} style={{fontSize:9,fontWeight:800,padding:"1px 6px",borderRadius:20,background:"#0f2e2b",border:"1px solid #2dd4bf",color:"#2dd4bf"}}>🔗 STITCHED</span>}
-          {(c.tags||[]).filter(t=>t.status!=="DISMISSED").map(t=><span key={t.tag_key} title={t.status==="SUGGESTED"?"Suggested — not yet confirmed":t.excludes_from_average?"Not counted in this rep's average":"Counts normally"}
-            style={{fontSize:9,fontWeight:800,padding:"1px 7px",borderRadius:20,background:t.status==="SUGGESTED"?"transparent":t.color+"22",border:`1px ${t.status==="SUGGESTED"?"dashed":"solid"} ${t.color}`,color:t.color}}>
+        </div>
+        {(c.stitch_status==="MERGED"||(c.tags||[]).some(t=>t.status!=="DISMISSED"))&&
+        <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",margin:"4px 0 3px"}}>
+          {c.stitch_status==="MERGED"&&<span title={`Stitched from calls ${c.stitched_from_ids||""} — a dropped call and its redial merged into one`} style={{fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:20,background:"#0f2e2b",border:"1px solid #2dd4bf",color:"#2dd4bf"}}>🔗 STITCHED</span>}
+          {(c.tags||[]).filter(t=>t.status!=="DISMISSED").map(t=><span key={t.tag_key} title={t.status==="SUGGESTED"?"Suggested — not yet confirmed, no effect on the average":t.excludes_from_average?"Not counted in this rep's average":"Counts normally"}
+            style={{fontSize:9,fontWeight:800,padding:"2px 8px",borderRadius:20,background:t.status==="SUGGESTED"?"transparent":t.color+"22",border:`1px ${t.status==="SUGGESTED"?"dashed":"solid"} ${t.color}`,color:t.color}}>
             {t.excludes_from_average&&t.status==="CONFIRMED"?"⊘ ":""}{t.label}
           </span>)}
-        </div><div style={{fontSize:10,color:"#2a3040",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.source}</div></div><div style={{textAlign:"right",flexShrink:0}}><Badge status={c.status}/><div style={{fontSize:10,color:"#2a3040",marginTop:4}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</div></div></div>)}{!displayCalls.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>{searchResults?"No results found":"No calls"}</div>}</div></div>
+        </div>}<div style={{fontSize:10,color:"#2a3040",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.source}</div></div><div style={{textAlign:"right",flexShrink:0}}><Badge status={c.status}/><div style={{fontSize:10,color:"#2a3040",marginTop:4}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</div></div></div>)}{!displayCalls.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>{searchResults?"No results found":"No calls"}</div>}</div></div>
     {tp>1&&<div style={{display:"flex",justifyContent:"center",gap:6,alignItems:"center"}}><button className="btn btn-sm" disabled={pg===0} onClick={()=>sPg(x=>x-1)}>← Prev</button><span style={{fontSize:11,color:"#4b5563",fontFamily:"var(--m)"}}>{pg+1}/{tp}</span><button className="btn btn-sm" disabled={pg>=tp-1} onClick={()=>sPg(x=>x+1)}>Next →</button></div>}
   </div>}
 
@@ -893,12 +906,30 @@ function CoachingPage(){const[p,sP]=useState("week");const[f,sF]=useState('');co
     {calls.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Coaching Notes</div><div style={{fontSize:11,color:"#64748b",marginTop:-8,marginBottom:14}}>Tap any call to read the full coaching note.</div>{calls.slice(0,12).filter(c=>c.coaching_notes).map(c=><CoachingCard key={c.id} c={c}/>)}</div>}
   </div>}
 
+// Each report mode has a default window that MAKES SENSE for it.
+// Trends needs many days to draw a line; a daily digest needs exactly one.
+// The date filter is an OPTIONAL override on top of the default.
+const MODE_DEFAULTS={
+  digest:   {days:7,  preset:"",         label:"Last 7 days"},
+  daily:    {days:0,  preset:"today",    label:"Today"},
+  cards:    {days:30, preset:"",         label:"Last 30 days"},
+  trends:   {days:30, preset:"",         label:"Last 30 days"},
+  scorecards:{days:30,preset:"",         label:"Last 30 days"},
+};
+
 function ExportPage(){
-  const[mode,setMode]=useState("digest");
+  const[mode,setModeRaw]=useState("digest");
   const[days,setDays]=useState(7);
   const[preset,setPreset]=useState("");      // '', 'today', 'yesterday'
   const[from,setFrom]=useState("");          // custom range
   const[to,setTo]=useState("");
+  const[touched,setTouched]=useState(false); // has the user picked a filter themselves?
+  // Switching mode restores that mode's default window (unless the user has set one).
+  function setMode(m){
+    setModeRaw(m);
+    const d=MODE_DEFAULTS[m]||MODE_DEFAULTS.digest;
+    setDays(d.days||30); setPreset(d.preset); setFrom(""); setTo(""); setTouched(false);
+  }
   const[rep,setRep]=useState("");
   const{data:reps}=useApi("/reps");
   const[report,setReport]=useState(null);
@@ -919,7 +950,7 @@ function ExportPage(){
   const maxT=Math.max(1,...((report?.trend)||[]).map(t=>Number(t.avg_adj)||0));
   return<div className="flex-col gap-20">
     <div className="no-print" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
-      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Reports</h2><p style={{fontSize:12,color:"#64748b",marginTop:4}}>Per-rep report cards, weekly digest, and trends — print any view to PDF.</p></div>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Reports <span style={{fontSize:12,fontWeight:600,color:"#818cf8",marginLeft:8}}>{windowLabel}{!touched&&<span style={{color:"#4b5563"}}> (default)</span>}</span></h2><p style={{fontSize:12,color:"#64748b",marginTop:4}}>Per-rep report cards, weekly digest, and trends — print any view to PDF.</p></div>
       <div style={{display:"flex",gap:8}}>
         <button className="btn" onClick={()=>{
           const rows=(report&&report.perRep)||[];
@@ -934,17 +965,17 @@ function ExportPage(){
       </div>
     </div>
     <div className="no-print card" style={{padding:18,display:"flex",gap:18,flexWrap:"wrap",alignItems:"center"}}>
-      <div style={{display:"flex",gap:6}}>{[["digest","Weekly Digest"],["cards","Rep Cards"],["trends","Trends"],["scorecards","Scorecards"]].map(([id,l])=><button key={id} onClick={()=>setMode(id)} className="btn" style={{padding:"6px 14px",fontSize:12,background:mode===id?"#1e1b4b":"",borderColor:mode===id?"#4338ca":"",color:mode===id?"#c7d2fe":""}}>{l}</button>)}</div>
+      <div style={{display:"flex",gap:6}}>{[["digest","Weekly Digest"],["daily","Daily Digest"],["cards","Rep Cards"],["trends","Trends"],["scorecards","Scorecards"]].map(([id,l])=><button key={id} onClick={()=>setMode(id)} className="btn" style={{padding:"6px 14px",fontSize:12,background:mode===id?"#1e1b4b":"",borderColor:mode===id?"#4338ca":"",color:mode===id?"#c7d2fe":""}}>{l}</button>)}</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
         {[["today","Today"],["yesterday","Yesterday"]].map(([pv,l])=>{const on=preset===pv&&!from&&!to;
-          return<button key={pv} onClick={()=>{setPreset(on?"":pv);setFrom("");setTo("");}} className="btn" style={{padding:"6px 12px",fontSize:12,background:on?"#1e1b4b":"",borderColor:on?"#4338ca":"",color:on?"#c7d2fe":""}}>{l}</button>;})}
+          return<button key={pv} onClick={()=>{setPreset(on?"":pv);setFrom("");setTo("");setTouched(true);}} className="btn" style={{padding:"6px 12px",fontSize:12,background:on?"#1e1b4b":"",borderColor:on?"#4338ca":"",color:on?"#c7d2fe":""}}>{l}</button>;})}
         {[[7,"7d"],[14,"14d"],[30,"30d"],[90,"90d"]].map(([d,l])=>{const on=days===d&&!preset&&!from&&!to;
-          return<button key={d} onClick={()=>{setDays(d);setPreset("");setFrom("");setTo("");}} className="btn" style={{padding:"6px 12px",fontSize:12,background:on?"#1e1b4b":"",borderColor:on?"#4338ca":"",color:on?"#c7d2fe":""}}>{l}</button>;})}
+          return<button key={d} onClick={()=>{setDays(d);setPreset("");setFrom("");setTo("");setTouched(true);}} className="btn" style={{padding:"6px 12px",fontSize:12,background:on?"#1e1b4b":"",borderColor:on?"#4338ca":"",color:on?"#c7d2fe":""}}>{l}</button>;})}
         <span style={{color:"#2a3040"}}>|</span>
-        <input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPreset("");}} title="From" style={{padding:"5px 8px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}/>
+        <input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPreset("");setTouched(true);}} title="From" style={{padding:"5px 8px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}/>
         <span style={{color:"#64748b",fontSize:12}}>→</span>
-        <input type="date" value={to} onChange={e=>{setTo(e.target.value);setPreset("");}} title="To" style={{padding:"5px 8px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}/>
-        {(from||to)&&<button className="btn" onClick={()=>{setFrom("");setTo("");}} style={{padding:"5px 10px",fontSize:11}}>Clear</button>}
+        <input type="date" value={to} onChange={e=>{setTo(e.target.value);setPreset("");setTouched(true);}} title="To" style={{padding:"5px 8px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}/>
+        {touched&&<button className="btn" onClick={()=>setMode(mode)} title="Back to this report's default window" style={{padding:"5px 10px",fontSize:11}}>↺ Default</button>}
       </div>
       <select value={rep} onChange={e=>setRep(e.target.value)} style={{padding:"7px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="">All reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
     </div>
@@ -952,7 +983,7 @@ function ExportPage(){
     {report&&<div className="report-sheet flex-col gap-20">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",paddingBottom:14,borderBottom:"2px solid #2a3140"}}><div><div style={{fontSize:20,fontWeight:900,color:"#e6edf3"}}>BNB Turnkey — QC Report</div><div style={{fontSize:12,color:"#64748b",marginTop:2}}>The Rise Collective · last {report.period_days} days{report.rep?` · ${report.rep}`:""} · generated {new Date(report.generated).toLocaleDateString()}</div></div></div>
 
-      {mode==="digest"&&<div className="flex-col gap-20">
+      {(mode==="digest"||mode==="daily")&&<div className="flex-col gap-20">
         <div className="grid grid-stats">
           <div className="card stat-card"><div className="stat-label">Team Avg</div><div className="stat-value" style={{color:sClr(report.team?.avg_adj)}}>{report.team?.avg_adj??"—"}</div><div className="stat-sub">adjusted /10</div></div>
           <div className="card stat-card"><div className="stat-label">Scored</div><div className="stat-value">{report.team?.scored||0}</div><div className="stat-sub">calls</div></div>
@@ -1021,7 +1052,7 @@ function ExportPage(){
         </div>}
       </div>}
 
-      {mode==="scorecards"&&<ScorecardPicker/>}
+      {mode==="scorecards"&&<ScorecardPicker days={days} preset={preset} from={from} to={to}/>}
 
       {mode==="cards"&&<div style={{display:"flex",flexDirection:"column",gap:24}}>{(report.reps||[]).map(r=><div key={r.rep_name} className="card rep-card" style={{padding:28}}>
         <div onClick={()=>goTo("rep",r.rep_name)} title={`Open ${r.rep_name}`} style={{display:"flex",alignItems:"center",gap:16,marginBottom:24,cursor:"pointer"}}>
@@ -1261,6 +1292,7 @@ function MyProgressPage(){
   const{data:reps}=useApi("/reps");
   const[repId,setRepId]=useState("");
   const{data}=useApi(repId?`/reps/${repId}/progress`:null,[repId]);
+  const{data:ins}=useApi(repId?`/reps/${repId}/insights`:null,[repId]);
   React.useEffect(()=>{if(reps&&reps.length&&!repId)setRepId(String(reps[0].id));},[reps]);
 
   const CAT_LABELS={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",frame_control:"Frame/Control",objections_close:"Objections & Close"};
@@ -1296,6 +1328,54 @@ function MyProgressPage(){
             <span style={{fontFamily:"var(--m)",fontWeight:700,color:sClr(c.avg)}}>{c.avg}</span></div>
           <div style={{height:6,background:"#141925",borderRadius:3,overflow:"hidden"}}><div style={{width:`${c.avg*10}%`,height:"100%",background:sClr(c.avg)}}/></div>
         </div>)}
+      </div>}
+
+      {/* What you're good at / what to work on */}
+      {ins&&(ins.strengths?.length>0||ins.pain_points?.length>0)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        {ins.strengths?.length>0&&<div className="card" style={{padding:20,borderColor:"#166534"}}>
+          <div className="section-head" style={{color:"#4ade80",marginBottom:4}}>What you do well</div>
+          <div style={{fontSize:10,color:"#4b5563",marginBottom:10}}>Recurring across your last {ins.based_on} calls</div>
+          {ins.strengths.map((x,i)=><div key={i} style={{fontSize:12,color:"#c9d1d9",marginBottom:8,lineHeight:1.5,display:"flex",gap:8}}>
+            <span style={{color:"#4ade80",fontWeight:800,fontFamily:"var(--m)",flexShrink:0}}>{x.count}×</span><span>{x.text}</span></div>)}
+        </div>}
+        {ins.pain_points?.length>0&&<div className="card" style={{padding:20,borderColor:"#92400e"}}>
+          <div className="section-head" style={{color:"#f59e0b",marginBottom:4}}>What to work on</div>
+          <div style={{fontSize:10,color:"#4b5563",marginBottom:10}}>Your most repeated gaps</div>
+          {ins.pain_points.map((x,i)=><div key={i} style={{fontSize:12,color:"#c9d1d9",marginBottom:8,lineHeight:1.5,display:"flex",gap:8}}>
+            <span style={{color:"#f59e0b",fontWeight:800,fontFamily:"var(--m)",flexShrink:0}}>{x.count}×</span><span>{x.text}</span></div>)}
+        </div>}
+      </div>}
+
+      {/* Most common deductions — the concrete, fixable ones */}
+      {ins?.top_deductions?.length>0&&<div className="card" style={{padding:20}}>
+        <div className="section-head" style={{marginBottom:4}}>Where you lose points most</div>
+        <div style={{fontSize:10,color:"#4b5563",marginBottom:10}}>Fix these and your score moves fastest.</div>
+        {ins.top_deductions.map((d,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:i<ins.top_deductions.length-1?"1px solid #1a1f2e":"none"}}>
+          <span style={{fontSize:12,color:"#c9d1d9"}}>{d.label}</span>
+          <span style={{fontSize:12,fontWeight:800,color:"#f87171",fontFamily:"var(--m)"}}>{d.count}× </span>
+        </div>)}
+      </div>}
+
+      {/* Best & worst call — learn from both */}
+      {ins&&(ins.best_call||ins.worst_call)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        {ins.best_call&&<div className="card" style={{padding:18,borderColor:"#166534",cursor:"pointer"}} onClick={()=>goTo("calls",ins.best_call.id)}>
+          <div className="section-head" style={{color:"#4ade80",marginBottom:8}}>★ Your best call</div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+            <span style={{fontSize:22,fontWeight:900,color:sClr(ins.best_call.score),fontFamily:"var(--m)"}}>{ins.best_call.score}</span>
+            <span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{ins.best_call.client_name}</span>
+          </div>
+          <div style={{fontSize:11,color:"#8b98ab",lineHeight:1.6}}>{(ins.best_call.summary||"").slice(0,140)}…</div>
+          <div style={{fontSize:10,color:"#4ade80",marginTop:6}}>Study what you did right →</div>
+        </div>}
+        {ins.worst_call&&<div className="card" style={{padding:18,borderColor:"#7f1d1d",cursor:"pointer"}} onClick={()=>goTo("calls",ins.worst_call.id)}>
+          <div className="section-head" style={{color:"#f87171",marginBottom:8}}>Your toughest call</div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+            <span style={{fontSize:22,fontWeight:900,color:sClr(ins.worst_call.score),fontFamily:"var(--m)"}}>{ins.worst_call.score}</span>
+            <span style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{ins.worst_call.client_name}</span>
+          </div>
+          <div style={{fontSize:11,color:"#8b98ab",lineHeight:1.6}}>{(ins.worst_call.summary||"").slice(0,140)}…</div>
+          <div style={{fontSize:10,color:"#f87171",marginTop:6}}>Review what to change →</div>
+        </div>}
       </div>}
 
       {/* Recent calls */}
@@ -1390,6 +1470,33 @@ function CalibrationPage(){
   </div>;
 }
 
+function StitchLog(){
+  const{data}=useApi("/stitch/log");
+  const merges=data?.merges||[];
+  if(!merges.length)return<div className="card" style={{padding:20}}>
+    <div className="section-head" style={{marginBottom:6}}>Stitch Log</div>
+    <div style={{fontSize:12,color:"#64748b"}}>No calls have been stitched yet.</div>
+  </div>;
+  return<div className="card" style={{overflow:"hidden"}}>
+    <div style={{padding:"12px 18px",borderBottom:"1px solid #1a1f2e",fontSize:12,fontWeight:700,color:"#94a3b8",letterSpacing:.5}}>STITCH LOG — MERGED CALLS ({merges.length})</div>
+    {merges.map(m=><div key={m.survivor_id} onClick={()=>goTo("calls",m.survivor_id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:"1px solid #141925",cursor:"pointer"}}
+      onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+      <span style={{fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:20,background:"#0f2e2b",border:"1px solid #2dd4bf",color:"#2dd4bf",flexShrink:0}}>🔗</span>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}>{m.rep_name} → {m.client_name||"?"}</div>
+        <div style={{fontSize:11,color:"#8b98ab"}}>
+          Calls {m.stitched_from_ids||"?"} merged into <b style={{color:"#2dd4bf"}}>#{m.survivor_id}</b>
+          {m.hidden_id?` · #${m.hidden_id} hidden`:""} · combined {fmtD(m.call_duration_sec)}
+        </div>
+      </div>
+      <div style={{textAlign:"right",flexShrink:0}}>
+        <div style={{fontSize:14,fontWeight:800,color:sClr(m.overall_score_adj),fontFamily:"var(--m)"}}>{m.overall_score_adj??"—"}</div>
+        <div style={{fontSize:10,color:"#4b5563"}}>{fmt(m.received_at)}</div>
+      </div>
+    </div>)}
+  </div>;
+}
+
 function StitchPage(){
   const[data,setData]=useState(null);
   const[scanning,setScanning]=useState(false);
@@ -1468,9 +1575,16 @@ function StitchPage(){
       {mMsg&&<div style={{marginTop:10,fontSize:12,color:mMsg.err?"#f87171":"#34d399"}}>{mMsg.text}</div>}
     </div>
 
+    {/* Honest status — no auto-stitch is running */}
+    <div className="card" style={{padding:14,background:"#0d1420",borderColor:"#1e3a5f",fontSize:12,color:"#94a3b8",lineHeight:1.6}}>
+      <b style={{color:"#7dd3fc"}}>Detection is manual.</b> Nothing is stitched automatically — the bot only looks when you click <b>Scan</b>, and only merges when you click <b>Merge</b>. There is no background job doing this on its own.
+    </div>
+
     {!data&&!scanning&&<div className="card" style={{padding:40,textAlign:"center",color:"#64748b"}}>
-      Click <b style={{color:"#94a3b8"}}>Scan</b> to look for calls that dropped and were redialed within {60} minutes. Same rep, same client, with the transcript showing a cut-off and reconnect.
+      Click <b style={{color:"#94a3b8"}}>Scan</b> to look for calls that dropped and were redialed within 60 minutes. Same rep, same client, with the transcript showing a cut-off and a reconnect.
     </div>}
+
+    <StitchLog/>
 
     {data&&<>
       {data.auto.length>0&&<div>
