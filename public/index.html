@@ -157,7 +157,7 @@ function ScorecardPicker(){
 function ScoreRing({value,size=44,sw=3}){const c=sClr(value),r=(size-sw)/2,ci=2*Math.PI*r,p=value!=null?(value/10)*ci:0;return<svg width={size} height={size} style={{transform:"rotate(-90deg)",flexShrink:0}}><circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1e293b" strokeWidth={sw}/>{value!=null&&<circle cx={size/2} cy={size/2} r={r} fill="none" stroke={c} strokeWidth={sw} strokeDasharray={ci} strokeDashoffset={ci-p} strokeLinecap="round"/>}<text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central" style={{transform:"rotate(90deg)",transformOrigin:"center",fontSize:size*.3,fontWeight:800,fill:c,fontFamily:"var(--m)"}}>{value!=null?value:"—"}</text></svg>}
 function MiniBar({value,max=10}){const c=sClr(value);return<div style={{display:"flex",alignItems:"center",gap:8}}><div style={{flex:1,height:5,background:"#1e293b",borderRadius:3,overflow:"hidden"}}><div style={{width:`${((value||0)/max)*100}%`,height:"100%",background:c,borderRadius:3}}/></div><span style={{fontSize:11,fontWeight:700,color:c,fontFamily:"var(--m)",minWidth:28,textAlign:"right"}}>{value||"—"}</span></div>}
 function Pill({label,ok}){return<span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 10px",borderRadius:5,fontSize:10,fontWeight:700,fontFamily:"var(--m)",background:ok?"#052e16":"#2a0a0a",color:ok?"#34d399":"#ef4444",border:`1px solid ${ok?"#166534":"#991b1b"}`}}>{ok?"✓":"✗"} {label}</span>}
-function DateFilter({period,setPeriod,from,setFrom,to,setTo}){return<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><div className="period-toggle">{["day","week","month","all"].map(p=><button key={p} className={period===p&&!from?"active":""} onClick={()=>{setPeriod(p);setFrom('');setTo('')}}>{p==="day"?"Today":p==="week"?"7 Days":p==="month"?"30 Days":"All"}</button>)}</div><span style={{fontSize:10,color:"#374151"}}>or</span><input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPeriod('')}}/><span style={{fontSize:10,color:"#374151"}}>to</span><input type="date" value={to} onChange={e=>{setTo(e.target.value);setPeriod('')}}/>{(from||to)&&<button className="btn btn-sm" onClick={()=>{setFrom('');setTo('');setPeriod('week')}}>✕</button>}</div>}
+function DateFilter({period,setPeriod,from,setFrom,to,setTo}){return<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><div className="period-toggle">{["day","yesterday","week","month","all"].map(p=><button key={p} className={period===p&&!from?"active":""} onClick={()=>{setPeriod(p);setFrom('');setTo('')}}>{p==="day"?"Today":p==="yesterday"?"Yesterday":p==="week"?"7 Days":p==="month"?"30 Days":"All"}</button>)}</div><span style={{fontSize:10,color:"#374151"}}>or</span><input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPeriod('')}}/><span style={{fontSize:10,color:"#374151"}}>to</span><input type="date" value={to} onChange={e=>{setTo(e.target.value);setPeriod('')}}/>{(from||to)&&<button className="btn btn-sm" onClick={()=>{setFrom('');setTo('');setPeriod('week')}}>✕</button>}</div>}
 function buildDQ(p,f,t){if(f||t){let s='';if(f)s+=`&from=${f}`;if(t)s+=`&to=${t}`;return s}if(p&&p!=='all')return`&period=${p}`;return''}
 // Build a printable scorecard for one call (shared by call detail + Reports bulk export).
 function scorecardHTML(c,withTranscript){
@@ -262,7 +262,16 @@ function CallsList({onSelect}){const[sf,sSf]=useState("ALL");const[rf,sRf]=useSt
   async function bulkRescore(){if(!sel.size)return;const est=(sel.size*0.006).toFixed(3);if(!confirm(`Re-score ${sel.size} calls?\n\nEstimated cost: $${est}\nCurrent scores will be archived before re-scoring.\n\nProceed?`))return;const r=await fetch(`${API}/calls/rescore-selected`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[...sel]})}).then(r=>r.json());alert(`✓ ${r.queued} calls queued for re-score. They'll process on the next worker cycles.`);setSel(new Set());reload();}
   if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const displayCalls=searchResults?searchResults.calls:data.calls;const displayTotal=searchResults?searchResults.total:data.total;const tp=Math.ceil(displayTotal/PER);
   return<div className="flex-col gap-20"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Calls</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{displayTotal} {searchResults?`results for "${searchResults.query}"`:"calls"}</p></div><div className="flex-col gap-8"><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="text" value={sq} onChange={e=>sSq(e.target.value)} onKeyDown={e=>e.key==='Enter'&&doSearch()} placeholder="Search transcripts..." style={{minWidth:200,background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,padding:"6px 12px",color:"var(--t1)",fontSize:11}}/><button className="btn btn-primary btn-sm" onClick={doSearch} disabled={searching}>{searching?"...":"🔍"}</button>{searchResults&&<button className="btn btn-sm" onClick={clearSearch}>✕ Clear</button>}</div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><select value={sf} onChange={e=>{sSf(e.target.value);sPg(0)}}><option value="ALL">All Status</option>{["SCORED","NEW","REQC","ERROR","WAIT_RETRY_FULL","WAIT_TRANSCRIPT"].map(s=><option key={s}>{s}</option>)}</select><select value={rf} onChange={e=>{sRf(e.target.value);sPg(0)}}><option value="ALL">All Reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select><button className="btn btn-sm" onClick={()=>{reload();setSel(new Set());clearSearch()}}>↻</button>{sel.size>0&&<button className="btn btn-sm" style={{background:"#1e1b4b",color:"#a5b4fc",border:"1px solid #4338ca"}} onClick={bulkRescore}>↻ Re-score {sel.size}</button>}{sel.size>0&&<button className="btn btn-red btn-sm" onClick={bulkDel} disabled={del}>🗑 {sel.size}</button>}</div></div></div>
-    <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:"calc(100vh - 300px)",minHeight:340,overflowY:"auto"}}>{displayCalls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #141925",background:sel.has(c.id)?"#2a3140":c.flagged?"rgba(245,158,11,.03)":"transparent"}} onClick={()=>onSelect(c)}><input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1"}}/><ScoreRing value={c.overall_score_adj} size={32} sw={2}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9"}}><span style={{fontFamily:"var(--m)",fontSize:10,color:"#6366f1",marginRight:6}}>#{c.id}</span>{c.rep_name} → {c.client_name||"?"}{c.flagged&&<span style={{color:"#f59e0b",marginLeft:6,fontSize:10}}>⚠</span>}</div><div style={{fontSize:10,color:"#2a3040",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.source}</div></div><div style={{textAlign:"right",flexShrink:0}}><Badge status={c.status}/><div style={{fontSize:10,color:"#2a3040",marginTop:4}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</div></div></div>)}{!displayCalls.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>{searchResults?"No results found":"No calls"}</div>}</div></div>
+    <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:"calc(100vh - 300px)",minHeight:340,overflowY:"auto"}}>{displayCalls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 18px",cursor:"pointer",borderBottom:"1px solid #141925",background:sel.has(c.id)?"#2a3140":c.flagged?"rgba(245,158,11,.03)":"transparent"}} onClick={()=>onSelect(c)}><input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1"}}/><ScoreRing value={c.overall_score_adj} size={32} sw={2}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"#c9d1d9",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+          <span style={{fontFamily:"var(--m)",fontSize:10,color:"#6366f1"}}>#{c.id}</span>
+          <span>{c.rep_name} → {c.client_name||"?"}</span>
+          {c.flagged&&<span style={{color:"#f59e0b",fontSize:10}}>⚠</span>}
+          {c.stitch_status==="MERGED"&&<span title={`Stitched from calls ${c.stitched_from_ids||""} — a dropped call and its redial merged into one`} style={{fontSize:9,fontWeight:800,padding:"1px 6px",borderRadius:20,background:"#0f2e2b",border:"1px solid #2dd4bf",color:"#2dd4bf"}}>🔗 STITCHED</span>}
+          {(c.tags||[]).filter(t=>t.status!=="DISMISSED").map(t=><span key={t.tag_key} title={t.status==="SUGGESTED"?"Suggested — not yet confirmed":t.excludes_from_average?"Not counted in this rep's average":"Counts normally"}
+            style={{fontSize:9,fontWeight:800,padding:"1px 7px",borderRadius:20,background:t.status==="SUGGESTED"?"transparent":t.color+"22",border:`1px ${t.status==="SUGGESTED"?"dashed":"solid"} ${t.color}`,color:t.color}}>
+            {t.excludes_from_average&&t.status==="CONFIRMED"?"⊘ ":""}{t.label}
+          </span>)}
+        </div><div style={{fontSize:10,color:"#2a3040",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary||c.source}</div></div><div style={{textAlign:"right",flexShrink:0}}><Badge status={c.status}/><div style={{fontSize:10,color:"#2a3040",marginTop:4}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</div></div></div>)}{!displayCalls.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>{searchResults?"No results found":"No calls"}</div>}</div></div>
     {tp>1&&<div style={{display:"flex",justifyContent:"center",gap:6,alignItems:"center"}}><button className="btn btn-sm" disabled={pg===0} onClick={()=>sPg(x=>x-1)}>← Prev</button><span style={{fontSize:11,color:"#4b5563",fontFamily:"var(--m)"}}>{pg+1}/{tp}</span><button className="btn btn-sm" disabled={pg>=tp-1} onClick={()=>sPg(x=>x+1)}>Next →</button></div>}
   </div>}
 
@@ -517,19 +526,32 @@ function TagGroup({title,sub,tags,Chip}){
 function CalibrationBox({call}){
   const{data,reload}=useApi(`/calls/${call.id}/override`,[call.id]);
   const[open,setOpen]=useState(false);
+  const[mode,setMode]=useState("overall");   // 'overall' | 'detailed'
   const[score,setScore]=useState("");
   const[reason,setReason]=useState("");
+  const[catScores,setCatScores]=useState({});
   const[busy,setBusy]=useState(false);
   const existing=data&&data.override;
   const botScore=call.overall_score_adj;
+  const botCats=(()=>{try{const c=call.category_scores;return typeof c==="string"?JSON.parse(c):(c||{});}catch(e){return{};}})();
 
   async function save(){
     const n=Number(score);
-    if(!(n>=0&&n<=10)){alert("Enter a score from 0 to 10.");return;}
+    if(!(n>=0&&n<=10)){alert("Enter an overall score from 0 to 10.");return;}
+    // Only send categories Sam actually filled in — blanks mean "the bot's score is fine".
+    let cats=null;
+    if(mode==="detailed"){
+      cats={};
+      for(const k of Object.keys(catScores)){
+        const v=catScores[k];
+        if(v!==""&&v!=null&&isFinite(Number(v))) cats[k]=Number(v);
+      }
+      if(!Object.keys(cats).length) cats=null;
+    }
     setBusy(true);
     try{
-      const r=await postApi(`/calls/${call.id}/override`,{override_score:n,reason,override_by:"Sam"});
-      if(r.ok){setOpen(false);setScore("");setReason("");reload();}
+      const r=await postApi(`/calls/${call.id}/override`,{override_score:n,reason,override_by:"Sam",category_scores:cats});
+      if(r.ok){setOpen(false);setScore("");setReason("");setCatScores({});reload();}
       else alert(r.error||"Failed to save.");
     }catch(e){alert("Failed to save.");}
     setBusy(false);
@@ -550,9 +572,25 @@ function CalibrationBox({call}){
     </div>}
     {!existing&&!open&&<div style={{marginTop:8,fontSize:12,color:"#64748b"}}>Score this call yourself to calibrate the bot. Your scores build the tuning data.</div>}
     {open&&<div style={{marginTop:12}}>
+      <div style={{display:"flex",gap:6,marginBottom:10}}>
+        {[["overall","Overall only"],["detailed","Detailed (by category)"]].map(([m,l])=>
+          <button key={m} className="btn" onClick={()=>setMode(m)} style={{fontSize:11,padding:"4px 10px",background:mode===m?"#1e1b4b":"",borderColor:mode===m?"#4338ca":"",color:mode===m?"#c7d2fe":""}}>{l}</button>)}
+      </div>
       <div style={{fontSize:11,color:"#64748b",marginBottom:8}}>Bot scored this <b style={{color:"#c9d1d9"}}>{botScore}</b>. What would you give it?</div>
+
+      {mode==="detailed"&&<div style={{marginBottom:12,padding:12,background:"#0f1420",borderRadius:8,border:"1px solid #1e2635"}}>
+        {CATS.map(cat=>{const bot=botCats[cat];
+          return<div key={cat} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <span style={{fontSize:11,color:"#94a3b8",width:135,flexShrink:0}}>{CL[cat]||cat}</span>
+            <span style={{fontSize:11,color:"#64748b",fontFamily:"var(--m)",width:38}}>bot {bot??"—"}</span>
+            <input type="number" min="0" max="10" step="0.5" value={catScores[cat]??""} onChange={e=>setCatScores(cs=>({...cs,[cat]:e.target.value}))}
+              placeholder={bot!=null?String(bot):"0-10"} style={{width:70,padding:"5px 8px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:6,color:"var(--t1)",fontSize:13}}/>
+          </div>;})}
+        <div style={{fontSize:10,color:"#4b5563",marginTop:4}}>Leave blank to accept the bot's score for that category.</div>
+      </div>}
+
       <div style={{display:"flex",gap:10,alignItems:"center"}}>
-        <input type="number" min="0" max="10" step="0.5" value={score} onChange={e=>setScore(e.target.value)} placeholder="0-10" style={{width:80,padding:"8px 10px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:14}}/>
+        <input type="number" min="0" max="10" step="0.5" value={score} onChange={e=>setScore(e.target.value)} placeholder="Overall" style={{width:90,padding:"8px 10px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:14}}/>
         <input value={reason} onChange={e=>setReason(e.target.value)} placeholder="Why? (e.g. discovery was better than scored)" style={{flex:1,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13}}/>
       </div>
       <div style={{display:"flex",gap:8,marginTop:10}}>
@@ -858,12 +896,24 @@ function CoachingPage(){const[p,sP]=useState("week");const[f,sF]=useState('');co
 function ExportPage(){
   const[mode,setMode]=useState("digest");
   const[days,setDays]=useState(7);
+  const[preset,setPreset]=useState("");      // '', 'today', 'yesterday'
+  const[from,setFrom]=useState("");          // custom range
+  const[to,setTo]=useState("");
   const[rep,setRep]=useState("");
   const{data:reps}=useApi("/reps");
   const[report,setReport]=useState(null);
   const[loading,setLoading]=useState(false);
-  async function load(){setLoading(true);const qs=`?days=${days}`+(rep?`&rep=${encodeURIComponent(rep)}`:"");const r=await fetch(`${API}/report${qs}`).then(r=>r.json()).catch(()=>null);setReport(r);setLoading(false);}
-  React.useEffect(()=>{load()},[days,rep]);
+  // Precedence: custom range > named preset > rolling N days
+  function buildQS(){
+    let qs;
+    if(from||to) qs=`?${from?`from=${from}`:""}${from&&to?"&":""}${to?`to=${to}`:""}`;
+    else if(preset) qs=`?preset=${preset}`;
+    else qs=`?days=${days}`;
+    return qs+(rep?`&rep=${encodeURIComponent(rep)}`:"");
+  }
+  async function load(){setLoading(true);const r=await fetch(`${API}/report${buildQS()}`).then(r=>r.json()).catch(()=>null);setReport(r);setLoading(false);}
+  React.useEffect(()=>{load()},[days,preset,from,to,rep]);
+  const windowLabel=(from||to)?`${from||"…"} → ${to||"…"}`:preset==="today"?"Today":preset==="yesterday"?"Yesterday":`Last ${days} days`;
   const arrow=d=>d==null?"":d>0?`▲ +${d}`:d<0?`▼ ${d}`:"– 0";
   const aClr=d=>d==null?"#64748b":d>0?"#22c55e":d<0?"#ef4444":"#64748b";
   const maxT=Math.max(1,...((report?.trend)||[]).map(t=>Number(t.avg_adj)||0));
@@ -885,7 +935,17 @@ function ExportPage(){
     </div>
     <div className="no-print card" style={{padding:18,display:"flex",gap:18,flexWrap:"wrap",alignItems:"center"}}>
       <div style={{display:"flex",gap:6}}>{[["digest","Weekly Digest"],["cards","Rep Cards"],["trends","Trends"],["scorecards","Scorecards"]].map(([id,l])=><button key={id} onClick={()=>setMode(id)} className="btn" style={{padding:"6px 14px",fontSize:12,background:mode===id?"#1e1b4b":"",borderColor:mode===id?"#4338ca":"",color:mode===id?"#c7d2fe":""}}>{l}</button>)}</div>
-      <div style={{display:"flex",gap:6}}>{[[7,"7d"],[14,"14d"],[30,"30d"]].map(([d,l])=><button key={d} onClick={()=>setDays(d)} className="btn" style={{padding:"6px 12px",fontSize:12,background:days===d?"#1e1b4b":"",borderColor:days===d?"#4338ca":"",color:days===d?"#c7d2fe":""}}>{l}</button>)}</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        {[["today","Today"],["yesterday","Yesterday"]].map(([pv,l])=>{const on=preset===pv&&!from&&!to;
+          return<button key={pv} onClick={()=>{setPreset(on?"":pv);setFrom("");setTo("");}} className="btn" style={{padding:"6px 12px",fontSize:12,background:on?"#1e1b4b":"",borderColor:on?"#4338ca":"",color:on?"#c7d2fe":""}}>{l}</button>;})}
+        {[[7,"7d"],[14,"14d"],[30,"30d"],[90,"90d"]].map(([d,l])=>{const on=days===d&&!preset&&!from&&!to;
+          return<button key={d} onClick={()=>{setDays(d);setPreset("");setFrom("");setTo("");}} className="btn" style={{padding:"6px 12px",fontSize:12,background:on?"#1e1b4b":"",borderColor:on?"#4338ca":"",color:on?"#c7d2fe":""}}>{l}</button>;})}
+        <span style={{color:"#2a3040"}}>|</span>
+        <input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPreset("");}} title="From" style={{padding:"5px 8px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}/>
+        <span style={{color:"#64748b",fontSize:12}}>→</span>
+        <input type="date" value={to} onChange={e=>{setTo(e.target.value);setPreset("");}} title="To" style={{padding:"5px 8px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}/>
+        {(from||to)&&<button className="btn" onClick={()=>{setFrom("");setTo("");}} style={{padding:"5px 10px",fontSize:11}}>Clear</button>}
+      </div>
       <select value={rep} onChange={e=>setRep(e.target.value)} style={{padding:"7px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="">All reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
     </div>
     {loading&&<div style={{padding:40,textAlign:"center",color:"#64748b"}}>Building report…</div>}
