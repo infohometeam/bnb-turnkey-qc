@@ -61,12 +61,32 @@ router.get('/calls', async (req, res) => {
     if (to) { w += ' AND received_at <= ?'; p.push(to + ' 23:59:59'); }
     if (!from && !to) {
       if (period === 'day') w += " AND received_at::timestamp >= CURRENT_DATE";
+      // Yesterday only — the full previous calendar day, not "last 24h".
+      if (period === 'yesterday') w += " AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '1 day') AND received_at::timestamp < CURRENT_DATE";
       if (period === 'week') w += " AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')";
       if (period === 'month') w += " AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')";
     }
-    const r = await q(`SELECT id,received_at,source,rep_name,rep_id,role,team,client_name,call_url,audio_url,call_duration_sec,agent_talk_pct,contact_talk_pct,overall_score,overall_score_adj,score_adjust_notes,category_scores,pass_fail,quick_summary,strengths,improvements,next_step_text,coaching_notes,golden_moments,status,flagged,error,retry_count,weekstart,processed_at FROM calls WHERE ${w} ORDER BY received_at DESC LIMIT ? OFFSET ?`, [...p, Number(limit), Number(offset)]);
+    // Filter by a confirmed tag (e.g. show me every Long-Term Nurture call)
+    if (req.query.tag) {
+      w += ` AND EXISTS (SELECT 1 FROM call_tag_assignments a WHERE a.call_id=calls.id AND a.tag_key=? AND a.status='CONFIRMED')`;
+      p.push(req.query.tag);
+    }
+    const r = await q(`SELECT id,received_at,source,rep_name,rep_id,role,team,client_name,call_url,audio_url,call_duration_sec,agent_talk_pct,contact_talk_pct,overall_score,overall_score_adj,score_adjust_notes,category_scores,pass_fail,quick_summary,strengths,improvements,next_step_text,coaching_notes,golden_moments,status,flagged,error,retry_count,weekstart,processed_at,stitch_status,stitched_from_ids FROM calls WHERE ${w} ORDER BY received_at DESC LIMIT ? OFFSET ?`, [...p, Number(limit), Number(offset)]);
     const cnt = await q(`SELECT COUNT(*) as c FROM calls WHERE ${w}`, p);
-    res.json({ calls: r.rows.map(parseJ), total: Number(cnt.rows[0].c) });
+
+    // Attach tags to each call in ONE query (avoids N+1) so the list can show them.
+    const rows = r.rows.map(parseJ);
+    if (rows.length) {
+      const ids = rows.map(x => x.id);
+      const tg = await q(
+        `SELECT a.call_id, a.tag_key, a.status, t.label, t.color, t.tag_group, t.excludes_from_average
+         FROM call_tag_assignments a JOIN call_tags t ON t.key = a.tag_key
+         WHERE a.call_id = ANY(?) AND a.status <> 'DISMISSED'`, [ids]);
+      const byCall = {};
+      for (const x of tg.rows) (byCall[x.call_id] = byCall[x.call_id] || []).push(x);
+      rows.forEach(c => { c.tags = byCall[c.id] || []; });
+    }
+    res.json({ calls: rows, total: Number(cnt.rows[0].c) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -259,14 +279,18 @@ router.get('/rubric-comparison', async (req, res) => {
 
 // ─── End bulk rescore / history / comparison ────────────────
 
-router.post('/calls/:id/override', async (req, res) => {
+router.post('/calls/:id/override', express.json(), async (req, res) => {
   try {
-    const { override_score, reason, override_by = 'Sam' } = req.body;
-    const c = await q('SELECT overall_score_adj FROM calls WHERE id=?', [req.params.id]);
+    // category_scores is optional — Sam can score just the overall, or go category-by-category.
+    const { override_score, reason, override_by = 'Sam', category_scores } = req.body;
+    const c = await q('SELECT overall_score_adj, category_scores FROM calls WHERE id=?', [req.params.id]);
     if (!c.rows.length) return res.status(404).json({ error: 'Not found' });
     const now = new Date().toISOString().replace('T',' ').slice(0,19);
-    await q('INSERT INTO score_overrides (call_id,override_by,original_score,override_score,reason,created_at) VALUES (?,?,?,?,?,?)',
-      [req.params.id, override_by, c.rows[0].overall_score_adj, override_score, reason, now]);
+    await q(`INSERT INTO score_overrides (call_id,override_by,original_score,override_score,reason,created_at,category_scores,original_categories)
+             VALUES (?,?,?,?,?,?,?,?)`,
+      [req.params.id, override_by, c.rows[0].overall_score_adj, override_score, reason, now,
+       category_scores ? JSON.stringify(category_scores) : null,
+       c.rows[0].category_scores ? (typeof c.rows[0].category_scores === 'string' ? c.rows[0].category_scores : JSON.stringify(c.rows[0].category_scores)) : null]);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -509,6 +533,7 @@ router.get('/records', async (req, res) => {
       if (to) { w += ' AND received_at <= ?'; p.push(to + ' 23:59:59'); }
     } else {
       if (period === 'day') w += " AND received_at::timestamp >= CURRENT_DATE";
+      if (period === 'yesterday') w += " AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '1 day') AND received_at::timestamp < CURRENT_DATE";
       if (period === 'week') w += " AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')";
       if (period === 'month') w += " AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')";
     }
@@ -532,7 +557,12 @@ router.get('/analytics', async (req, res) => {
     let df = '', rf = '', p = [];
     if (from) { df = 'AND received_at >= ?'; p.push(from); if (to) { df += ' AND received_at <= ?'; p.push(to + ' 23:59:59'); } }
     else if (to) { df = 'AND received_at <= ?'; p.push(to + ' 23:59:59'); }
-    else { if (period === 'day') df = "AND received_at::timestamp >= CURRENT_DATE"; if (period === 'week') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')"; if (period === 'month') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')"; }
+    else {
+      if (period === 'day') df = "AND received_at::timestamp >= CURRENT_DATE";
+      if (period === 'yesterday') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '1 day') AND received_at::timestamp < CURRENT_DATE";
+      if (period === 'week') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')";
+      if (period === 'month') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')";
+    }
     if (role) { rf = 'AND role=?'; p.push(role); }
 
     const stats = await q(`SELECT COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged, SUM(CASE WHEN status IN ('NEW','REQC','WAIT_RETRY_FULL') THEN 1 ELSE 0 END) as queued, SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) as errors, SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing_transcripts, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END)::numeric,1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END)::numeric,0) as avg_duration, ROUND(AVG(CASE WHEN status='SCORED' THEN agent_talk_pct END)::numeric,1) as avg_agent_talk, ROUND(AVG(CASE WHEN status='SCORED' THEN contact_talk_pct END)::numeric,1) as avg_contact_talk FROM calls WHERE rep_name != 'Unknown Setter' ${EXCL_TAGGED} ${df} ${rf}`, p);
@@ -561,8 +591,8 @@ router.get('/analytics/trends', async (req, res) => {
     const { period = 'daily', days = 30, role } = req.query;
     let rf = '', p = []; if (role) { rf = 'AND role=?'; p.push(role); }
     const groupBy = period === 'weekly' ? 'weekstart' : "received_at::date";
-    const trends = await q(`SELECT ${groupBy} as period_date, COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END)::numeric,1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END)::numeric,0) as avg_duration, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged FROM calls WHERE rep_name != 'Unknown Setter' ${EXCL_TAGGED} AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy} ORDER BY period_date ASC`, p);
-    const repTrends = await q(`SELECT ${groupBy} as period_date, rep_name, COUNT(*) as calls, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED} AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${rf} GROUP BY ${groupBy}, rep_name ORDER BY period_date ASC`, p);
+    const trends = await q(`SELECT ${groupBy} as period_date, COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END)::numeric,1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END)::numeric,0) as avg_duration, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged FROM calls WHERE rep_name != 'Unknown Setter' ${EXCL_TAGGED} AND ${periodClause} ${rf} GROUP BY ${groupBy} ORDER BY period_date ASC`, p);
+    const repTrends = await q(`SELECT ${groupBy} as period_date, rep_name, COUNT(*) as calls, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED} AND ${periodClause} ${rf} GROUP BY ${groupBy}, rep_name ORDER BY period_date ASC`, p);
     res.json({ trends: trends.rows, repTrends: repTrends.rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -572,7 +602,12 @@ router.get('/analytics/distribution', async (req, res) => {
     const { period, from, to, role } = req.query;
     let df = '', rf = '', p = [];
     if (from) { df = "AND received_at >= ?"; p.push(from); if (to) { df += " AND received_at <= ?"; p.push(to + ' 23:59:59'); } }
-    else { if (period === 'day') df = "AND received_at::timestamp >= CURRENT_DATE"; if (period === 'week') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')"; if (period === 'month') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')"; }
+    else {
+      if (period === 'day') df = "AND received_at::timestamp >= CURRENT_DATE";
+      if (period === 'yesterday') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '1 day') AND received_at::timestamp < CURRENT_DATE";
+      if (period === 'week') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '7 days')";
+      if (period === 'month') df = "AND received_at::timestamp >= (CURRENT_DATE - INTERVAL '30 days')";
+    }
     if (role) { rf = 'AND role=?'; p.push(role); }
     const dist = await q(`SELECT CAST(overall_score_adj AS INTEGER) as score_bucket, COUNT(*) as count FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED} ${df} ${rf} GROUP BY score_bucket ORDER BY score_bucket`, p);
     res.json({ distribution: dist.rows });
@@ -888,9 +923,27 @@ CRITICAL RULES:
 2. The blocker must be CONCRETE and STATED BY THE LEAD. "Seemed lukewarm" is NOT a blocker. "I just sold my company and I'm locked in four years" IS.
 3. WHEN IN DOUBT RETURN "NONE". Better to score a borderline call than let a weak call escape scoring.
 
-CROSS-SELL (Rise Collective sister brands — additive, independent of the outcome):
-BNB_LENDING_LEAD (financing is the blocker) · INVESTOR_ACADEMY_LEAD (wants to learn/DIY) · SURGE_TAX_LEAD (tax burden is the driver) · HOME_TEAM_MGMT_LEAD (owns STRs, self-manages) · HOTEL_TURNKEY_LEAD (larger/commercial/hotel) · REALTY_LEAD (wants to buy in Phoenix AZ / Pinellas FL / TX Gulf Coast).
-Only flag if the lead ACTUALLY SAID something supporting it.
+CROSS-SELL (Rise Collective sister brands):
+⚠️ GOVERNING RULE: only tag when the lead needs something BNB TURNKEY DOES NOT ALREADY PROVIDE.
+BNB Turnkey ALREADY includes: tax benefits (cost seg, depreciation, income offset — this is a HEADLINE selling point), property sourcing, financing (BNB Lending in-house), explaining how STR investing works, and full management (Home Team).
+
+DO NOT TAG these — they are NORMAL BNB Turnkey conversation:
+✗ "I want the tax write-offs / depreciation / cost seg" -> that IS the pitch. NOT Surge Tax.
+✗ "My tax bill is huge, I need to offset income" -> that is WHY they're buying an STR. NOT Surge Tax.
+✗ "Walk me through how this works" -> normal discovery. NOT Investor Academy.
+✗ "I want to buy in Phoenix/Florida" -> BNB Turnkey sources properties. NOT Realty.
+✗ "What are the financing options?" -> BNB Lending is in-house. NOT a cross-sell.
+
+ONLY tag when the need sits OUTSIDE the turnkey package:
+- SURGE_TAX_LEAD: needs tax/accounting help BEYOND the STR — business/entity tax strategy, ongoing CPA relationship, a complex tax situation the STR won't solve.
+- INVESTOR_ACADEMY_LEAD: explicitly wants to LEARN AND DIY INSTEAD of buying turnkey.
+- BNB_LENDING_LEAD: financing is a DISTINCT standalone need (lending outside a turnkey purchase).
+- HOME_TEAM_MGMT_LEAD: ALREADY OWNS STR property and wants MANAGEMENT ONLY — not buying turnkey.
+- HOTEL_TURNKEY_LEAD: boutique hotel / larger commercial asset, not single-family STR.
+- REALTY_LEAD: traditional brokerage for a NON-STR purchase (primary residence, long-term rental).
+
+TEST: "Does BNB Turnkey already include this?" If YES -> do not tag. When in doubt, return empty.
+A false cross-sell lead wastes another team's time and erodes trust in the whole signal.
 
 Return ONLY JSON:
 {"outcome_tag":"...|NONE","outcome_tag_reason":"1 sentence citing the specific stated blocker","cross_sell_tags":[],"cross_sell_reason":""}
@@ -1271,6 +1324,9 @@ router.get('/report', async (req, res) => {
     const days = Number(req.query.days || 7);
     const role = req.query.role; // optional Closer|Setter
     const rep = req.query.rep;    // optional single rep
+    const from = req.query.from;  // optional explicit range (YYYY-MM-DD)
+    const to = req.query.to;
+    const preset = req.query.preset; // 'today' | 'yesterday'
 
     const roleFilter = role ? ' AND role=?' : '';
     const repFilter = rep ? ' AND rep_name=?' : '';
@@ -1278,9 +1334,31 @@ router.get('/report', async (req, res) => {
     if (role) baseArgs.push(role);
     if (rep) baseArgs.push(rep);
 
-    // Window helpers (this period vs the previous equal-length period, for trend)
-    const periodClause = `received_at::timestamp >= (NOW() - (? || ' days')::interval)`;
-    const prevClause = `received_at::timestamp >= (NOW() - (? || ' days')::interval) AND received_at::timestamp < (NOW() - (? || ' days')::interval)`;
+    // Window: an explicit from/to range or a named preset (today / yesterday) wins;
+    // otherwise fall back to the rolling N-day window.
+    let periodClause, prevClause, useRange = false;
+    if (preset === 'today') {
+      periodClause = `received_at::timestamp >= CURRENT_DATE`;
+      prevClause = `received_at::timestamp >= (CURRENT_DATE - INTERVAL '1 day') AND received_at::timestamp < CURRENT_DATE`;
+      useRange = true;
+    } else if (preset === 'yesterday') {
+      periodClause = `received_at::timestamp >= (CURRENT_DATE - INTERVAL '1 day') AND received_at::timestamp < CURRENT_DATE`;
+      prevClause = `received_at::timestamp >= (CURRENT_DATE - INTERVAL '2 days') AND received_at::timestamp < (CURRENT_DATE - INTERVAL '1 day')`;
+      useRange = true;
+    } else if (from || to) {
+      const f = from || '1970-01-01';
+      const t = (to || '2999-12-31') + ' 23:59:59';
+      periodClause = `received_at >= '${f}' AND received_at <= '${t}'`;
+      prevClause = `1=0`; // no meaningful "previous" for an arbitrary range
+      useRange = true;
+    } else {
+      periodClause = `received_at::timestamp >= (NOW() - (? || ' days')::interval)`;
+      prevClause = `received_at::timestamp >= (NOW() - (? || ' days')::interval) AND received_at::timestamp < (NOW() - (? || ' days')::interval)`;
+    }
+    // Arg builders — a range/preset clause has no '?' placeholders, so the day args
+    // must be omitted or the parameter positions shift and the query breaks.
+    const PA = useRange ? [...baseArgs] : [String(days), ...baseArgs];          // period args
+    const PV = useRange ? [...baseArgs] : [String(days * 2), String(days), ...baseArgs]; // prev-window args
 
     // Per-rep summary for THIS period
     const perRep = await q(
@@ -1293,21 +1371,21 @@ router.get('/report', async (req, res) => {
          ROUND(AVG(agent_talk_pct) FILTER (WHERE ${SCORED_UNTAGGED})::numeric,0) AS avg_talk
        FROM calls WHERE ${periodClause}${roleFilter}${repFilter} AND rep_name != 'Unknown Setter'
        GROUP BY rep_name, role ORDER BY avg_adj DESC NULLS LAST`,
-      [String(days), ...baseArgs]);
+      PA);
 
     // Previous period avg per rep (for trend arrows)
     const prevRep = await q(
       `SELECT rep_name, ROUND(AVG(overall_score_adj) FILTER (WHERE ${SCORED_UNTAGGED})::numeric,1) AS prev_avg
        FROM calls WHERE ${prevClause}${roleFilter}${repFilter}
        GROUP BY rep_name`,
-      [String(days * 2), String(days), ...baseArgs]);
+      PV);
     const prevMap = Object.fromEntries(prevRep.rows.map(r => [r.rep_name, r.prev_avg]));
 
     // Per-rep category averages (parse JSON in JS)
     const scoredCalls = await q(
       `SELECT rep_name, category_scores, pass_fail, improvements
        FROM calls WHERE status='SCORED' AND ${periodClause}${roleFilter}${repFilter}`,
-      [String(days), ...baseArgs]);
+      PA);
 
     const catByRep = {}, dedByRep = {}, impByRep = {};
     for (const c of scoredCalls.rows) {
@@ -1348,7 +1426,7 @@ router.get('/report', async (req, res) => {
          ROUND(AVG(overall_score_adj) FILTER (WHERE ${SCORED_UNTAGGED})::numeric,1) AS avg_adj
        FROM calls WHERE ${periodClause}${roleFilter}${repFilter}
        GROUP BY received_at::date ORDER BY day`,
-      [String(days), ...baseArgs]);
+      PA);
 
     // Team totals
     const team = await q(
@@ -1357,7 +1435,7 @@ router.get('/report', async (req, res) => {
          COUNT(*) FILTER (WHERE status='SKIP_VOICEMAIL') AS voicemails,
          COUNT(*) AS total
        FROM calls WHERE ${periodClause}${roleFilter}${repFilter}`,
-      [String(days), ...baseArgs]);
+      PA);
 
     // Assemble per-rep cards with trend + top deduction + top improvement
     const repCards = perRep.rows.map(r => {
@@ -1381,26 +1459,26 @@ router.get('/report', async (req, res) => {
     const bestWorst = await q(
       `SELECT id, rep_name, client_name, overall_score_adj, quick_summary
        FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter'
-         AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${roleFilter}${repFilter}
+         AND ${periodClause} ${roleFilter}${repFilter}
        ORDER BY overall_score_adj DESC NULLS LAST LIMIT 1`, baseArgs);
     const worst = await q(
       `SELECT id, rep_name, client_name, overall_score_adj, quick_summary
        FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter'
-         AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${roleFilter}${repFilter}
+         AND ${periodClause} ${roleFilter}${repFilter}
        ORDER BY overall_score_adj ASC NULLS LAST LIMIT 1`, baseArgs);
 
     // Non-sales breakdown in the window (what got skipped and why)
     const nonSales = await q(
       `SELECT status, COUNT(*) AS n FROM calls
        WHERE status LIKE 'SKIP_%'
-         AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval)
-       GROUP BY status ORDER BY n DESC`);
+         AND ${periodClause}
+       GROUP BY status ORDER BY n DESC`, useRange ? [] : [String(days)]);
 
     // Team-wide category averages + most common deductions
     const teamCats = await q(
       `SELECT category_scores FROM calls
        WHERE status='SCORED' AND rep_name != 'Unknown Setter' AND category_scores IS NOT NULL
-         AND received_at::timestamp >= (CURRENT_DATE - (${Number(days)} || ' days')::interval) ${roleFilter}${repFilter}`, baseArgs);
+         AND ${periodClause} ${roleFilter}${repFilter}`, PA);
     const catTot = {}, catCnt = {};
     teamCats.rows.forEach(r => {
       let cs = r.category_scores; try { if (typeof cs === 'string') cs = JSON.parse(cs); } catch (e) { cs = null; }
