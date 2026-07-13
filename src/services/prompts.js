@@ -213,14 +213,37 @@ CRITICAL RULES:
 ═══════════════════════════════════════════════
 CROSS-SELL SIGNALS (The Rise Collective ecosystem)
 ═══════════════════════════════════════════════
-A lead who is wrong for BNB Turnkey may be RIGHT for a sister brand. This is additive and independent of the outcome tag — a call can be DISQUALIFIED for BNB Turnkey AND a great BNB Lending lead. Flag any that clearly apply:
-- BNB_LENDING_LEAD: financing/rates/lending is the real blocker ("I'd do it but financing is brutal").
-- INVESTOR_ACADEMY_LEAD: wants to learn or do it themselves ("I want to understand this myself first").
-- SURGE_TAX_LEAD: tax burden is the driving pain (heavy write-off / cost-seg motivation, big tax bill).
-- HOME_TEAM_MGMT_LEAD: already owns STR(s) but self-manages or has a bad manager.
-- HOTEL_TURNKEY_LEAD: interested in a larger/commercial property or a boutique hotel.
-- REALTY_LEAD: wants to buy in a Home Team Realty market (Phoenix AZ, Pinellas County FL, Texas Gulf Coast).
-Only flag a cross-sell tag when the lead ACTUALLY SAID something that supports it. Return an empty array if none apply.
+
+⚠️ THE GOVERNING RULE — READ THIS BEFORE TAGGING ANYTHING:
+A cross-sell tag fires ONLY when the lead needs something that BNB TURNKEY DOES NOT ALREADY PROVIDE.
+
+BNB Turnkey ALREADY delivers, as part of its core offering:
+- **Tax benefits** — cost segregation, bonus depreciation, W-2/income offset for high earners. This is a HEADLINE selling point of the pitch.
+- **Property sourcing** — data-driven market analysis and acquisition in their markets.
+- **Financing** — via BNB Lending, in-house.
+- **Explaining how STR investing works** — that is what discovery and the pitch ARE.
+- **Full management** — via Home Team, included in the turnkey package.
+
+Therefore, the following are NORMAL BNB TURNKEY CONVERSATION and are **NOT** cross-sell signals. DO NOT TAG THEM:
+✗ "I want the tax write-offs / depreciation / cost seg" → that IS the pitch. NOT a Surge Tax lead.
+✗ "My tax bill is huge, I need to offset income" → that is WHY they are buying an STR. NOT a Surge Tax lead.
+✗ "How does this work? Walk me through it." → normal discovery. NOT an Investor Academy lead.
+✗ "I want to buy in Phoenix / Florida / the Gulf Coast" → BNB Turnkey sources properties. NOT a Realty lead.
+✗ "What are the financing options?" → BNB Lending is in-house. NOT a cross-sell.
+✗ Any interest in returns, cash flow, or appreciation → that is the core product.
+
+Only tag when the lead's need sits OUTSIDE the turnkey package:
+
+- SURGE_TAX_LEAD: they need tax/accounting help BEYOND the STR itself — e.g. business or entity tax strategy, an ongoing CPA/tax-advisor relationship, a complex tax situation the STR purchase alone won't solve. NOT merely wanting STR tax benefits.
+- INVESTOR_ACADEMY_LEAD: they explicitly want to LEARN AND DO IT THEMSELVES instead of buying turnkey ("I'd rather learn to do this on my own", "I want to self-manage and build this myself"). NOT merely asking how the process works.
+- BNB_LENDING_LEAD: financing is a DISTINCT, STANDALONE need — e.g. they want lending for a property outside BNB Turnkey, or they need a lender relationship separate from a turnkey purchase. NOT merely discussing how they'd fund this deal.
+- HOME_TEAM_MGMT_LEAD: they ALREADY OWN STR property and want MANAGEMENT ONLY — they are not buying a turnkey property. This is a genuinely different product.
+- HOTEL_TURNKEY_LEAD: interested in a boutique hotel or a larger commercial property, not a single-family STR. A different asset class.
+- REALTY_LEAD: they want traditional real-estate brokerage for a NON-STR purchase (a primary residence, a long-term rental, a straight buy/sell). NOT sourcing an STR — BNB Turnkey does that.
+
+TEST BEFORE YOU TAG: "Is this something BNB Turnkey already includes?" If YES → do not tag. If the lead needs a genuinely DIFFERENT product or service from a sister brand → tag it.
+
+When in doubt, return an empty array. A false cross-sell lead wastes another team's time and erodes trust in the whole signal.
 
 PASS/FAIL GUIDANCE:
 - has_discovery: true if discovery was substantive (5+ min for closer, 2+ min for setter)
