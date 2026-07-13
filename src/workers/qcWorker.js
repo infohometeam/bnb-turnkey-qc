@@ -292,6 +292,15 @@ async function processCall(row) {
   await q('UPDATE calls SET overall_score=?,overall_score_adj=?,score_adjust_notes=?,category_scores=?,pass_fail=?,coaching_notes=?,quick_summary=?,strengths=?,improvements=?,next_step_text=?,golden_moments=?,flagged=?,status=?,error=?,processed_at=?,model_used=?,transcript_slice=?,rubric_version=?,call_duration_sec=COALESCE(?,call_duration_sec) WHERE id=?',
     [result.overall_score, adj.adjusted, adjustNotes, JSON.stringify(result.category_scores||{}), JSON.stringify(enrichedPassFail), result.coaching_notes||'', result.quick_summary||'', JSON.stringify(result.strengths||[]), JSON.stringify(result.improvements||[]), result.next_step_text||'', JSON.stringify(result.golden_moments||[]), flagged?1:0, 'SCORED', '', ts, usage.model||'unknown', slice, rubricVersion, durSec, row.id]);
 
+  // ── Suggest outcome + cross-sell tags (SUGGESTED only — never auto-applied) ──
+  // A SUGGESTED tag has ZERO effect on any average. Only a human CONFIRM does.
+  // This is the guardrail: the bot can never silently change anyone's numbers.
+  try {
+    await saveTagSuggestions(row.id, result, ts);
+  } catch (tagErr) {
+    console.error(`[QC] #${row.id} tag suggestion failed: ${tagErr.message} — scoring already saved, continuing`);
+  }
+
   const dk = ts.slice(0,10);
   await q('INSERT INTO daily_counters (date_key,full_qc_used,est_cost_usd,updated_at) VALUES (?,1,?,?) ON CONFLICT(date_key) DO UPDATE SET full_qc_used=daily_counters.full_qc_used+1, est_cost_usd=daily_counters.est_cost_usd+?, updated_at=?', [dk,totalCost,ts,totalCost,ts]);
 
@@ -365,4 +374,44 @@ async function sweepStuckTranscripts(maxHours = 4) {
   return { swept: stuck.rows.length, ids: stuck.rows.map(r => r.id) };
 }
 
-module.exports = { processQueue, processCall, unpauseDailyRows, adjustScore, sweepStuckTranscripts, DEDUCT };
+// Valid tag keys, guarded so a hallucinated tag from the model can never be written.
+const OUTCOME_TAGS = ['DISQUALIFIED','NOT_READY','LONG_TERM_NURTURE','INFO_SEEKER','SHORT_TERM_NURTURE','REDZONE_HOT','HARD_NO'];
+const CROSS_SELL_TAGS = ['HOTEL_TURNKEY_LEAD','BNB_LENDING_LEAD','INVESTOR_ACADEMY_LEAD','SURGE_TAX_LEAD','HOME_TEAM_MGMT_LEAD','REALTY_LEAD'];
+
+// Write the model's tag suggestions as SUGGESTED assignments.
+// NEVER writes CONFIRMED — a human must confirm before any average changes.
+// Re-suggesting is idempotent: an existing CONFIRMED or DISMISSED assignment is left alone,
+// so the bot can't overwrite a human decision on a re-score.
+async function saveTagSuggestions(callId, result, ts) {
+  const suggestions = [];
+
+  const outcome = String(result?.outcome_tag || 'NONE').toUpperCase();
+  if (OUTCOME_TAGS.includes(outcome)) {
+    suggestions.push({ key: outcome, reason: result?.outcome_tag_reason || '' });
+  }
+
+  const xs = Array.isArray(result?.cross_sell_tags) ? result.cross_sell_tags : [];
+  for (const raw of xs) {
+    const k = String(raw || '').toUpperCase();
+    if (CROSS_SELL_TAGS.includes(k)) {
+      suggestions.push({ key: k, reason: result?.cross_sell_reason || '' });
+    }
+  }
+
+  if (!suggestions.length) return { suggested: 0 };
+
+  let n = 0;
+  for (const s of suggestions) {
+    // DO NOTHING on conflict — never clobber a human's CONFIRMED/DISMISSED decision.
+    const r = await q(
+      `INSERT INTO call_tag_assignments (call_id, tag_key, status, reason, suggested_by, created_at)
+       VALUES (?,?,'SUGGESTED',?,'bot',?)
+       ON CONFLICT (call_id, tag_key) DO NOTHING`,
+      [callId, s.key, s.reason, ts]);
+    if (r.rowCount) n++;
+  }
+  if (n) console.log(`[QC] #${callId} suggested ${n} tag(s): ${suggestions.map(s=>s.key).join(', ')}`);
+  return { suggested: n };
+}
+
+module.exports = { processQueue, processCall, unpauseDailyRows, adjustScore, sweepStuckTranscripts, DEDUCT, saveTagSuggestions, OUTCOME_TAGS, CROSS_SELL_TAGS };
