@@ -135,6 +135,37 @@ async function migrate() {
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS stitched_from_ids text`,
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS stitch_status text`,
     `CREATE INDEX IF NOT EXISTS idx_calls_stitch ON calls(stitch_status)`,
+
+    // ── Call Outcome Tagging ───────────────────────────────────────────
+    // Tag registry. Extensible: adding a tag = inserting a row, not a deploy.
+    // excludes_from_average is the CONSEQUENCE flag — the tag is the "what",
+    // this is the "so what". Never conflate them (Redzone-Hot is a GREAT call
+    // and must stay scored; excluding it would delete a rep's best work).
+    `CREATE TABLE IF NOT EXISTS call_tags (
+      key text PRIMARY KEY,
+      label text NOT NULL,
+      tag_group text NOT NULL,
+      excludes_from_average boolean DEFAULT false,
+      description text,
+      color text DEFAULT '#64748b',
+      sort_order integer DEFAULT 100,
+      active boolean DEFAULT true)`,
+    // A call can carry one Group A/B tag + any number of Group C (routing) tags.
+    // Only status='CONFIRMED' has any effect on averages — SUGGESTED changes nothing.
+    `CREATE TABLE IF NOT EXISTS call_tag_assignments (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      call_id integer NOT NULL,
+      tag_key text NOT NULL,
+      status text DEFAULT 'SUGGESTED',
+      reason text,
+      suggested_by text,
+      confirmed_by text,
+      created_at text,
+      confirmed_at text,
+      CONSTRAINT uq_call_tag UNIQUE (call_id, tag_key),
+      CONSTRAINT fk_cta_call FOREIGN KEY (call_id) REFERENCES calls(id) ON DELETE CASCADE)`,
+    `CREATE INDEX IF NOT EXISTS idx_cta_call ON call_tag_assignments(call_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_cta_status ON call_tag_assignments(status)`,
   ];
   for (const sql of stmts) await q(sql);
 
@@ -170,6 +201,34 @@ async function migrate() {
       await q('INSERT INTO rubric_items (version,role,category,weight,good,bad,score_10,score_5,score_1) VALUES (?,?,?,?,?,?,?,?,?)', [v,r,cat,w,g,b,s10,s5,s1]);
     }
   }
+  // ── Seed the call-tag taxonomy (idempotent; safe to re-run) ──────────
+  // Group A = lead couldn't be closed (rep judged correctly) -> EXCLUDED from average
+  // Group B = a real sales attempt happened -> STAYS SCORED (performance counts)
+  // Group C = routing / cross-sell to another Rise brand -> no scoring effect, additive
+  const tagSeed = [
+    ['DISQUALIFIED',       'Disqualified',        'A_NOT_CLOSEABLE', true,  'Genuine non-fit — no capital, wrong profile, cannot proceed. Rep correctly disqualified.', '#ef4444', 10],
+    ['NOT_READY',          'Not Ready',           'A_NOT_CLOSEABLE', true,  'Real lead but cannot act now for a concrete stated reason (capital tied up, mid-transaction, timing).', '#f59e0b', 20],
+    ['LONG_TERM_NURTURE',  'Long-Term Nurture',   'A_NOT_CLOSEABLE', true,  'Real lead, not actionable on a long horizon (locked in years, major change needed). Correctly parked.', '#a855f7', 30],
+    ['INFO_SEEKER',        'Info Seeker',         'A_NOT_CLOSEABLE', true,  'Caller only wanted information — never a buyer. Rep correctly did not force a pitch.', '#64748b', 40],
+    ['SHORT_TERM_NURTURE', 'Short-Term Nurture',  'B_REAL_ATTEMPT',  false, 'Real attempt; lead is close but needs a bit more time/info. Execution is fair to judge.', '#06b6d4', 50],
+    ['REDZONE_HOT',        'Red Zone — Hot',      'B_REAL_ATTEMPT',  false, 'Lead is hot, close imminent. A GREAT call — must stay scored.', '#22c55e', 60],
+    ['HARD_NO',            'Hard No',             'B_REAL_ATTEMPT',  false, 'Rep pitched a viable lead; client firmly declined. A real attempt that did not land.', '#f87171', 70],
+    ['HOTEL_TURNKEY_LEAD',   'Hotel Turnkey Lead',    'C_ROUTING', false, 'Fits Hotel Turnkey — larger/commercial property or boutique hotel interest.', '#8b5cf6', 80],
+    ['BNB_LENDING_LEAD',     'BNB Lending Lead',      'C_ROUTING', false, 'Financing is the blocker — route to BNB Lending.', '#0ea5e9', 81],
+    ['INVESTOR_ACADEMY_LEAD','Investor Academy Lead', 'C_ROUTING', false, 'Wants to learn / DIY — route to BNB Investor Academy.', '#14b8a6', 82],
+    ['SURGE_TAX_LEAD',       'Surge Tax Lead',        'C_ROUTING', false, 'Tax burden is the driver — route to Surge Tax.', '#eab308', 83],
+    ['HOME_TEAM_MGMT_LEAD',  'Home Team Mgmt Lead',   'C_ROUTING', false, 'Already owns STRs but self-manages or has a bad manager — route to Home Team management.', '#ec4899', 84],
+    ['REALTY_LEAD',          'Realty Lead',           'C_ROUTING', false, 'Wants to buy in a Home Team Realty market (Phoenix AZ, Pinellas FL, Gulf Coast).', '#f97316', 85],
+  ];
+  for (const [key,label,grp,excl,desc,color,ord] of tagSeed) {
+    await q(`INSERT INTO call_tags (key,label,tag_group,excludes_from_average,description,color,sort_order,active)
+             VALUES (?,?,?,?,?,?,?,true)
+             ON CONFLICT (key) DO UPDATE SET label=EXCLUDED.label, tag_group=EXCLUDED.tag_group,
+               excludes_from_average=EXCLUDED.excludes_from_average, description=EXCLUDED.description,
+               color=EXCLUDED.color, sort_order=EXCLUDED.sort_order`,
+      [key,label,grp,excl,desc,color,ord]);
+  }
+
   console.log('[DB] Migration complete ✓ (Postgres)');
 }
 
