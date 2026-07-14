@@ -71,7 +71,7 @@ router.get('/calls', async (req, res) => {
       w += ` AND EXISTS (SELECT 1 FROM call_tag_assignments a WHERE a.call_id=calls.id AND a.tag_key=? AND a.status='CONFIRMED')`;
       p.push(req.query.tag);
     }
-    const r = await q(`SELECT id,received_at,source,rep_name,rep_id,role,team,client_name,call_url,audio_url,call_duration_sec,agent_talk_pct,contact_talk_pct,overall_score,overall_score_adj,score_adjust_notes,category_scores,pass_fail,quick_summary,strengths,improvements,next_step_text,coaching_notes,golden_moments,status,flagged,error,retry_count,weekstart,processed_at,stitch_status,stitched_from_ids FROM calls WHERE ${w} ORDER BY received_at DESC LIMIT ? OFFSET ?`, [...p, Number(limit), Number(offset)]);
+    const r = await q(`SELECT id,received_at,source,rep_name,rep_id,role,team,client_name,call_url,audio_url,call_duration_sec,agent_talk_pct,contact_talk_pct,overall_score,overall_score_adj,score_adjust_notes,category_scores,pass_fail,quick_summary,strengths,improvements,next_step_text,coaching_notes,golden_moments,status,flagged,error,retry_count,weekstart,processed_at,stitch_status,stitched_from_ids,aloware_contact_id,aloware_call_id FROM calls WHERE ${w} ORDER BY received_at DESC LIMIT ? OFFSET ?`, [...p, Number(limit), Number(offset)]);
     const cnt = await q(`SELECT COUNT(*) as c FROM calls WHERE ${w}`, p);
 
     // Attach tags to each call in ONE query (avoids N+1) so the list can show them.
@@ -848,6 +848,47 @@ router.post('/calls/:id/dismiss-tag', express.json(), async (req, res) => {
 });
 
 // Review queue: pending suggestions, worst-scored first (most unfairly penalised).
+// ── REFERRALS / CROSS-SELL ────────────────────────────────────────
+// Every call carrying a cross-sell (Group C) tag, grouped by Rise brand.
+// This is the PAYOFF for cross-sell detection: a "lost" BNB Turnkey call is
+// often a won lead for a sister company — but only if someone can SEE it.
+router.get('/referrals', async (req, res) => {
+  try {
+    const status = req.query.status === 'suggested' ? 'SUGGESTED' : 'CONFIRMED';
+    const brand = req.query.brand;
+    let w = `a.status = ? AND t.tag_group = 'C_ROUTING'`;
+    const p = [status];
+    if (brand) { w += ' AND t.key = ?'; p.push(brand); }
+
+    const rows = (await q(
+      `SELECT a.call_id, a.tag_key, a.reason, a.status, a.created_at,
+              t.label AS brand, t.color,
+              c.rep_name, c.client_name, c.role, c.overall_score_adj, c.received_at,
+              c.aloware_contact_id, c.quick_summary,
+              (SELECT t2.label FROM call_tag_assignments a2 JOIN call_tags t2 ON t2.key=a2.tag_key
+               WHERE a2.call_id=c.id AND a2.status='CONFIRMED'
+                 AND t2.tag_group IN ('A_NOT_CLOSEABLE','B_REAL_ATTEMPT') LIMIT 1) AS outcome
+       FROM call_tag_assignments a
+       JOIN call_tags t ON t.key = a.tag_key
+       JOIN calls c ON c.id = a.call_id
+       WHERE ${w}
+       ORDER BY c.received_at DESC LIMIT 300`, p)).rows;
+
+    const counts = (await q(
+      `SELECT t.key, t.label, t.color, COUNT(*) AS n
+       FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
+       WHERE a.status='CONFIRMED' AND t.tag_group='C_ROUTING'
+       GROUP BY t.key,t.label,t.color ORDER BY n DESC`)).rows;
+
+    const pending = (await q(
+      `SELECT COUNT(*) AS n FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
+       WHERE a.status='SUGGESTED' AND t.tag_group='C_ROUTING'`)).rows[0];
+
+    res.json({ referrals: rows, by_brand: counts, pending_review: Number(pending?.n || 0), total: rows.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
 router.get('/tags/suggestions', async (req, res) => {
   try {
     const r = await q(
