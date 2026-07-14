@@ -169,6 +169,16 @@ async function migrate() {
     // Aloware deep links need both ids: talk.aloware.io/contacts/{contactId}/communications/{callId}
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS aloware_contact_id text`,
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS aloware_call_id text`,
+    // Golden Moments library: Sam pins the canonical exemplars.
+    // A moment is (call_id, index-in-the-json-array) — expanded at read time,
+    // so a re-score can never orphan a pin.
+    `CREATE TABLE IF NOT EXISTS golden_moment_pins (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      call_id integer NOT NULL, moment_index integer NOT NULL,
+      category text, note text, pinned_by text, created_at text,
+      CONSTRAINT uq_gm_pin UNIQUE (call_id, moment_index),
+      CONSTRAINT fk_gm_call FOREIGN KEY (call_id) REFERENCES calls(id) ON DELETE CASCADE)`,
+    `CREATE INDEX IF NOT EXISTS idx_gm_call ON golden_moment_pins(call_id)`,
     // Calibration: Sam can override per-category, not just the overall score.
     `ALTER TABLE score_overrides ADD COLUMN IF NOT EXISTS category_scores text`,
     `ALTER TABLE score_overrides ADD COLUMN IF NOT EXISTS original_categories text`,
