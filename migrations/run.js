@@ -166,6 +166,9 @@ async function migrate() {
       CONSTRAINT fk_cta_call FOREIGN KEY (call_id) REFERENCES calls(id) ON DELETE CASCADE)`,
     `CREATE INDEX IF NOT EXISTS idx_cta_call ON call_tag_assignments(call_id)`,
     `CREATE INDEX IF NOT EXISTS idx_cta_status ON call_tag_assignments(status)`,
+    // Aloware deep links need both ids: talk.aloware.io/contacts/{contactId}/communications/{callId}
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS aloware_contact_id text`,
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS aloware_call_id text`,
     // Calibration: Sam can override per-category, not just the overall score.
     `ALTER TABLE score_overrides ADD COLUMN IF NOT EXISTS category_scores text`,
     `ALTER TABLE score_overrides ADD COLUMN IF NOT EXISTS original_categories text`,
