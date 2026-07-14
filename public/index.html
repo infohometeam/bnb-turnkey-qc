@@ -334,6 +334,121 @@ function CallComments({callId}){
   </div>
 }
 
+const GM_CATEGORIES=["Discovery","Qualification","Pitch","Frame Control","Objection Handling","Close"];
+
+function GoldenMomentsPage(){
+  const{data:reps}=useApi("/reps");
+  const[rep,setRep]=useState("");
+  const[search,setSearch]=useState("");
+  const[q,setQ]=useState("");             // debounced
+  const[onlyPinned,setOnlyPinned]=useState(false);
+  const[minScore,setMinScore]=useState("");
+  const[busy,setBusy]=useState(null);
+
+  React.useEffect(()=>{const t=setTimeout(()=>setQ(search),350);return()=>clearTimeout(t);},[search]);
+  const qs=`?${rep?`rep=${encodeURIComponent(rep)}&`:""}${q?`search=${encodeURIComponent(q)}&`:""}${onlyPinned?"pinned=true&":""}${minScore?`minScore=${minScore}&`:""}`;
+  const{data,reload}=useApi(`/golden-moments${qs}`,[rep,q,onlyPinned,minScore]);
+
+  async function pin(m,category){
+    setBusy(m.call_id+"-"+m.moment_index);
+    try{ await postApi("/golden-moments/pin",{call_id:m.call_id,moment_index:m.moment_index,category,by:"Sam"}); reload(); }
+    catch(e){ alert("Failed."); }
+    setBusy(null);
+  }
+  async function unpin(m){
+    setBusy(m.call_id+"-"+m.moment_index);
+    try{ await postApi("/golden-moments/unpin",{call_id:m.call_id,moment_index:m.moment_index}); reload(); }
+    catch(e){ alert("Failed."); }
+    setBusy(null);
+  }
+
+  const moments=data?.moments||[];
+
+  function Moment({m}){
+    const key=m.call_id+"-"+m.moment_index;
+    const[picking,setPicking]=useState(false);
+    return<div className="card" style={{padding:18,borderColor:m.pinned?"#a16207":"#1e2635",background:m.pinned?"#1a1505":"var(--card)"}}>
+      {m.pinned&&<div style={{fontSize:10,fontWeight:800,color:"#fbbf24",letterSpacing:.5,marginBottom:8}}>
+        ★ PINNED{m.category?` · ${m.category.toUpperCase()}`:""}
+      </div>}
+
+      {/* The quote — the thing that teaches */}
+      <div style={{fontSize:15,color:"#e2e8f0",lineHeight:1.7,fontStyle:"italic",
+        borderLeft:`3px solid ${m.pinned?"#fbbf24":"#4338ca"}`,paddingLeft:14,marginBottom:10}}>
+        "{m.quote}"
+      </div>
+
+      {/* Why it worked — the bot already wrote this */}
+      {m.why&&<div style={{fontSize:12,color:"#94a3b8",lineHeight:1.6,marginBottom:10}}>
+        <b style={{color:"#64748b"}}>Why it works: </b>{m.why}
+      </div>}
+
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",paddingTop:10,borderTop:"1px solid #1e2635"}}>
+        <div style={{width:24,height:24,borderRadius:7,background:RC[m.rep_name],display:"flex",alignItems:"center",
+          justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",flexShrink:0}}>{m.rep_name?.[0]}</div>
+        <span onClick={()=>goTo("rep",m.rep_name)} style={{fontSize:12,fontWeight:700,color:"#c9d1d9",cursor:"pointer"}}>{m.rep_name}</span>
+        <span style={{fontSize:11,color:"#64748b"}}>→ {m.client_name||"?"}</span>
+        {m.timestamp&&<span style={{fontSize:10,color:"#64748b",fontFamily:"var(--m)"}}>· {m.timestamp}</span>}
+        <span style={{fontSize:12,fontWeight:800,color:sClr(m.score),fontFamily:"var(--m)"}}>{m.score}</span>
+        <div style={{flex:1}}/>
+        <button className="btn" onClick={()=>goTo("calls",m.call_id)} style={{fontSize:10,padding:"3px 9px"}}>Read call →</button>
+        {m.aloware_contact_id&&m.aloware_call_id&&
+          <a href={`https://talk.aloware.io/contacts/${m.aloware_contact_id}/communications/${m.aloware_call_id}`}
+             target="_blank" rel="noopener" className="btn" title="Listen in Aloware"
+             style={{fontSize:10,padding:"3px 9px",textDecoration:"none"}}>🎧 Listen</a>}
+        {m.pinned
+          ? <button className="btn" onClick={()=>unpin(m)} disabled={busy===key} style={{fontSize:10,padding:"3px 9px",color:"#fbbf24"}}>★ Unpin</button>
+          : picking
+            ? <span style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                {GM_CATEGORIES.map(c=><button key={c} className="btn" onClick={()=>{pin(m,c);setPicking(false);}}
+                  style={{fontSize:9,padding:"3px 7px"}}>{c}</button>)}
+                <button className="btn" onClick={()=>setPicking(false)} style={{fontSize:9,padding:"3px 7px"}}>✕</button>
+              </span>
+            : <button className="btn" onClick={()=>setPicking(true)} disabled={busy===key} style={{fontSize:10,padding:"3px 9px"}}>☆ Pin</button>}
+      </div>
+    </div>;
+  }
+
+  return<div className="flex-col gap-16" style={{maxWidth:900}}>
+    <div>
+      <h2 style={{fontSize:24,fontWeight:900,margin:0}}>Golden Moments</h2>
+      <div style={{fontSize:13,color:"#94a3b8",marginTop:3,lineHeight:1.5,maxWidth:620}}>
+        The best things your team has actually said, pulled from real calls. Not theory from a book — <b>your own reps, with real prospects.</b>
+        {data&&<> <b style={{color:"#c9d1d9"}}>{data.total_library}</b> moments in the library{data.pinned_count>0?<>, <b style={{color:"#fbbf24"}}>{data.pinned_count} pinned</b></>:""}.</>}
+      </div>
+    </div>
+
+    {/* Filters */}
+    <div className="card" style={{padding:14,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search quotes… (e.g. 'objection', 'frame', 'tax')"
+        style={{flex:1,minWidth:200,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13}}/>
+      <select value={rep} onChange={e=>setRep(e.target.value)} style={{padding:"8px 10px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}>
+        <option value="">All reps</option>
+        {(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}
+      </select>
+      <select value={minScore} onChange={e=>setMinScore(e.target.value)} style={{padding:"8px 10px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}>
+        <option value="">Any score</option>
+        <option value="7">7+ only</option>
+        <option value="8">8+ only</option>
+      </select>
+      <button className="btn" onClick={()=>setOnlyPinned(p=>!p)} style={{fontSize:12,
+        background:onlyPinned?"#1a1505":"",borderColor:onlyPinned?"#a16207":"",color:onlyPinned?"#fbbf24":""}}>★ Pinned only</button>
+    </div>
+
+    {/* Who's contributing */}
+    {data?.by_rep?.length>0&&!rep&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      {data.by_rep.map(r=><button key={r.rep_name} className="btn" onClick={()=>setRep(r.rep_name)}
+        style={{fontSize:11,padding:"4px 10px"}}>{r.rep_name} <b style={{color:"#818cf8"}}>{r.n}</b></button>)}
+    </div>}
+
+    {!data?<div style={{padding:40,textAlign:"center",color:"#374151"}}>Loading…</div>:
+     moments.length===0?<div className="card" style={{padding:40,textAlign:"center",color:"#94a3b8"}}>
+       No moments match those filters.
+     </div>:
+     <div className="flex-col gap-12">{moments.map(m=><Moment key={m.call_id+"-"+m.moment_index} m={m}/>)}</div>}
+  </div>;
+}
+
 function ReferralsPage(){
   const[view,setView]=useState("confirmed");   // confirmed | suggested
   const[brand,setBrand]=useState("");
@@ -2363,7 +2478,7 @@ function ResourcesPage(){
   </div>
 }
 
-const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"progress",icon:"📈",label:"My Progress",color:"#4ade80"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"team",icon:"👥",label:"Team",color:"#818cf8"},{id:"outcomes",icon:"🏷️",label:"Outcomes",color:"#f59e0b"},{id:"referrals",icon:"🔀",label:"Referrals",color:"#14b8a6"},{id:"stitch",icon:"🔗",label:"Stitching",color:"#2dd4bf"},{id:"calibration",icon:"🎯",label:"Calibration",color:"#a5b4fc"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
+const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"progress",icon:"📈",label:"My Progress",color:"#4ade80"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"team",icon:"👥",label:"Team",color:"#818cf8"},{id:"outcomes",icon:"🏷️",label:"Outcomes",color:"#f59e0b"},{id:"referrals",icon:"🔀",label:"Referrals",color:"#14b8a6"},{id:"moments",icon:"🏆",label:"Golden Moments",color:"#fbbf24"},{id:"stitch",icon:"🔗",label:"Stitching",color:"#2dd4bf"},{id:"calibration",icon:"🎯",label:"Calibration",color:"#a5b4fc"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
 
 function RubricViewer(){
   const[rb,setRb]=useState(null);const[role,setRole]=useState("Closer");
@@ -2508,7 +2623,7 @@ function App(){
     <main><div className="max-w">{
       pg==="calls"&&param?<CallDetail call={{id:Number(param)}} onBack={()=>goTo("calls")}/>:
       pg==="rep"&&param?<RepDetailPage name={param}/>:
-      pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={c=>goTo("calls",c.id)}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="outcomes"?<OutcomesPage/>:pg==="referrals"?<ReferralsPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null
+      pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={c=>goTo("calls",c.id)}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="outcomes"?<OutcomesPage/>:pg==="referrals"?<ReferralsPage/>:pg==="moments"?<GoldenMomentsPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null
     }</div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
