@@ -250,6 +250,8 @@ async function ingestCall(rawPayload, srcTag) {
   const source = resolvedSrcTag ? `${baseSource} (${resolvedSrcTag})` : baseSource;
   const clientName = detectClientName(data, inner);
   const alowareCallId = inner?.id || inner?.communication?.id;
+  // Aloware deep links need BOTH ids: talk.aloware.io/contacts/{contactId}/communications/{callId}
+  const alowareContactId = inner?.contact_id || inner?.communication?.contact_id || inner?.contact?.id || null;
   const callUrl = baseSource === 'Aloware' && alowareCallId ? `aloware:call:${alowareCallId}` : (data?.share_url || data?.url || '');
   const audioUrl = baseSource === 'Aloware' ? (inner?.direct_recording_url || inner?.communication?.recording_url || '') : (data?.share_url || '');
   // Pass transcript to extractMetrics so it can estimate duration from timestamps
@@ -328,8 +330,8 @@ async function ingestCall(rawPayload, srcTag) {
   const team = role === 'Setter' ? 'Turnkey - Setters' : role === 'Closer' ? 'Turnkey - Closers' : 'Turnkey';
   const ws = getWeekStart(new Date()); const ts = now();
 
-  const res = await q('INSERT INTO calls (received_at,source,base_source,src_tag,rep_name,rep_id,role,team,client_name,call_url,audio_url,external_call_key,transcript,transcript_chars,call_duration_sec,agent_talk_pct,contact_talk_pct,status,error,weekstart,queued_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-    [ts,source,baseSource,resolvedSrcTag,repName,repId,role,team,clientName,callUrl,audioUrl,extKey,transcript,transcript.length,metrics.durationSec,metrics.agentTalkPct,metrics.contactTalkPct,status,error,ws,ts,ts]);
+  const res = await q('INSERT INTO calls (received_at,source,base_source,src_tag,rep_name,rep_id,role,team,client_name,call_url,audio_url,external_call_key,transcript,transcript_chars,call_duration_sec,agent_talk_pct,contact_talk_pct,status,error,weekstart,queued_at,created_at,aloware_contact_id,aloware_call_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    [ts,source,baseSource,resolvedSrcTag,repName,repId,role,team,clientName,callUrl,audioUrl,extKey,transcript,transcript.length,metrics.durationSec,metrics.agentTalkPct,metrics.contactTalkPct,status,error,ws,ts,ts,alowareContactId ? String(alowareContactId) : null, alowareCallId ? String(alowareCallId) : null]);
 
   return { ok: true, duplicate: false, callId: Number(res.lastInsertRowid), status, message: 'OK' };
 }
