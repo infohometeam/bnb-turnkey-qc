@@ -889,6 +889,108 @@ router.get('/referrals', async (req, res) => {
 });
 
 
+// ── GOLDEN MOMENTS LIBRARY ────────────────────────────────────────
+// The bot already extracts golden moments (quote + timestamp + why it matters)
+// on EVERY scored call — and until now we threw them all away.
+// This surfaces them as a searchable, filterable coaching library.
+//
+// A moment is identified by (call_id, moment_index) — we expand the JSON at
+// read time rather than denormalising, so a re-score can't orphan a pin.
+router.get('/golden-moments', async (req, res) => {
+  try {
+    const { rep, search, pinned, minScore } = req.query;
+    const limit = Math.min(Number(req.query.limit) || 200, 500);
+
+    let w = `c.status='SCORED' AND c.golden_moments IS NOT NULL
+             AND c.golden_moments <> '[]' AND c.golden_moments <> ''
+             AND json_typeof(c.golden_moments::json) = 'array'
+             AND c.rep_name <> 'Unknown Setter'`;
+    const p = [];
+    if (rep) { w += ' AND c.rep_name = ?'; p.push(rep); }
+    if (minScore) { w += ' AND c.overall_score_adj >= ?'; p.push(Number(minScore)); }
+
+    const rows = (await q(
+      `SELECT c.id AS call_id, c.rep_name, c.role, c.client_name, c.overall_score_adj,
+              c.received_at, c.golden_moments, c.aloware_contact_id, c.aloware_call_id
+       FROM calls c WHERE ${w}
+       ORDER BY c.overall_score_adj DESC NULLS LAST, c.received_at DESC
+       LIMIT ?`, [...p, limit])).rows;
+
+    const pins = (await q('SELECT call_id, moment_index, category, note, pinned_by FROM golden_moment_pins')).rows;
+    const pinKey = (a, b) => `${a}:${b}`;
+    const pinMap = {};
+    pins.forEach(x => { pinMap[pinKey(x.call_id, x.moment_index)] = x; });
+
+    // Flatten every call's moments into individual, addressable entries.
+    const moments = [];
+    for (const c of rows) {
+      let arr = c.golden_moments;
+      try { if (typeof arr === 'string') arr = JSON.parse(arr); } catch (e) { arr = null; }
+      if (!Array.isArray(arr)) continue;
+      arr.forEach((m, i) => {
+        if (!m || !m.quote) return;
+        const pin = pinMap[pinKey(c.call_id, i)];
+        moments.push({
+          call_id: c.call_id, moment_index: i,
+          quote: m.quote, timestamp: m.timestamp || '', why: m.why_it_matters || m.why || '',
+          rep_name: c.rep_name, role: c.role, client_name: c.client_name,
+          score: c.overall_score_adj, received_at: c.received_at,
+          aloware_contact_id: c.aloware_contact_id, aloware_call_id: c.aloware_call_id,
+          pinned: !!pin, category: pin?.category || null, pin_note: pin?.note || null,
+        });
+      });
+    }
+
+    // Free-text search across the quote AND the explanation.
+    let out = moments;
+    if (search) {
+      const s = String(search).toLowerCase();
+      out = out.filter(m => (m.quote + ' ' + m.why).toLowerCase().includes(s));
+    }
+    if (pinned === 'true') out = out.filter(m => m.pinned);
+
+    // Pinned first — Sam's canonical exemplars lead.
+    out.sort((a, b) => (b.pinned - a.pinned) || (Number(b.score) - Number(a.score)));
+
+    const byRep = {};
+    moments.forEach(m => { byRep[m.rep_name] = (byRep[m.rep_name] || 0) + 1; });
+
+    res.json({
+      moments: out,
+      total: out.length,
+      total_library: moments.length,
+      pinned_count: moments.filter(m => m.pinned).length,
+      by_rep: Object.entries(byRep).map(([rep_name, n]) => ({ rep_name, n })).sort((a, b) => b.n - a.n),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Pin a moment as a canonical exemplar (Sam's quality gate — the bot's
+// "golden" isn't always golden, so a human decides what becomes canon).
+router.post('/golden-moments/pin', express.json(), async (req, res) => {
+  try {
+    const { call_id, moment_index, category, note, by } = req.body || {};
+    if (call_id == null || moment_index == null) return res.status(400).json({ error: 'call_id and moment_index required' });
+    const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    await q(
+      `INSERT INTO golden_moment_pins (call_id, moment_index, category, note, pinned_by, created_at)
+       VALUES (?,?,?,?,?,?)
+       ON CONFLICT (call_id, moment_index) DO UPDATE SET
+         category=EXCLUDED.category, note=EXCLUDED.note, pinned_by=EXCLUDED.pinned_by`,
+      [call_id, moment_index, category || null, note || null, by || 'Sam', ts]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/golden-moments/unpin', express.json(), async (req, res) => {
+  try {
+    const { call_id, moment_index } = req.body || {};
+    await q('DELETE FROM golden_moment_pins WHERE call_id=? AND moment_index=?', [call_id, moment_index]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
 router.get('/tags/suggestions', async (req, res) => {
   try {
     const r = await q(
