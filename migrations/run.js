@@ -190,6 +190,10 @@ async function migrate() {
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS transcript_quality text`,
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS transcript_quality_score integer`,
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS transcript_quality_flags text`,
+
+    // Tough moments — coaching counterpart to golden_moments (quote + why + fix).
+    // Populated at score time and by the "re-look at moments" re-extract pass.
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS tough_moments text`,
   ];
   for (const sql of stmts) await q(sql);
 
