@@ -933,6 +933,7 @@ router.get('/golden-moments', async (req, res) => {
         moments.push({
           call_id: c.call_id, moment_index: i,
           quote: m.quote, timestamp: m.timestamp || '', why: m.why_it_matters || m.why || '',
+          speaker: (m.speaker || '').toLowerCase() === 'lead' ? 'lead' : (m.speaker ? 'rep' : null),
           rep_name: c.rep_name, role: c.role, client_name: c.client_name,
           score: c.overall_score_adj, received_at: c.received_at,
           aloware_contact_id: c.aloware_contact_id, aloware_call_id: c.aloware_call_id,
@@ -987,6 +988,55 @@ router.post('/golden-moments/unpin', express.json(), async (req, res) => {
     const { call_id, moment_index } = req.body || {};
     await q('DELETE FROM golden_moment_pins WHERE call_id=? AND moment_index=?', [call_id, moment_index]);
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Transcript hygiene diagnostics ──────────────────────────────
+// Top-level paths (NOT under /calls/:id) so they never collide with the
+// greedy /calls/:id catch-all. Answers "is a weird transcript us or the source?"
+const { analyzeTranscriptHygiene } = require('../services/transcriptHygiene');
+
+// Run the analyzer live on one call and return the full breakdown.
+router.get('/diagnostics/transcript/:id', async (req, res) => {
+  try {
+    const r = await q('SELECT id, rep_name, client_name, source, call_duration_sec, agent_talk_pct, transcript FROM calls WHERE id=?', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
+    const c = r.rows[0];
+    const analysis = analyzeTranscriptHygiene(c.transcript, { source: c.source });
+    res.json({
+      call_id: c.id, rep_name: c.rep_name, client_name: c.client_name, source: c.source,
+      duration_sec: c.call_duration_sec, agent_talk_pct: c.agent_talk_pct,
+      verdict: analysis.grade === 'clean'
+        ? 'Transcript looks clean — the source diarization is reliable here.'
+        : `Source-side diarization problem (${analysis.grade}). This is the recording source, not the dashboard — the artifacts are in the stored transcript itself.`,
+      ...analysis,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Scan scored calls, grade each, and (optionally) backfill the quality columns.
+// GET /diagnostics/transcript-scan            → report only
+// GET /diagnostics/transcript-scan?write=true → also persist grades
+router.get('/diagnostics/transcript-scan', async (req, res) => {
+  try {
+    const write = req.query.write === 'true';
+    const rows = (await q(
+      `SELECT id, source, transcript FROM calls
+       WHERE status='SCORED' AND transcript IS NOT NULL AND LENGTH(transcript) > 0`)).rows;
+    const summary = { total: rows.length, clean: 0, minor: 0, degraded: 0, written: 0 };
+    const degraded = [];
+    for (const c of rows) {
+      const a = analyzeTranscriptHygiene(c.transcript, { source: c.source });
+      summary[a.grade] = (summary[a.grade] || 0) + 1;
+      if (a.grade === 'degraded') degraded.push({ call_id: c.id, source: c.source, score: a.score, flags: a.flags.map(f => f.code) });
+      if (write) {
+        await q('UPDATE calls SET transcript_quality=?,transcript_quality_score=?,transcript_quality_flags=? WHERE id=?',
+          [a.grade, a.score, JSON.stringify(a.flags || []), c.id]);
+        summary.written++;
+      }
+    }
+    degraded.sort((x, y) => x.score - y.score);
+    res.json({ summary, degraded_calls: degraded });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
