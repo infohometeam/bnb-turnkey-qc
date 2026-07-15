@@ -365,6 +365,26 @@ function GoldenMomentsPage(){
     setBusy(null);
   }
 
+  // Re-look at moments: re-reads transcripts to backfill speaker attribution +
+  // tough moments on calls scored before those existed. Runs in bounded batches
+  // (server caps each request) so it never times out; loops until done. Never re-scores.
+  const{data:relookStatus,reload:reloadStatus}=useApi("/golden-moments/relook-status",[]);
+  const[relook,setRelook]=useState(null);
+  async function runRelook(){
+    if(relook?.running)return;
+    setRelook({running:true,done:0,remaining:relookStatus?.need_relook??null});
+    try{
+      let guard=0;
+      while(guard++<300){
+        const r=await postApi("/golden-moments/relook-all",{limit:8,scope:"missing"});
+        setRelook(s=>({running:true,done:(s?.done||0)+(r.processed||0),remaining:r.remaining}));
+        if(!r.processed||r.remaining<=0)break;
+      }
+    }catch(e){ setRelook(s=>({...(s||{}),running:false,error:e.message})); return; }
+    setRelook(s=>({...(s||{}),running:false}));
+    reload(); reloadStatus();
+  }
+
   const moments=data?.moments||[];
 
   function Moment({m}){
@@ -399,7 +419,7 @@ function GoldenMomentsPage(){
         {m.timestamp&&<span style={{fontSize:10,color:"#64748b",fontFamily:"var(--m)"}}>· {m.timestamp}</span>}
         <span style={{fontSize:12,fontWeight:800,color:sClr(m.score),fontFamily:"var(--m)"}}>{m.score}</span>
         <div style={{flex:1}}/>
-        <button className="btn" onClick={()=>goTo("calls",m.call_id)} style={{fontSize:10,padding:"3px 9px"}}>Read call →</button>
+        <button className="btn" onClick={()=>goTo("calls",m.call_id)} style={{fontSize:10,padding:"3px 9px"}}>{m.call_moment_total>1?`See all ${m.call_moment_total} on call →`:"Read call →"}</button>
         {m.aloware_contact_id&&m.aloware_call_id&&
           <a href={`https://talk.aloware.io/contacts/${m.aloware_contact_id}/communications/${m.aloware_call_id}`}
              target="_blank" rel="noopener" className="btn" title="Listen in Aloware"
@@ -418,11 +438,23 @@ function GoldenMomentsPage(){
   }
 
   return<div className="flex-col gap-16" style={{maxWidth:900}}>
-    <div>
-      <h2 style={{fontSize:24,fontWeight:900,margin:0}}>Golden Moments</h2>
-      <div style={{fontSize:13,color:"#94a3b8",marginTop:3,lineHeight:1.5,maxWidth:620}}>
-        The best things your team has actually said, pulled from real calls. Not theory from a book — <b>your own reps, with real prospects.</b>
-        {data&&<> <b style={{color:"#c9d1d9"}}>{data.total_library}</b> moments in the library{data.pinned_count>0?<>, <b style={{color:"#fbbf24"}}>{data.pinned_count} pinned</b></>:""}.</>}
+    <div style={{display:"flex",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
+      <div style={{flex:1,minWidth:280}}>
+        <h2 style={{fontSize:24,fontWeight:900,margin:0}}>Golden Moments</h2>
+        <div style={{fontSize:13,color:"#94a3b8",marginTop:3,lineHeight:1.5,maxWidth:620}}>
+          The best things your team has actually said, pulled from real calls. Not theory from a book — <b>your own reps, with real prospects.</b>
+          {data&&<> <b style={{color:"#c9d1d9"}}>{data.total_library}</b> moments in the library{data.pinned_count>0?<>, <b style={{color:"#fbbf24"}}>{data.pinned_count} pinned</b></>:""}. Showing up to 2 per call — open a call for the rest.</>}
+        </div>
+      </div>
+      <div style={{textAlign:"right"}}>
+        <button className="btn" onClick={runRelook} disabled={relook?.running}
+          style={{fontSize:12,padding:"7px 12px",whiteSpace:"nowrap"}}
+          title="Re-read transcripts to add Rep/Lead tags and tough moments to older calls. Does not re-score.">
+          {relook?.running?`Re-looking… ${relook.done} done`:"↻ Re-look at moments"}</button>
+        {relook?.running&&relook.remaining!=null&&<div style={{fontSize:10,color:"#64748b",marginTop:4}}>{relook.remaining} calls left</div>}
+        {!relook?.running&&relook&&!relook.error&&<div style={{fontSize:10,color:"#34d399",marginTop:4}}>✓ Done — {relook.done} calls re-looked</div>}
+        {relook?.error&&<div style={{fontSize:10,color:"#f87171",marginTop:4}}>{relook.error}</div>}
+        {!relook&&relookStatus?.need_relook>0&&<div style={{fontSize:10,color:"#f59e0b",marginTop:4}}>{relookStatus.need_relook} calls missing Rep/Lead tags</div>}
       </div>
     </div>
 
@@ -956,6 +988,14 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
   // Rep-speaker match: the transcript labels the rep by FULL name ("Kevin White"),
   // so exact first-name equality misses. Match if the label contains a known rep token.
   const isRepSpeaker=sp=>{const s=(sp||'').toLowerCase();for(const nm of TEAM_NAMES){if(s.includes(nm))return true;}return false;};
+  // Golden + tough moments for this call.
+  const parseArr=v=>{if(Array.isArray(v))return v;try{const a=JSON.parse(v||'[]');return Array.isArray(a)?a:[];}catch(e){return[];}};
+  const goldenM=parseArr(c.golden_moments).filter(m=>m&&m.quote);
+  const toughM=parseArr(c.tough_moments).filter(m=>m&&m.quote);
+  const goldNeedsRelook=goldenM.length>0&&!goldenM.some(m=>m.speaker)&&c.tough_moments==null;
+  const[relooking,setRelooking]=useState(false);
+  async function relookMoments(){setRelooking(true);try{await postApi(`/calls/${c.id}/relook-moments`,{});reload();}catch(e){alert("Re-look failed: "+e.message);}setRelooking(false);}
+  const SpeakerBadge=({sp})=>sp?<span style={{fontSize:9,fontWeight:800,letterSpacing:.5,padding:"2px 8px",borderRadius:20,background:sp==="lead"?"#0f2a1a":"#0f1f33",color:sp==="lead"?"#34d399":"#60a5fa",border:`1px solid ${sp==="lead"?"#14532d":"#1e3a5f"}`}}>{sp==="lead"?"◂ LEAD":"▸ REP"}</span>:null;
   return<div className="flex-col gap-20">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}><button className="btn" onClick={onBack}>← Back</button><div style={{display:"flex",gap:6,position:"relative"}}><div style={{position:"relative"}}><button className="btn" onClick={()=>setExps(v=>!v)}>⤓ Export</button>{exps&&<div style={{position:"absolute",top:"100%",right:0,marginTop:4,background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,padding:4,zIndex:20,minWidth:180,boxShadow:"0 6px 20px rgba(0,0,0,.4)"}}><div onClick={()=>exportCall(false)} style={{padding:"8px 12px",fontSize:12,color:"#c9d1d9",cursor:"pointer",borderRadius:6}} onMouseEnter={e=>e.currentTarget.style.background="#1a1f2e"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>Scorecard only</div><div onClick={()=>exportCall(true)} style={{padding:"8px 12px",fontSize:12,color:"#c9d1d9",cursor:"pointer",borderRadius:6}} onMouseEnter={e=>e.currentTarget.style.background="#1a1f2e"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>Scorecard + transcript</div></div>}</div><button className="btn" onClick={()=>setEd(true)}>✏ Edit</button><button className="btn btn-green" onClick={reqc} disabled={rs}>{rs?"...":"↻ Re-score"}</button><button className="btn btn-red btn-sm" onClick={del}>🗑</button></div></div>
     <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}><ScoreRing value={c.overall_score_adj} size={72} sw={4.5}/><div><h2 style={{fontSize:22,fontWeight:900,margin:0}}>{c.rep_name} → {c.client_name||"?"}</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}><span title="Call ID — click to copy (use this for stitching)" onClick={()=>{navigator.clipboard?.writeText(String(c.id));}} style={{cursor:"pointer",fontFamily:"var(--m)",color:"#818cf8",fontWeight:700,background:"#1e1b4b",padding:"1px 6px",borderRadius:5,border:"1px solid #3730a3"}}>#{c.id}</span> · {fmtF(c.received_at)} · {c.source} · {fmtD(c.call_duration_sec)}</p><div style={{display:"flex",gap:8,marginTop:8}}><Badge status={c.status}/>{c.flagged&&<span className="badge" style={{background:"#2a1a00",color:"#f59e0b",border:"1px solid #92400e"}}>⚠ FLAGGED</span>}</div></div></div>
@@ -983,6 +1023,32 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
     {c.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>🎯 Coaching</div><p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{c.coaching_notes}</p></div>}
     {c.next_step_text&&<div className="card" style={{padding:16,background:"#14224a",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
     {c.score_adjust_notes&&(()=>{const parts=c.score_adjust_notes.split('Confidence:');const adj=parts[0]?.replace(/\|\s*$/,'').trim();const conf=parts[1]?.trim();const confLevel=conf?.split(/[\s—-]/)[0]?.toLowerCase();const confColor=confLevel==='high'?'#22c55e':confLevel==='medium'?'#f59e0b':'#ef4444';const confBg=confLevel==='high'?'#052e16':confLevel==='medium'?'#2a1a00':'#2a0a0a';const confBd=confLevel==='high'?'#166534':confLevel==='medium'?'#92400e':'#991b1b';return<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>{conf&&<div style={{display:"flex",alignItems:"center",gap:8}}><span className="badge" style={{background:confBg,color:confColor,border:`1px solid ${confBd}`,fontSize:10}}>Confidence: {confLevel?.toUpperCase()}</span><span style={{fontSize:10,color:"#4b5563"}}>{conf.replace(/^(high|medium|low)[\s—-]*/i,'')}</span></div>}{adj&&adj!=='No adjustments'&&<div style={{fontSize:11,color:"#374151"}}>Adjustments: {adj}</div>}</div>})()}
+    {(goldenM.length>0||toughM.length>0||c.status==="SCORED")&&<div className="card" style={{padding:20}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+        <span className="section-head" style={{marginBottom:0}}>🏆 Moments</span>
+        <button className="btn" onClick={relookMoments} disabled={relooking} style={{fontSize:11,padding:"5px 10px"}} title="Re-read the transcript to refresh Rep/Lead tags and tough moments. Does not re-score.">{relooking?"Re-looking…":"↻ Re-look"}</button>
+      </div>
+      {goldNeedsRelook&&<div style={{fontSize:11,color:"#f59e0b",marginBottom:10}}>These moments predate Rep/Lead tagging — hit Re-look to refresh them.</div>}
+      <div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#fbbf24",marginBottom:8}}>Golden moments ({goldenM.length})</div>
+      {goldenM.length===0?<div style={{fontSize:12,color:"#4b5563",marginBottom:14}}>None flagged.</div>:
+       <div className="flex-col gap-10" style={{marginBottom:16}}>
+         {goldenM.map((m,i)=><div key={i} style={{borderLeft:"3px solid #4338ca",paddingLeft:14}}>
+           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,flexWrap:"wrap"}}><SpeakerBadge sp={m.speaker}/>{m.timestamp&&<span style={{fontSize:10,color:"#64748b",fontFamily:"var(--m)"}}>{m.timestamp}</span>}</div>
+           <div style={{fontSize:14,color:"#e2e8f0",lineHeight:1.6,fontStyle:"italic",marginBottom:6}}>"{m.quote}"</div>
+           {(m.why_it_matters||m.why)&&<div style={{fontSize:12,color:"#94a3b8",lineHeight:1.6}}><b style={{color:"#64748b"}}>Why it works: </b>{m.why_it_matters||m.why}</div>}
+         </div>)}
+       </div>}
+      <div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#fb7185",marginBottom:8}}>Tough moments ({toughM.length})</div>
+      {toughM.length===0?<div style={{fontSize:12,color:"#4b5563"}}>{c.tough_moments==null?"Not yet extracted — hit Re-look above.":"None flagged — clean call."}</div>:
+       <div className="flex-col gap-10">
+         {toughM.map((m,i)=><div key={i} style={{borderLeft:"3px solid #9f1239",paddingLeft:14}}>
+           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,flexWrap:"wrap"}}><SpeakerBadge sp={m.speaker}/>{m.timestamp&&<span style={{fontSize:10,color:"#64748b",fontFamily:"var(--m)"}}>{m.timestamp}</span>}</div>
+           <div style={{fontSize:14,color:"#e2e8f0",lineHeight:1.6,fontStyle:"italic",marginBottom:6}}>"{m.quote}"</div>
+           {m.why_it_was_tough&&<div style={{fontSize:12,color:"#94a3b8",lineHeight:1.6,marginBottom:3}}><b style={{color:"#9f1239"}}>Why it was tough: </b>{m.why_it_was_tough}</div>}
+           {m.what_to_do_instead&&<div style={{fontSize:12,color:"#94a3b8",lineHeight:1.6}}><b style={{color:"#34d399"}}>Do instead: </b>{m.what_to_do_instead}</div>}
+         </div>)}
+       </div>}
+    </div>}
     <div className="card" style={{overflow:"hidden"}}><button onClick={()=>setStx(!stx)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",background:"transparent",border:"none",cursor:"pointer",color:"var(--t1)"}}><span className="section-head" style={{marginBottom:0}}>📝 Transcript</span><span style={{fontSize:12,color:"#4b5563",fontFamily:"var(--m)"}}>{stx?"▼":"▶"}</span></button>{tqBad&&<div style={{margin:"2px 20px 14px",padding:"12px 14px",background:tqGrade==='degraded'?"#2a1408":"#241c08",border:`1px solid ${tqGrade==='degraded'?"#7c3a12":"#5c4a12"}`,borderRadius:8}}><div style={{fontSize:12,fontWeight:800,color:tqGrade==='degraded'?"#fb923c":"#eab308",marginBottom:5}}>⚠ Transcript quality: {tqGrade} ({tqScore}/100)</div><div style={{fontSize:11,color:"#94a3b8",lineHeight:1.6}}>{hasCode('DIAL_IN')&&<div>• Phone dial-in call — the recording source (Fathom) <b>scrambled the speaker labels</b>. Lines shown under one name may actually be the other person. This is a source-side issue, not the dashboard.</div>}{(hasCode('ECHO')||hasCode('ECHO_MINOR'))&&<div>• Some lines are <b>echoed</b> (transcribed twice, once per audio channel).</div>}{hasCode('SPEAKER_SPRAWL')&&<div>• The source split one speaker into several labels.</div>}<div style={{marginTop:5,color:"#64748b"}}>The scorer was told to judge by content rather than these labels, and talk-balance was not penalized on this call.</div></div></div>}{stx&&<div style={{maxHeight:500,overflowY:"auto",padding:"16px 20px",borderTop:"1px solid #2a3140"}}>{!lines.length&&<div style={{color:"#374151",textAlign:"center",padding:20}}>No transcript</div>}{lines.map((line,i)=>{const m=line.match(/^\[([^\]]*)\]\s*([^:]+):\s*(.*)/);if(!m)return<div key={i} style={{fontSize:12,color:"#64748b",lineHeight:1.8}}>{line}</div>;const[,ts,sp,tx]=m;const isAg=isRepSpeaker(sp);return<div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:"1px solid #1a1f2b"}}><span style={{fontSize:10,color:"#2a3040",fontFamily:"var(--m)",minWidth:42}}>{ts}</span><div><span style={{fontSize:11,fontWeight:700,color:isAg?"#60a5fa":"#34d399",marginRight:6}}>{sp.trim()}</span><span style={{fontSize:12,color:"#94a3b8"}}>{tx}</span></div></div>})}</div>}</div>
     <CallComments callId={c.id}/>
     {ed&&<EditModal call={c} onClose={()=>setEd(false)} onSave={()=>{setEd(false);reload()}}/>}
@@ -1221,6 +1287,12 @@ function ExportPage(){
   const{data:reps}=useApi("/reps");
   const[report,setReport]=useState(null);
   const[loading,setLoading]=useState(false);
+  const[copied,setCopied]=useState(false);
+  function copySlack(){
+    const t=report?.sam_digest_slack||"";
+    if(!t){alert("No digest to copy yet.");return;}
+    navigator.clipboard?.writeText(t).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1800);},()=>alert("Copy failed — select and copy manually."));
+  }
   // Precedence: custom range > named preset > rolling N days
   function buildQS(){
     let qs;
@@ -1231,7 +1303,7 @@ function ExportPage(){
   }
   async function load(){setLoading(true);const r=await fetch(`${API}/report${buildQS()}`).then(r=>r.json()).catch(()=>null);setReport(r);setLoading(false);}
   React.useEffect(()=>{load()},[days,preset,from,to,rep]);
-  const windowLabel=(from||to)?`${from||"…"} → ${to||"…"}`:preset==="today"?"Today":preset==="yesterday"?"Yesterday":`Last ${days} days`;
+  const windowLabel=(from||to)?`${from||"…"} → ${to||"…"}`:preset==="today"?"Today (ET)":preset==="yesterday"?"Yesterday (ET)":`Last ${days} days`;
   const arrow=d=>d==null?"":d>0?`▲ +${d}`:d<0?`▼ ${d}`:"– 0";
   const aClr=d=>d==null?"#64748b":d>0?"#22c55e":d<0?"#ef4444":"#64748b";
   const maxT=Math.max(1,...((report?.trend)||[]).map(t=>Number(t.avg_adj)||0));
@@ -1276,6 +1348,35 @@ function ExportPage(){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",paddingBottom:14,borderBottom:"2px solid #2a3140"}}><div><div style={{fontSize:20,fontWeight:900,color:"#e6edf3"}}>BNB Turnkey — QC Report</div><div style={{fontSize:12,color:"#64748b",marginTop:2}}>The Rise Collective · {windowLabel}{report.rep?` · ${report.rep}`:""} · generated {report.generated?new Date(report.generated).toLocaleDateString():"—"}</div></div></div>
 
       {(mode==="digest"||mode==="daily")&&<div className="flex-col gap-20">
+        {mode==="daily"&&report.sam_digest&&(()=>{
+          const D=report.sam_digest;
+          const CallCard=({c,kind})=>{
+            if(!c)return<div className="card" style={{padding:14,opacity:.6}}><div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:kind==="best"?"#fbbf24":"#fb7185"}}>{kind==="best"?"🏆 Best call":"💪 Toughest call"}</div><div style={{fontSize:12,color:"#4b5563",marginTop:6}}>No calls in this window.</div></div>;
+            const gm=c.golden&&c.golden[0]; const tm=c.tough&&c.tough[0];
+            return<div className="card" style={{padding:14,borderColor:kind==="best"?"#3f3610":"#3f1622"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:6}}>
+                <span style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:kind==="best"?"#fbbf24":"#fb7185"}}>{kind==="best"?"🏆 Best call":"💪 Toughest call"}</span>
+                <span style={{fontSize:16,fontWeight:900,fontFamily:"var(--m)",color:sClr(c.score)}}>{c.score??"—"}</span>
+              </div>
+              <div style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>{c.rep_name} → {c.client_name||"?"}{kind==="toughest"&&c.tough_count>0&&<span style={{fontSize:10,color:"#fb7185",marginLeft:6}}>{c.tough_count} tough</span>}</div>
+              {kind==="best"&&gm&&<div style={{fontSize:12,color:"#94a3b8",fontStyle:"italic",lineHeight:1.5,marginTop:6,borderLeft:"3px solid #4338ca",paddingLeft:10}}>"{gm.quote}"</div>}
+              {kind==="toughest"&&tm&&<div style={{fontSize:12,color:"#94a3b8",lineHeight:1.5,marginTop:6,borderLeft:"3px solid #9f1239",paddingLeft:10}}>{tm.why_it_was_tough&&<div><b style={{color:"#9f1239"}}>Tough: </b>{tm.why_it_was_tough}</div>}{tm.what_to_do_instead&&<div style={{marginTop:2}}><b style={{color:"#34d399"}}>Fix: </b>{tm.what_to_do_instead}</div>}</div>}
+              {kind==="toughest"&&!tm&&<div style={{fontSize:11,color:"#4b5563",marginTop:6}}>Re-look this call for tough moments.</div>}
+              <button className="btn no-print" onClick={()=>goTo("calls",c.id)} style={{fontSize:10,padding:"3px 9px",marginTop:8}}>Read call →</button>
+            </div>;
+          };
+          return<div className="card" style={{padding:20,borderColor:"#312e81"}}>
+            <div className="no-print" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:6,flexWrap:"wrap"}}>
+              <div className="section-head" style={{marginBottom:0,color:"#c7d2fe"}}>📋 Daily Digest for Sam</div>
+              <button className="btn" onClick={copySlack} style={{fontSize:12,padding:"6px 12px",background:copied?"#0f2a1a":"",borderColor:copied?"#14532d":"",color:copied?"#34d399":""}}>{copied?"✓ Copied":"⧉ Copy Slack block"}</button>
+            </div>
+            <div style={{fontSize:11,color:"#64748b",marginBottom:14}}>Setters and closers — best and toughest call for {windowLabel.toLowerCase()}. Toughest blends a low score with tough-moment load.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              <div className="flex-col gap-10"><div style={{fontSize:12,fontWeight:800,color:"#818cf8"}}>🎧 Setters <span style={{color:"#4b5563",fontWeight:600}}>({D.setters.count})</span></div><CallCard c={D.setters.best} kind="best"/><CallCard c={D.setters.toughest} kind="toughest"/></div>
+              <div className="flex-col gap-10"><div style={{fontSize:12,fontWeight:800,color:"#60a5fa"}}>📞 Closers <span style={{color:"#4b5563",fontWeight:600}}>({D.closers.count})</span></div><CallCard c={D.closers.best} kind="best"/><CallCard c={D.closers.toughest} kind="toughest"/></div>
+            </div>
+          </div>;
+        })()}
         <div className="grid grid-stats">
           <div className="card stat-card"><div className="stat-label">Team Avg</div><div className="stat-value" style={{color:sClr(report.team?.avg_adj)}}>{report.team?.avg_adj??"—"}</div><div className="stat-sub">adjusted /10</div></div>
           <div className="card stat-card"><div className="stat-label">Scored</div><div className="stat-value">{report.team?.scored||0}</div><div className="stat-sub">calls</div></div>
