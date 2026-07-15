@@ -307,8 +307,8 @@ async function processCall(row) {
     rubric_version: rubricVersion,
   };
 
-  await q('UPDATE calls SET overall_score=?,overall_score_adj=?,score_adjust_notes=?,category_scores=?,pass_fail=?,coaching_notes=?,quick_summary=?,strengths=?,improvements=?,next_step_text=?,golden_moments=?,flagged=?,status=?,error=?,processed_at=?,model_used=?,transcript_slice=?,rubric_version=?,call_duration_sec=COALESCE(?,call_duration_sec) WHERE id=?',
-    [result.overall_score, adj.adjusted, adjustNotes, JSON.stringify(result.category_scores||{}), JSON.stringify(enrichedPassFail), result.coaching_notes||'', result.quick_summary||'', JSON.stringify(result.strengths||[]), JSON.stringify(result.improvements||[]), result.next_step_text||'', JSON.stringify(result.golden_moments||[]), flagged?1:0, 'SCORED', '', ts, usage.model||'unknown', slice, rubricVersion, durSec, row.id]);
+  await q('UPDATE calls SET overall_score=?,overall_score_adj=?,score_adjust_notes=?,category_scores=?,pass_fail=?,coaching_notes=?,quick_summary=?,strengths=?,improvements=?,next_step_text=?,golden_moments=?,tough_moments=?,flagged=?,status=?,error=?,processed_at=?,model_used=?,transcript_slice=?,rubric_version=?,call_duration_sec=COALESCE(?,call_duration_sec) WHERE id=?',
+    [result.overall_score, adj.adjusted, adjustNotes, JSON.stringify(result.category_scores||{}), JSON.stringify(enrichedPassFail), result.coaching_notes||'', result.quick_summary||'', JSON.stringify(result.strengths||[]), JSON.stringify(result.improvements||[]), result.next_step_text||'', JSON.stringify(result.golden_moments||[]), JSON.stringify(result.tough_moments||[]), flagged?1:0, 'SCORED', '', ts, usage.model||'unknown', slice, rubricVersion, durSec, row.id]);
 
   // Persist transcript-quality grade separately (isolated so it can never disturb
   // the scoring write above). Read by the call detail view + diagnostics endpoints.
@@ -441,4 +441,38 @@ async function saveTagSuggestions(callId, result, ts) {
   return { suggested: n };
 }
 
-module.exports = { processQueue, processCall, unpauseDailyRows, adjustScore, sweepStuckTranscripts, DEDUCT, saveTagSuggestions, OUTCOME_TAGS, CROSS_SELL_TAGS };
+// ── Re-extract golden + tough moments for an already-scored call ──
+// Re-reads the transcript through the SAME QC prompt but persists ONLY the
+// moment fields. It never changes the score, category scores, or averages —
+// so it's safe to run on confirmed/overridden calls and respects the
+// "only a human confirm changes an average" invariant. Used by the "re-look
+// at moments" button and to backfill calls scored before speaker attribution.
+async function reExtractMoments(callId) {
+  const row = (await q('SELECT * FROM calls WHERE id=?', [callId])).rows[0];
+  if (!row) throw new Error('Call not found');
+  if (!row.transcript || row.transcript.trim().length < 50) throw new Error('NO_TRANSCRIPT');
+
+  const role = row.role || 'Setter';
+  let rubric = await q('SELECT * FROM rubric_items WHERE version=2 AND role=? ORDER BY weight DESC', [role]);
+  if (!rubric.rows.length) rubric = await q('SELECT * FROM rubric_items WHERE version=1 AND role=? ORDER BY weight DESC', [role]);
+
+  const hygiene = analyzeTranscriptHygiene(row.transcript, { source: row.source });
+  const slice = buildSmartSlice(row.transcript);
+  const prompt = buildQCPrompt({
+    role, repName: row.rep_name || 'Unknown', source: row.source || 'Unknown',
+    transcript: slice, rubricItems: rubric.rows,
+    metrics: { durationSec: toNum(row.call_duration_sec), agentTalkPct: toNum(row.agent_talk_pct), contactTalkPct: toNum(row.contact_talk_pct) },
+    transcriptQualityWarning: hygiene.warning,
+  });
+
+  const { result, usage } = await callAIJson(prompt);
+  const golden = Array.isArray(result?.golden_moments) ? result.golden_moments : [];
+  const tough = Array.isArray(result?.tough_moments) ? result.tough_moments : [];
+
+  await q('UPDATE calls SET golden_moments=?, tough_moments=? WHERE id=?',
+    [JSON.stringify(golden), JSON.stringify(tough), callId]);
+
+  return { ok: true, callId, golden_count: golden.length, tough_count: tough.length, usage };
+}
+
+module.exports = { processQueue, processCall, unpauseDailyRows, adjustScore, sweepStuckTranscripts, DEDUCT, saveTagSuggestions, OUTCOME_TAGS, CROSS_SELL_TAGS, reExtractMoments };
