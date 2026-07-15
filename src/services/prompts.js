@@ -63,7 +63,7 @@ ${mid}`;
 }
 
 // ─── QC Prompt ───────────────────────────────────────────────
-function buildQCPrompt({ role, repName, source, transcript, rubricItems, goldExamples, metrics, middleSummary, scenarioContext }) {
+function buildQCPrompt({ role, repName, source, transcript, rubricItems, goldExamples, metrics, middleSummary, scenarioContext, transcriptQualityWarning }) {
   const dur = isN(metrics.durationSec) ? `${metrics.durationSec}s (${Math.floor(metrics.durationSec/60)}m${metrics.durationSec%60}s)` : 'unknown';
   const parts = [
     `You are a strict sales-call QA evaluator for BNB Turnkey, a turnkey short-term rental investment service under The Rise Collective. You evaluate calls according to Sam Arnita's (CRO) sales philosophy.
@@ -122,9 +122,16 @@ RULES: Score 0-10 strictly. Do not inflate. Missing evidence = score conservativ
     `\nSCORING ADJUSTMENTS:`,
   ];
 
-  if (isN(metrics.agentTalkPct) && metrics.agentTalkPct > 80) parts.push('- Agent >80%: reduce by 1, note talk-balance');
-  if (isN(metrics.agentTalkPct) && metrics.agentTalkPct < 20) parts.push('- Agent <20%: reduce by 1, note engagement');
+  // When diarization is unreliable, the talk-% is derived from bad speaker labels —
+  // suppress the talk-balance hints here so they don't contradict the quality warning.
+  if (!transcriptQualityWarning) {
+    if (isN(metrics.agentTalkPct) && metrics.agentTalkPct > 80) parts.push('- Agent >80%: reduce by 1, note talk-balance');
+    if (isN(metrics.agentTalkPct) && metrics.agentTalkPct < 20) parts.push('- Agent <20%: reduce by 1, note engagement');
+  }
   parts.push('- No explicit next step = clear_next_step: false');
+
+  // Transcript-quality warning goes HIGH in the prompt so the scorer reads it before judging.
+  if (transcriptQualityWarning) parts.push(transcriptQualityWarning);
   parts.push('- Duration does NOT cap the score. If this is a real sales call, score the content on its merits.');
 
   parts.push('\nRUBRIC:');
@@ -176,7 +183,7 @@ Return ONLY valid JSON (no markdown). Schema:
   "improvements": ["max 3 — reference Sam's philosophy if relevant"],
   "next_step_text": "exact next step or empty",
   "coaching_notes": "detailed paragraph citing Sam's philosophy where relevant",
-  "golden_moments": [{"timestamp":"mm:ss","quote":"short","why_it_matters":"coaching relevance"}],
+  "golden_moments": [{"timestamp":"mm:ss","speaker":"rep|lead","quote":"short verbatim quote from the transcript","why_it_matters":"2-3 full sentences (see GOLDEN MOMENTS rules below)"}],
   "confidence": "high|medium|low",
   "confidence_reason": "1 sentence why",
   "outcome_tag": "DISQUALIFIED|NOT_READY|LONG_TERM_NURTURE|INFO_SEEKER|SHORT_TERM_NURTURE|REDZONE_HOT|HARD_NO|NONE",
@@ -244,6 +251,15 @@ Only tag when the lead's need sits OUTSIDE the turnkey package:
 TEST BEFORE YOU TAG: "Is this something BNB Turnkey already includes?" If YES → do not tag. If the lead needs a genuinely DIFFERENT product or service from a sister brand → tag it.
 
 When in doubt, return an empty array. A false cross-sell lead wastes another team's time and erodes trust in the whole signal.
+
+═══════════════════════════════════════════════
+GOLDEN MOMENTS — attribution + explanation rules
+═══════════════════════════════════════════════
+A golden moment is a genuinely instructive line from the call — usually something the REP did well and worth teaching, occasionally a revealing thing the LEAD said that the rep handled (or should have handled).
+- "speaker": who actually said the quote — "rep" or "lead". Judge by CONTENT, not by the transcript's speaker label (labels can be wrong on dial-in calls). A pitch, discovery question, reframe, or objection-handle is the rep; a buying signal, objection, or personal disclosure is the lead.
+- "quote": a short VERBATIM excerpt (a sentence or two), not a paraphrase.
+- "why_it_matters": 2-3 FULL sentences. Name the specific technique or Belief it demonstrates (e.g. "isolates the objection before handling", "builds the DESIRE belief", "holds expert frame"), say what made it effective, and give the coaching takeaway another rep could copy. Do NOT write a vague phrase like "good rapport" — be concrete and instructional.
+Return 1-4 of the most instructive moments (fewer is fine). Skip filler.
 
 PASS/FAIL GUIDANCE:
 - has_discovery: true if discovery was substantive (5+ min for closer, 2+ min for setter)
