@@ -1,6 +1,7 @@
 const { q } = require('../../migrations/run');
 const { callAIJson, callAI, estimateCost } = require('../services/ai');
 const { buildSmartSlice, needsTwoPass, buildMiddleSummaryPrompt, buildQCPrompt } = require('../services/prompts');
+const { analyzeTranscriptHygiene } = require('../services/transcriptHygiene');
 
 const MAX_RETRY = 5;
 function now() { return new Date().toISOString().replace('T',' ').slice(0,19); }
@@ -30,10 +31,14 @@ const DEDUCT = {
   untailored_pitch: Math.abs(Number(process.env.DEDUCT_UNTAILORED_PITCH ?? 1)),
 };
 
-function adjustScore(ai, dur, agPct, result) {
+// opts.suppressTalkRatio — when the transcript has diarization artifacts (echo /
+// scrambled dial-in labels), the per-speaker word split is meaningless, so we do
+// NOT apply talk-balance deductions. The philosophy deductions still apply.
+function adjustScore(ai, dur, agPct, result, opts = {}) {
   const deductions = []; // structured: [{rule, label, points, severity}]
   if (typeof ai !== 'number' || !isFinite(ai)) return { adjusted: ai, notes: ['No score'], deductions: [] };
   let s = ai;
+  const suppressTalkRatio = !!opts.suppressTalkRatio;
 
   // Sam's philosophy rules — deductions instead of caps (weights from DEDUCT config)
   const pf = result?.pass_fail || {};
@@ -54,8 +59,12 @@ function adjustScore(ai, dur, agPct, result) {
     deductions.push({ rule: 'untailored_pitch', label: 'Untailored Pitch', points: -DEDUCT.untailored_pitch, severity: 'warning', source: "Sam's philosophy" });
   }
 
-  // Talk % adjustments — call mechanics, kept as-is
-  if (agPct !== null && agPct !== undefined && agPct > 0) {
+  // Talk % adjustments — call mechanics, kept as-is.
+  // Skipped entirely when the transcript's speaker split is untrustworthy.
+  if (suppressTalkRatio && agPct !== null && agPct !== undefined && agPct > 0) {
+    deductions.push({ rule: 'talk_ratio_suppressed', label: 'Talk-balance not scored (transcript diarization unreliable)', points: 0, severity: 'info', source: 'Transcript hygiene' });
+  }
+  if (!suppressTalkRatio && agPct !== null && agPct !== undefined && agPct > 0) {
     if (agPct > 90) {
       s -= 2;
       deductions.push({ rule: 'agent_talk_too_high', label: `Agent talk ${agPct}% (>90%)`, points: -2, severity: 'warning', source: 'Call mechanics' });
@@ -218,6 +227,14 @@ async function processCall(row) {
   }
   if (!rubric.rows.length) throw new Error('NO_RUBRIC for ' + role);
 
+  // ── Transcript hygiene: detect diarization artifacts (echo / scrambled dial-in
+  // labels) BEFORE scoring. We never repair the transcript — we warn the scorer to
+  // attribute by content and to ignore talk-balance, and we record the quality grade.
+  const hygiene = analyzeTranscriptHygiene(row.transcript, { source: row.source });
+  if (hygiene.grade !== 'clean') {
+    console.log(`[QC] #${row.id} transcript quality: ${hygiene.grade} (${hygiene.score}/100) — ${hygiene.flags.map(f => f.code).join(', ')}`);
+  }
+
   let slice = buildSmartSlice(row.transcript), midSummary = null;
   if (needsTwoPass(txChars, durSec)) {
     try { const r = await callAI(buildMiddleSummaryPrompt(row.transcript), {maxTokens:800}); midSummary = r.text; } catch(e) {}
@@ -228,6 +245,7 @@ async function processCall(row) {
     transcript: slice, rubricItems: rubric.rows,
     metrics: { durationSec: durSec, agentTalkPct: agTalk, contactTalkPct: coTalk },
     middleSummary: midSummary,
+    transcriptQualityWarning: hygiene.warning,
   });
 
   console.log(`[QC] #${row.id} scoring (${prompt.length}ch)...`);
@@ -240,7 +258,7 @@ async function processCall(row) {
 
   const scoringCost = estimateCost(usage);
   const totalCost = scoringCost + (classification.cost || 0);
-  const adj = adjustScore(result.overall_score, durSec, agTalk, result);
+  const adj = adjustScore(result.overall_score, durSec, agTalk, result, { suppressTalkRatio: hygiene.suppressTalkRatio });
   const flagged = isFlagged(result, adj.adjusted, durSec, agTalk);
 
   // Append confidence to adjustment notes
@@ -291,6 +309,15 @@ async function processCall(row) {
 
   await q('UPDATE calls SET overall_score=?,overall_score_adj=?,score_adjust_notes=?,category_scores=?,pass_fail=?,coaching_notes=?,quick_summary=?,strengths=?,improvements=?,next_step_text=?,golden_moments=?,flagged=?,status=?,error=?,processed_at=?,model_used=?,transcript_slice=?,rubric_version=?,call_duration_sec=COALESCE(?,call_duration_sec) WHERE id=?',
     [result.overall_score, adj.adjusted, adjustNotes, JSON.stringify(result.category_scores||{}), JSON.stringify(enrichedPassFail), result.coaching_notes||'', result.quick_summary||'', JSON.stringify(result.strengths||[]), JSON.stringify(result.improvements||[]), result.next_step_text||'', JSON.stringify(result.golden_moments||[]), flagged?1:0, 'SCORED', '', ts, usage.model||'unknown', slice, rubricVersion, durSec, row.id]);
+
+  // Persist transcript-quality grade separately (isolated so it can never disturb
+  // the scoring write above). Read by the call detail view + diagnostics endpoints.
+  try {
+    await q('UPDATE calls SET transcript_quality=?,transcript_quality_score=?,transcript_quality_flags=? WHERE id=?',
+      [hygiene.grade, hygiene.score, JSON.stringify(hygiene.flags || []), row.id]);
+  } catch (hqErr) {
+    console.error(`[QC] #${row.id} quality write failed: ${hqErr.message} — scoring already saved, continuing`);
+  }
 
   // ── Suggest outcome + cross-sell tags (SUGGESTED only — never auto-applied) ──
   // A SUGGESTED tag has ZERO effect on any average. Only a human CONFIRM does.
