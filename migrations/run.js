@@ -182,6 +182,14 @@ async function migrate() {
     // Calibration: Sam can override per-category, not just the overall score.
     `ALTER TABLE score_overrides ADD COLUMN IF NOT EXISTS category_scores text`,
     `ALTER TABLE score_overrides ADD COLUMN IF NOT EXISTS original_categories text`,
+
+    // ── Transcript hygiene ─────────────────────────────────────────────
+    // Diarization-quality grade recorded per call (echo / scrambled dial-in labels).
+    // We never repair the transcript — this only records the grade so the UI can
+    // warn and the scorer can compensate. Backfilled by the diagnostics scan.
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS transcript_quality text`,
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS transcript_quality_score integer`,
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS transcript_quality_flags text`,
   ];
   for (const sql of stmts) await q(sql);
 
