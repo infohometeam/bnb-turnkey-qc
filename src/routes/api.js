@@ -942,13 +942,42 @@ router.get('/golden-moments', async (req, res) => {
       });
     }
 
-    // Free-text search across the quote AND the explanation.
+    // How many moments each call has (for the "see all N on this call" drill-in).
+    const callTotals = {};
+    moments.forEach(m => { callTotals[m.call_id] = (callTotals[m.call_id] || 0) + 1; });
+    moments.forEach(m => { m.call_moment_total = callTotals[m.call_id]; });
+
+    // Free-text search across the quote AND the explanation (searches the FULL library).
     let out = moments;
     if (search) {
       const s = String(search).toLowerCase();
       out = out.filter(m => (m.quote + ' ' + m.why).toLowerCase().includes(s));
     }
     if (pinned === 'true') out = out.filter(m => m.pinned);
+
+    // Per-call cap for the browse view: at most 2 REP moments per call, or 1 LEAD
+    // moment if the call has no rep moment. Pinned moments always survive the cap.
+    // Skipped when searching, filtering to pinned, or when full=true (drill-in).
+    const doCap = !search && pinned !== 'true' && req.query.full !== 'true';
+    if (doCap) {
+      const byCall = {};
+      out.forEach(m => { (byCall[m.call_id] = byCall[m.call_id] || []).push(m); });
+      const capped = [];
+      for (const cid of Object.keys(byCall)) {
+        const ms = byCall[cid];
+        const pinnedMs = ms.filter(m => m.pinned);
+        const rest = ms.filter(m => !m.pinned);
+        const reps = rest.filter(m => m.speaker === 'rep');
+        const leads = rest.filter(m => m.speaker === 'lead');
+        const unknown = rest.filter(m => !m.speaker);
+        let pick;
+        if (reps.length) pick = reps.slice(0, 2);
+        else if (leads.length) pick = leads.slice(0, 1);
+        else pick = unknown.slice(0, 1);   // pre-backfill calls with no speaker yet
+        capped.push(...pinnedMs, ...pick.filter(m => !pinnedMs.includes(m)));
+      }
+      out = capped;
+    }
 
     // Pinned first — Sam's canonical exemplars lead.
     out.sort((a, b) => (b.pinned - a.pinned) || (Number(b.score) - Number(a.score)));
@@ -1037,6 +1066,69 @@ router.get('/diagnostics/transcript-scan', async (req, res) => {
     }
     degraded.sort((x, y) => x.score - y.score);
     res.json({ summary, degraded_calls: degraded });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Re-look at moments ──────────────────────────────────────────
+// Re-extract golden + tough moments from the transcript WITHOUT re-scoring.
+// Never changes averages (respects "only a human confirm changes an average").
+// Two segments in the path → no collision with the greedy GET /calls/:id.
+
+// Single call — used by the "re-look at moments" button on a call.
+router.post('/calls/:id/relook-moments', express.json(), async (req, res) => {
+  try {
+    const { reExtractMoments } = require('../workers/qcWorker');
+    const r = await reExtractMoments(req.params.id);
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// How many scored calls still need a re-look (missing speaker attribution or
+// tough moments never extracted). Drives the progress UI.
+router.get('/golden-moments/relook-status', async (req, res) => {
+  try {
+    const r = (await q(
+      `SELECT
+         COUNT(*) FILTER (WHERE golden_moments IS NOT NULL AND golden_moments <> '[]' AND golden_moments <> '') AS with_golden,
+         COUNT(*) FILTER (WHERE (golden_moments IS NOT NULL AND golden_moments <> '[]' AND golden_moments <> '' AND golden_moments::text NOT ILIKE '%"speaker"%')
+                             OR tough_moments IS NULL) AS need_relook
+       FROM calls
+       WHERE status='SCORED' AND transcript IS NOT NULL AND LENGTH(transcript) > 0
+         AND rep_name <> 'Unknown Setter'`)).rows[0];
+    res.json({ with_golden: Number(r.with_golden || 0), need_relook: Number(r.need_relook || 0) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Batch backfill — processes up to `limit` calls per request (default 8) so it
+// never hits Render's request timeout, and reports how many remain. The client
+// calls this repeatedly until remaining hits 0, showing progress.
+router.post('/golden-moments/relook-all', express.json(), async (req, res) => {
+  try {
+    const { reExtractMoments } = require('../workers/qcWorker');
+    const limit = Math.min(Number(req.body?.limit) || 8, 15);
+    const scope = req.body?.scope === 'all' ? 'all' : 'missing';
+    const cond = scope === 'all'
+      ? `1=1`
+      : `((golden_moments IS NOT NULL AND golden_moments <> '[]' AND golden_moments <> '' AND golden_moments::text NOT ILIKE '%"speaker"%') OR tough_moments IS NULL)`;
+    const rows = (await q(
+      `SELECT id FROM calls
+       WHERE status='SCORED' AND transcript IS NOT NULL AND LENGTH(transcript) > 0
+         AND rep_name <> 'Unknown Setter' AND ${cond}
+       ORDER BY received_at DESC LIMIT ?`, [limit])).rows;
+
+    const results = [];
+    for (const row of rows) {
+      try { results.push(await reExtractMoments(row.id)); }
+      catch (e) { results.push({ callId: row.id, error: e.message }); }
+    }
+
+    // Count what still needs a re-look after this batch.
+    const remaining = Number((await q(
+      `SELECT COUNT(*) AS n FROM calls
+       WHERE status='SCORED' AND transcript IS NOT NULL AND LENGTH(transcript) > 0
+         AND rep_name <> 'Unknown Setter' AND ${cond}`)).rows[0].n || 0);
+
+    res.json({ processed: results.length, remaining, results });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1603,15 +1695,18 @@ router.get('/report', async (req, res) => {
     if (rep) baseArgs.push(rep);
 
     // Window: an explicit from/to range or a named preset (today / yesterday) wins;
-    // otherwise fall back to the rolling N-day window.
+    // otherwise fall back to the rolling N-day window. Today/Yesterday boundaries are
+    // pinned to US Eastern (America/New_York) — received_at is stored as UTC wall-clock.
+    const ET_DATE = `(received_at::timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date`;
+    const ET_TODAY = `(NOW() AT TIME ZONE 'America/New_York')::date`;
     let periodClause, prevClause, useRange = false;
     if (preset === 'today') {
-      periodClause = `received_at::timestamp >= CURRENT_DATE`;
-      prevClause = `received_at::timestamp >= (CURRENT_DATE - INTERVAL '1 day') AND received_at::timestamp < CURRENT_DATE`;
+      periodClause = `${ET_DATE} = ${ET_TODAY}`;
+      prevClause = `${ET_DATE} = ${ET_TODAY} - 1`;
       useRange = true;
     } else if (preset === 'yesterday') {
-      periodClause = `received_at::timestamp >= (CURRENT_DATE - INTERVAL '1 day') AND received_at::timestamp < CURRENT_DATE`;
-      prevClause = `received_at::timestamp >= (CURRENT_DATE - INTERVAL '2 days') AND received_at::timestamp < (CURRENT_DATE - INTERVAL '1 day')`;
+      periodClause = `${ET_DATE} = ${ET_TODAY} - 1`;
+      prevClause = `${ET_DATE} = ${ET_TODAY} - 2`;
       useRange = true;
     } else if (from || to) {
       const f = from || '1970-01-01';
@@ -1759,11 +1854,74 @@ router.get('/report', async (req, res) => {
     const teamCategories = Object.keys(catTot).map(k => ({ category: k, avg: Math.round(catTot[k]/catCnt[k]*10)/10 }))
       .sort((a,b) => a.avg - b.avg); // weakest first — that's the coaching focus
 
+    // ── Sam's daily digest: setters best+toughest, closers best+toughest ──
+    // Always team-wide across BOTH roles (ignores any role/rep filter), same window
+    // and exclusions as the rest of the report. "Toughest" blends a low score with
+    // tough-moment load — the call that most needs coaching. Never re-scores.
+    const digestRows = (await q(
+      `SELECT id, rep_name, role, client_name, overall_score_adj, received_at,
+              golden_moments, tough_moments, aloware_contact_id, aloware_call_id
+       FROM calls
+       WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED}
+         AND ${periodClause}`)).rows;
+
+    const parseArr = (v) => { if (Array.isArray(v)) return v; try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+    const toughnessOf = (c) => {
+      const s = Number(c.overall_score_adj);
+      const tc = parseArr(c.tough_moments).length;
+      return (10 - (isFinite(s) ? s : 5)) + tc * 1.5;   // low score + tough moments = tougher
+    };
+    const liteCall = (c) => c ? {
+      id: c.id, rep_name: c.rep_name, role: c.role, client_name: c.client_name,
+      score: c.overall_score_adj, received_at: c.received_at,
+      toughness: Math.round(toughnessOf(c) * 10) / 10,
+      tough_count: parseArr(c.tough_moments).length,
+      golden: parseArr(c.golden_moments).filter(m => m && m.quote).slice(0, 1),
+      tough: parseArr(c.tough_moments).filter(m => m && m.quote).slice(0, 2),
+      aloware_contact_id: c.aloware_contact_id, aloware_call_id: c.aloware_call_id,
+    } : null;
+    const bestOf = (list) => list.length ? list.reduce((a, b) => Number(b.overall_score_adj) > Number(a.overall_score_adj) ? b : a) : null;
+    const toughestOf = (list) => list.length ? list.reduce((a, b) => {
+      const tb = toughnessOf(b), ta = toughnessOf(a);
+      if (tb > ta) return b;
+      if (tb === ta && Number(b.overall_score_adj) < Number(a.overall_score_adj)) return b;
+      return a;
+    }) : null;
+    const setters = digestRows.filter(c => c.role === 'Setter');
+    const closers = digestRows.filter(c => c.role === 'Closer');
+    const samDigest = {
+      setters: { best: liteCall(bestOf(setters)), toughest: liteCall(toughestOf(setters)), count: setters.length },
+      closers: { best: liteCall(bestOf(closers)), toughest: liteCall(toughestOf(closers)), count: closers.length },
+    };
+
+    const windowLabel = preset === 'today' ? 'Today (ET)' : preset === 'yesterday' ? 'Yesterday (ET)'
+      : (from || to) ? `${from || '…'} → ${to || '…'}` : `Last ${days} days`;
+
+    // Slack copy-paste block (mrkdwn: *bold*). Server-built so it's consistent.
+    const slackLine = (label, c) => {
+      if (!c) return `${label}: _no calls_`;
+      const g = c.golden[0] ? `\n   🟢 "${c.golden[0].quote}"` : '';
+      const t = c.tough[0] ? `\n   🔴 ${c.tough[0].why_it_was_tough || 'tough moment'} → ${c.tough[0].what_to_do_instead || ''}`.trimEnd() : '';
+      return `${label}: *${c.rep_name}* → ${c.client_name || '?'} · *${c.score ?? '—'}/10*${label.includes('Toughest') && c.tough_count ? ` (${c.tough_count} tough)` : ''}${label.includes('Best') ? g : t}`;
+    };
+    const samDigestSlack = [
+      `📊 *Daily QC Digest — ${windowLabel}*`,
+      ``,
+      `🎧 *SETTERS* (${setters.length} scored)`,
+      `🏆 ${slackLine('Best', samDigest.setters.best)}`,
+      `💪 ${slackLine('Toughest', samDigest.setters.toughest)}`,
+      ``,
+      `📞 *CLOSERS* (${closers.length} scored)`,
+      `🏆 ${slackLine('Best', samDigest.closers.best)}`,
+      `💪 ${slackLine('Toughest', samDigest.closers.toughest)}`,
+    ].join('\n');
+
     res.json({
       generated: new Date().toISOString(),
       period_days: days,
       role: role || 'all',
       rep: rep || null,
+      window_label: windowLabel,
       team: team.rows[0],
       reps: repCards,
       trend: trend.rows,
@@ -1771,6 +1929,8 @@ router.get('/report', async (req, res) => {
       worst_call: worst.rows[0] || null,
       non_sales: nonSales.rows,
       team_categories: teamCategories,
+      sam_digest: samDigest,
+      sam_digest_slack: samDigestSlack,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
