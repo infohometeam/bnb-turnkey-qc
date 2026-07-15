@@ -184,6 +184,7 @@ Return ONLY valid JSON (no markdown). Schema:
   "next_step_text": "exact next step or empty",
   "coaching_notes": "detailed paragraph citing Sam's philosophy where relevant",
   "golden_moments": [{"timestamp":"mm:ss","speaker":"rep|lead","quote":"short verbatim quote from the transcript","why_it_matters":"2-3 full sentences (see GOLDEN MOMENTS rules below)"}],
+  "tough_moments": [{"timestamp":"mm:ss","speaker":"rep|lead","quote":"short verbatim quote from the transcript","why_it_was_tough":"what went wrong / was hard here","what_to_do_instead":"the concrete better move (see TOUGH MOMENTS rules below)"}],
   "confidence": "high|medium|low",
   "confidence_reason": "1 sentence why",
   "outcome_tag": "DISQUALIFIED|NOT_READY|LONG_TERM_NURTURE|INFO_SEEKER|SHORT_TERM_NURTURE|REDZONE_HOT|HARD_NO|NONE",
@@ -260,6 +261,16 @@ A golden moment is a genuinely instructive line from the call — usually someth
 - "quote": a short VERBATIM excerpt (a sentence or two), not a paraphrase.
 - "why_it_matters": 2-3 FULL sentences. Name the specific technique or Belief it demonstrates (e.g. "isolates the objection before handling", "builds the DESIRE belief", "holds expert frame"), say what made it effective, and give the coaching takeaway another rep could copy. Do NOT write a vague phrase like "good rapport" — be concrete and instructional.
 Return 1-4 of the most instructive moments (fewer is fine). Skip filler.
+
+═══════════════════════════════════════════════
+TOUGH MOMENTS — the coaching counterpart to golden moments
+═══════════════════════════════════════════════
+A tough moment is a point in the call the rep should learn from: a missed discovery thread, a fumbled or dodged objection, a buying signal talked past, a broken expert frame, a price drop with no isolation, over-talking, or folding under pressure. It can also be a hard thing the LEAD threw at the rep that exposed a gap.
+- "speaker": who said the quote — "rep" or "lead" — judged by CONTENT, not the transcript label.
+- "quote": a short VERBATIM excerpt (a sentence or two).
+- "why_it_was_tough": name the specific miss and the Belief/framework step it maps to (e.g. "objection not isolated before handling", "let the DOUBT belief go unaddressed", "dropped the expert frame").
+- "what_to_do_instead": the concrete better move another rep could copy next time — a specific line, question, or framework step, not "be more confident".
+Return 0-4 tough moments. If the call was genuinely strong with nothing to flag, return an empty array — do NOT invent problems. Be honest and specific; this is for development, never to shame.
 
 PASS/FAIL GUIDANCE:
 - has_discovery: true if discovery was substantive (5+ min for closer, 2+ min for setter)
