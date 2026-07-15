@@ -344,6 +344,9 @@ function GoldenMomentsPage(){
   const[onlyPinned,setOnlyPinned]=useState(false);
   const[minScore,setMinScore]=useState("");
   const[busy,setBusy]=useState(null);
+  const[page,setPage]=useState(1);
+  const PAGE_SIZE=18;
+  React.useEffect(()=>{setPage(1);},[rep,q,onlyPinned,minScore]);
 
   React.useEffect(()=>{const t=setTimeout(()=>setQ(search),350);return()=>clearTimeout(t);},[search]);
   const qs=`?${rep?`rep=${encodeURIComponent(rep)}&`:""}${q?`search=${encodeURIComponent(q)}&`:""}${onlyPinned?"pinned=true&":""}${minScore?`minScore=${minScore}&`:""}`;
@@ -368,9 +371,14 @@ function GoldenMomentsPage(){
     const key=m.call_id+"-"+m.moment_index;
     const[picking,setPicking]=useState(false);
     return<div className="card" style={{padding:18,borderColor:m.pinned?"#a16207":"#1e2635",background:m.pinned?"#1a1505":"var(--card)"}}>
-      {m.pinned&&<div style={{fontSize:10,fontWeight:800,color:"#fbbf24",letterSpacing:.5,marginBottom:8}}>
-        ★ PINNED{m.category?` · ${m.category.toUpperCase()}`:""}
-      </div>}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+        {m.speaker&&<span style={{fontSize:9,fontWeight:800,letterSpacing:.5,padding:"2px 8px",borderRadius:20,
+          background:m.speaker==="lead"?"#0f2a1a":"#0f1f33",color:m.speaker==="lead"?"#34d399":"#60a5fa",
+          border:`1px solid ${m.speaker==="lead"?"#14532d":"#1e3a5f"}`}}>
+          {m.speaker==="lead"?"◂ LEAD":"▸ REP"}</span>}
+        {m.pinned&&<span style={{fontSize:10,fontWeight:800,color:"#fbbf24",letterSpacing:.5}}>
+          ★ PINNED{m.category?` · ${m.category.toUpperCase()}`:""}</span>}
+      </div>
 
       {/* The quote — the thing that teaches */}
       <div style={{fontSize:15,color:"#e2e8f0",lineHeight:1.7,fontStyle:"italic",
@@ -436,16 +444,35 @@ function GoldenMomentsPage(){
     </div>
 
     {/* Who's contributing */}
-    {data?.by_rep?.length>0&&!rep&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-      {data.by_rep.map(r=><button key={r.rep_name} className="btn" onClick={()=>setRep(r.rep_name)}
-        style={{fontSize:11,padding:"4px 10px"}}>{r.rep_name} <b style={{color:"#818cf8"}}>{r.n}</b></button>)}
+    {data?.by_rep?.length>0&&!rep&&<div style={{marginTop:2}}>
+      <div style={{fontSize:10,fontWeight:800,letterSpacing:.6,textTransform:"uppercase",color:"#5b6472",marginBottom:8}}>Contributors — tap to filter</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {data.by_rep.map(r=><button key={r.rep_name} className="btn" onClick={()=>setRep(r.rep_name)}
+          style={{fontSize:11,padding:"4px 10px"}}>{r.rep_name} <b style={{color:"#818cf8"}}>{r.n}</b></button>)}
+      </div>
     </div>}
 
-    {!data?<div style={{padding:40,textAlign:"center",color:"#374151"}}>Loading…</div>:
-     moments.length===0?<div className="card" style={{padding:40,textAlign:"center",color:"#94a3b8"}}>
-       No moments match those filters.
-     </div>:
-     <div className="flex-col gap-12">{moments.map(m=><Moment key={m.call_id+"-"+m.moment_index} m={m}/>)}</div>}
+    {(()=>{
+      if(!data)return<div style={{padding:40,textAlign:"center",color:"#374151"}}>Loading…</div>;
+      if(moments.length===0)return<div className="card" style={{padding:40,textAlign:"center",color:"#94a3b8"}}>No moments match those filters.</div>;
+      const totalPages=Math.max(1,Math.ceil(moments.length/PAGE_SIZE));
+      const cur=Math.min(page,totalPages);
+      const start=(cur-1)*PAGE_SIZE;
+      const pageItems=moments.slice(start,start+PAGE_SIZE);
+      const Pager=()=><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+        <div style={{fontSize:11,color:"#64748b"}}>Showing <b style={{color:"#c9d1d9"}}>{start+1}–{start+pageItems.length}</b> of <b style={{color:"#c9d1d9"}}>{moments.length}</b></div>
+        {totalPages>1&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
+          <button className="btn" disabled={cur<=1} onClick={()=>setPage(cur-1)} style={{fontSize:11,padding:"4px 10px",opacity:cur<=1?.4:1}}>← Prev</button>
+          <span style={{fontSize:11,color:"#64748b",fontFamily:"var(--m)",minWidth:64,textAlign:"center"}}>Page {cur}/{totalPages}</span>
+          <button className="btn" disabled={cur>=totalPages} onClick={()=>setPage(cur+1)} style={{fontSize:11,padding:"4px 10px",opacity:cur>=totalPages?.4:1}}>Next →</button>
+        </div>}
+      </div>;
+      return<div className="flex-col gap-12">
+        <Pager/>
+        {pageItems.map(m=><Moment key={m.call_id+"-"+m.moment_index} m={m}/>)}
+        {totalPages>1&&<Pager/>}
+      </div>;
+    })()}
   </div>;
 }
 
@@ -921,6 +948,14 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
   async function reqc(){setRs(true);await postApi(`/calls/${c.id}/reqc`);alert("Queued for re-score.");reload();setRs(false)}
   async function del(){if(!confirm("Delete permanently?"))return;await deleteApi(`/calls/${c.id}`);onBack()}
   const lines=(c.transcript||'').split('\n').filter(l=>l.trim());
+  // Transcript-quality (diarization) grade — from the hygiene analyzer.
+  let tqFlags=[];try{tqFlags=JSON.parse(c.transcript_quality_flags||'[]')||[];}catch(e){tqFlags=[];}
+  const tqGrade=c.transcript_quality;const tqScore=c.transcript_quality_score;
+  const tqBad=tqGrade==='degraded'||tqGrade==='minor';
+  const hasCode=code=>tqFlags.some(f=>f&&f.code===code);
+  // Rep-speaker match: the transcript labels the rep by FULL name ("Kevin White"),
+  // so exact first-name equality misses. Match if the label contains a known rep token.
+  const isRepSpeaker=sp=>{const s=(sp||'').toLowerCase();for(const nm of TEAM_NAMES){if(s.includes(nm))return true;}return false;};
   return<div className="flex-col gap-20">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}><button className="btn" onClick={onBack}>← Back</button><div style={{display:"flex",gap:6,position:"relative"}}><div style={{position:"relative"}}><button className="btn" onClick={()=>setExps(v=>!v)}>⤓ Export</button>{exps&&<div style={{position:"absolute",top:"100%",right:0,marginTop:4,background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,padding:4,zIndex:20,minWidth:180,boxShadow:"0 6px 20px rgba(0,0,0,.4)"}}><div onClick={()=>exportCall(false)} style={{padding:"8px 12px",fontSize:12,color:"#c9d1d9",cursor:"pointer",borderRadius:6}} onMouseEnter={e=>e.currentTarget.style.background="#1a1f2e"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>Scorecard only</div><div onClick={()=>exportCall(true)} style={{padding:"8px 12px",fontSize:12,color:"#c9d1d9",cursor:"pointer",borderRadius:6}} onMouseEnter={e=>e.currentTarget.style.background="#1a1f2e"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>Scorecard + transcript</div></div>}</div><button className="btn" onClick={()=>setEd(true)}>✏ Edit</button><button className="btn btn-green" onClick={reqc} disabled={rs}>{rs?"...":"↻ Re-score"}</button><button className="btn btn-red btn-sm" onClick={del}>🗑</button></div></div>
     <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}><ScoreRing value={c.overall_score_adj} size={72} sw={4.5}/><div><h2 style={{fontSize:22,fontWeight:900,margin:0}}>{c.rep_name} → {c.client_name||"?"}</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}><span title="Call ID — click to copy (use this for stitching)" onClick={()=>{navigator.clipboard?.writeText(String(c.id));}} style={{cursor:"pointer",fontFamily:"var(--m)",color:"#818cf8",fontWeight:700,background:"#1e1b4b",padding:"1px 6px",borderRadius:5,border:"1px solid #3730a3"}}>#{c.id}</span> · {fmtF(c.received_at)} · {c.source} · {fmtD(c.call_duration_sec)}</p><div style={{display:"flex",gap:8,marginTop:8}}><Badge status={c.status}/>{c.flagged&&<span className="badge" style={{background:"#2a1a00",color:"#f59e0b",border:"1px solid #92400e"}}>⚠ FLAGGED</span>}</div></div></div>
@@ -948,7 +983,7 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
     {c.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>🎯 Coaching</div><p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{c.coaching_notes}</p></div>}
     {c.next_step_text&&<div className="card" style={{padding:16,background:"#14224a",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
     {c.score_adjust_notes&&(()=>{const parts=c.score_adjust_notes.split('Confidence:');const adj=parts[0]?.replace(/\|\s*$/,'').trim();const conf=parts[1]?.trim();const confLevel=conf?.split(/[\s—-]/)[0]?.toLowerCase();const confColor=confLevel==='high'?'#22c55e':confLevel==='medium'?'#f59e0b':'#ef4444';const confBg=confLevel==='high'?'#052e16':confLevel==='medium'?'#2a1a00':'#2a0a0a';const confBd=confLevel==='high'?'#166534':confLevel==='medium'?'#92400e':'#991b1b';return<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>{conf&&<div style={{display:"flex",alignItems:"center",gap:8}}><span className="badge" style={{background:confBg,color:confColor,border:`1px solid ${confBd}`,fontSize:10}}>Confidence: {confLevel?.toUpperCase()}</span><span style={{fontSize:10,color:"#4b5563"}}>{conf.replace(/^(high|medium|low)[\s—-]*/i,'')}</span></div>}{adj&&adj!=='No adjustments'&&<div style={{fontSize:11,color:"#374151"}}>Adjustments: {adj}</div>}</div>})()}
-    <div className="card" style={{overflow:"hidden"}}><button onClick={()=>setStx(!stx)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",background:"transparent",border:"none",cursor:"pointer",color:"var(--t1)"}}><span className="section-head" style={{marginBottom:0}}>📝 Transcript</span><span style={{fontSize:12,color:"#4b5563",fontFamily:"var(--m)"}}>{stx?"▼":"▶"}</span></button>{stx&&<div style={{maxHeight:500,overflowY:"auto",padding:"16px 20px",borderTop:"1px solid #2a3140"}}>{!lines.length&&<div style={{color:"#374151",textAlign:"center",padding:20}}>No transcript</div>}{lines.map((line,i)=>{const m=line.match(/^\[([^\]]*)\]\s*([^:]+):\s*(.*)/);if(!m)return<div key={i} style={{fontSize:12,color:"#64748b",lineHeight:1.8}}>{line}</div>;const[,ts,sp,tx]=m;const isAg=TEAM_NAMES.has(sp.toLowerCase().trim());return<div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:"1px solid #1a1f2b"}}><span style={{fontSize:10,color:"#2a3040",fontFamily:"var(--m)",minWidth:42}}>{ts}</span><div><span style={{fontSize:11,fontWeight:700,color:isAg?"#60a5fa":"#34d399",marginRight:6}}>{sp.trim()}</span><span style={{fontSize:12,color:"#94a3b8"}}>{tx}</span></div></div>})}</div>}</div>
+    <div className="card" style={{overflow:"hidden"}}><button onClick={()=>setStx(!stx)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",background:"transparent",border:"none",cursor:"pointer",color:"var(--t1)"}}><span className="section-head" style={{marginBottom:0}}>📝 Transcript</span><span style={{fontSize:12,color:"#4b5563",fontFamily:"var(--m)"}}>{stx?"▼":"▶"}</span></button>{tqBad&&<div style={{margin:"2px 20px 14px",padding:"12px 14px",background:tqGrade==='degraded'?"#2a1408":"#241c08",border:`1px solid ${tqGrade==='degraded'?"#7c3a12":"#5c4a12"}`,borderRadius:8}}><div style={{fontSize:12,fontWeight:800,color:tqGrade==='degraded'?"#fb923c":"#eab308",marginBottom:5}}>⚠ Transcript quality: {tqGrade} ({tqScore}/100)</div><div style={{fontSize:11,color:"#94a3b8",lineHeight:1.6}}>{hasCode('DIAL_IN')&&<div>• Phone dial-in call — the recording source (Fathom) <b>scrambled the speaker labels</b>. Lines shown under one name may actually be the other person. This is a source-side issue, not the dashboard.</div>}{(hasCode('ECHO')||hasCode('ECHO_MINOR'))&&<div>• Some lines are <b>echoed</b> (transcribed twice, once per audio channel).</div>}{hasCode('SPEAKER_SPRAWL')&&<div>• The source split one speaker into several labels.</div>}<div style={{marginTop:5,color:"#64748b"}}>The scorer was told to judge by content rather than these labels, and talk-balance was not penalized on this call.</div></div></div>}{stx&&<div style={{maxHeight:500,overflowY:"auto",padding:"16px 20px",borderTop:"1px solid #2a3140"}}>{!lines.length&&<div style={{color:"#374151",textAlign:"center",padding:20}}>No transcript</div>}{lines.map((line,i)=>{const m=line.match(/^\[([^\]]*)\]\s*([^:]+):\s*(.*)/);if(!m)return<div key={i} style={{fontSize:12,color:"#64748b",lineHeight:1.8}}>{line}</div>;const[,ts,sp,tx]=m;const isAg=isRepSpeaker(sp);return<div key={i} style={{display:"flex",gap:10,padding:"6px 0",borderBottom:"1px solid #1a1f2b"}}><span style={{fontSize:10,color:"#2a3040",fontFamily:"var(--m)",minWidth:42}}>{ts}</span><div><span style={{fontSize:11,fontWeight:700,color:isAg?"#60a5fa":"#34d399",marginRight:6}}>{sp.trim()}</span><span style={{fontSize:12,color:"#94a3b8"}}>{tx}</span></div></div>})}</div>}</div>
     <CallComments callId={c.id}/>
     {ed&&<EditModal call={c} onClose={()=>setEd(false)} onSave={()=>{setEd(false);reload()}}/>}
   </div>}
@@ -2479,6 +2514,36 @@ function ResourcesPage(){
 }
 
 const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"progress",icon:"📈",label:"My Progress",color:"#4ade80"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"team",icon:"👥",label:"Team",color:"#818cf8"},{id:"outcomes",icon:"🏷️",label:"Outcomes",color:"#f59e0b"},{id:"referrals",icon:"🔀",label:"Referrals",color:"#14b8a6"},{id:"moments",icon:"🏆",label:"Golden Moments",color:"#fbbf24"},{id:"stitch",icon:"🔗",label:"Stitching",color:"#2dd4bf"},{id:"calibration",icon:"🎯",label:"Calibration",color:"#a5b4fc"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
+const NAV_BY_ID=Object.fromEntries(NAV.map(n=>[n.id,n]));
+// Grouped sidebar — 20 flat tabs were too many to scan. Same tabs, sectioned.
+const NAV_GROUPS=[
+  {title:"Overview",ids:["dashboard","analytics"]},
+  {title:"Calls",ids:["calls","outcomes","referrals","records","stitch"]},
+  {title:"Coaching",ids:["coaching","progress","moments","rubric","resources"]},
+  {title:"Training",ids:["train","history"]},
+  {title:"Admin",ids:["team","calibration","queue","health","export","about"]},
+];
+function loadNavCollapsed(){try{return JSON.parse(localStorage.getItem("qc_nav_collapsed")||"{}")||{};}catch(e){return{};}}
+function NavList({pg,onNav}){
+  const[collapsed,setCollapsed]=useState(loadNavCollapsed);
+  const activeGroup=NAV_GROUPS.find(g=>g.ids.includes(pg))?.title;
+  function toggle(title){setCollapsed(c=>{const n={...c,[title]:!c[title]};try{localStorage.setItem("qc_nav_collapsed",JSON.stringify(n));}catch(e){}return n;});}
+  return<nav style={{flex:1,padding:"10px 6px",display:"flex",flexDirection:"column",gap:2,overflowY:"auto"}}>
+    {NAV_GROUPS.map(g=>{
+      const open=!collapsed[g.title]||g.title===activeGroup;  // active group is always visible
+      return<div key={g.title} style={{marginBottom:6}}>
+        <button onClick={()=>toggle(g.title)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",
+          background:"transparent",border:"none",cursor:"pointer",padding:"6px 12px 4px",color:"#5b6472",
+          fontSize:10,fontWeight:800,letterSpacing:.8,textTransform:"uppercase"}}>
+          <span>{g.title}</span><span style={{fontSize:9,color:"#3b4250"}}>{open?"▾":"▸"}</span>
+        </button>
+        {open&&g.ids.map(id=>{const n=NAV_BY_ID[id];if(!n)return null;return<button key={n.id} className={pg===n.id?"active":""}
+          onClick={()=>onNav(n.id)} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}>
+          <span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>;})}
+      </div>;
+    })}
+  </nav>;
+}
 
 function RubricViewer(){
   const[rb,setRb]=useState(null);const[role,setRole]=useState("Closer");
@@ -2619,7 +2684,7 @@ function App(){
     return()=>window.removeEventListener("hashchange",onHash);
   // eslint-disable-next-line
   },[]);
-  return<><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><nav style={{flex:1,padding:"14px 6px",display:"flex",flexDirection:"column",gap:2}}>{NAV.map(n=><button key={n.id} className={pg===n.id?"active":""} onClick={()=>{sPg(n.id);sDt(null)}} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}><span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>)}</nav><div style={{padding:"14px 16px",borderTop:"1px solid #2a3140"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
+  return<><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><NavList pg={pg} onNav={(id)=>{sPg(id);sDt(null)}}/><div style={{padding:"14px 16px",borderTop:"1px solid #2a3140"}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
     <main><div className="max-w">{
       pg==="calls"&&param?<CallDetail call={{id:Number(param)}} onBack={()=>goTo("calls")}/>:
       pg==="rep"&&param?<RepDetailPage name={param}/>:
