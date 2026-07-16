@@ -94,7 +94,22 @@ router.get('/calls/:id', async (req, res) => {
   try {
     const r = await q('SELECT * FROM calls WHERE id=?', [req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'Not found' });
-    res.json(parseJ(r.rows[0]));
+    const call = parseJ(r.rows[0]);
+    // Fill in Rep/Lead for moments the AI didn't tag — same inference as the library.
+    for (const key of ['golden_moments', 'tough_moments']) {
+      let arr = call[key];
+      if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { arr = null; } }
+      if (Array.isArray(arr)) {
+        arr.forEach(m => {
+          if (m && m.quote && !m.speaker) {
+            const sp = inferMomentSpeaker(m.quote, call.transcript, call.rep_name, call.transcript_quality);
+            if (sp) m.speaker = sp;
+          }
+        });
+        call[key] = arr;
+      }
+    }
+    res.json(call);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -890,6 +905,34 @@ router.get('/referrals', async (req, res) => {
 
 
 // ── GOLDEN MOMENTS LIBRARY ────────────────────────────────────────
+// Derive who spoke a golden-moment quote when the AI didn't tag it: match the
+// quote back to its transcript line and read that line's speaker label.
+// Aloware setter transcripts use unambiguous AGENT/CONTACT labels (never scrambled);
+// Fathom uses names/phones. On diarization-degraded calls a NAMED/phone label can be
+// swapped, so we don't trust those (AGENT/CONTACT stays reliable) and return null,
+// leaving it to the AI re-look. Never guesses — no match means no badge.
+function inferMomentSpeaker(quote, transcript, repName, quality) {
+  if (!quote || !transcript) return null;
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const probe = norm(quote).slice(0, 40);
+  if (probe.length < 8) return null;
+  const repFirst = norm((repName || '').split(/\s+/)[0]);
+  for (const ln of String(transcript).split('\n')) {
+    const m = ln.match(/^\s*(?:\[[^\]]*\]\s*)?([^:]{1,40}):\s*(.*)$/);
+    if (!m) continue;
+    if (!norm(m[2] || '').includes(probe)) continue;
+    const label = m[1].trim();
+    const lab = label.toLowerCase();
+    if (/^agent\b/.test(lab) || lab === 'rep' || lab === 'salesperson') return 'rep';
+    if (/^contact\b/.test(lab) || lab === 'customer' || lab === 'prospect' || lab === 'client') return 'lead';
+    // Named / phone-number label: unreliable on scrambled dial-in calls.
+    if (quality === 'degraded') return null;
+    if (repFirst && norm(label).includes(repFirst)) return 'rep';
+    return 'lead';
+  }
+  return null; // quote not locatable — leave unbadged rather than guess
+}
+
 // The bot already extracts golden moments (quote + timestamp + why it matters)
 // on EVERY scored call — and until now we threw them all away.
 // This surfaces them as a searchable, filterable coaching library.
@@ -911,7 +954,8 @@ router.get('/golden-moments', async (req, res) => {
 
     const rows = (await q(
       `SELECT c.id AS call_id, c.rep_name, c.role, c.client_name, c.overall_score_adj,
-              c.received_at, c.golden_moments, c.aloware_contact_id, c.aloware_call_id
+              c.received_at, c.golden_moments, c.aloware_contact_id, c.aloware_call_id,
+              c.transcript, c.transcript_quality
        FROM calls c WHERE ${w}
        ORDER BY c.overall_score_adj DESC NULLS LAST, c.received_at DESC
        LIMIT ?`, [...p, limit])).rows;
@@ -930,10 +974,12 @@ router.get('/golden-moments', async (req, res) => {
       arr.forEach((m, i) => {
         if (!m || !m.quote) return;
         const pin = pinMap[pinKey(c.call_id, i)];
+        let sp = (m.speaker || '').toLowerCase() === 'lead' ? 'lead' : (m.speaker ? 'rep' : null);
+        if (!sp) sp = inferMomentSpeaker(m.quote, c.transcript, c.rep_name, c.transcript_quality);
         moments.push({
           call_id: c.call_id, moment_index: i,
           quote: m.quote, timestamp: m.timestamp || '', why: m.why_it_matters || m.why || '',
-          speaker: (m.speaker || '').toLowerCase() === 'lead' ? 'lead' : (m.speaker ? 'rep' : null),
+          speaker: sp,
           rep_name: c.rep_name, role: c.role, client_name: c.client_name,
           score: c.overall_score_adj, received_at: c.received_at,
           aloware_contact_id: c.aloware_contact_id, aloware_call_id: c.aloware_call_id,
