@@ -1906,22 +1906,45 @@ router.get('/report', async (req, res) => {
     // tough-moment load — the call that most needs coaching. Never re-scores.
     const digestRows = (await q(
       `SELECT id, rep_name, role, client_name, overall_score_adj, received_at,
-              golden_moments, tough_moments, aloware_contact_id, aloware_call_id
+              golden_moments, tough_moments, improvements, coaching_notes,
+              category_scores, aloware_contact_id, aloware_call_id
        FROM calls
        WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED}
          AND ${periodClause}`)).rows;
 
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const base = `${proto}://${req.get('host')}`;
     const parseArr = (v) => { if (Array.isArray(v)) return v; try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
     const toughnessOf = (c) => {
       const s = Number(c.overall_score_adj);
       const tc = parseArr(c.tough_moments).length;
       return (10 - (isFinite(s) ? s : 5)) + tc * 1.5;   // low score + tough moments = tougher
     };
+    // When the AI hasn't extracted tough moments yet, explain the toughness from
+    // data the call already has: its top improvement theme, then its weakest category.
+    const lowestCat = (v) => {
+      let obj = v; try { if (typeof obj === 'string') obj = JSON.parse(obj); } catch { obj = null; }
+      if (!obj || typeof obj !== 'object') return '';
+      let lk = null, lv = Infinity;
+      for (const [k, val] of Object.entries(obj)) { const n = Number(val); if (isFinite(n) && n < lv) { lv = n; lk = k; } }
+      return lk ? `Weakest area: ${lk} (${lv}/10)` : '';
+    };
+    const whyTough = (c) => {
+      const imp = parseArr(c.improvements);
+      if (imp.length) return String(imp[0]);
+      const lc = lowestCat(c.category_scores);
+      if (lc) return lc;
+      const cn = (c.coaching_notes || '').trim();
+      if (cn) return cn.split(/(?<=[.!?])\s/)[0].slice(0, 240);
+      return 'Lowest-scoring call in this window — worth a listen.';
+    };
     const liteCall = (c) => c ? {
       id: c.id, rep_name: c.rep_name, role: c.role, client_name: c.client_name,
       score: c.overall_score_adj, received_at: c.received_at,
+      link: `${base}/#/calls/${c.id}`,
       toughness: Math.round(toughnessOf(c) * 10) / 10,
       tough_count: parseArr(c.tough_moments).length,
+      why_tough_fallback: whyTough(c),
       golden: parseArr(c.golden_moments).filter(m => m && m.quote).slice(0, 1),
       tough: parseArr(c.tough_moments).filter(m => m && m.quote).slice(0, 2),
       aloware_contact_id: c.aloware_contact_id, aloware_call_id: c.aloware_call_id,
@@ -1943,12 +1966,20 @@ router.get('/report', async (req, res) => {
     const windowLabel = preset === 'today' ? 'Today (ET)' : preset === 'yesterday' ? 'Yesterday (ET)'
       : (from || to) ? `${from || '…'} → ${to || '…'}` : `Last ${days} days`;
 
-    // Slack copy-paste block (mrkdwn: *bold*). Server-built so it's consistent.
+    // Slack copy-paste block (mrkdwn: *bold*, <url|text>). Server-built so it's consistent.
     const slackLine = (label, c) => {
       if (!c) return `${label}: _no calls_`;
-      const g = c.golden[0] ? `\n   🟢 "${c.golden[0].quote}"` : '';
-      const t = c.tough[0] ? `\n   🔴 ${c.tough[0].why_it_was_tough || 'tough moment'} → ${c.tough[0].what_to_do_instead || ''}`.trimEnd() : '';
-      return `${label}: *${c.rep_name}* → ${c.client_name || '?'} · *${c.score ?? '—'}/10*${label.includes('Toughest') && c.tough_count ? ` (${c.tough_count} tough)` : ''}${label.includes('Best') ? g : t}`;
+      const head = `${label}: *${c.rep_name}* → ${c.client_name || '?'} · *${c.score ?? '—'}/10*${label.includes('Toughest') && c.tough_count ? ` (${c.tough_count} tough)` : ''}`;
+      let detail = '';
+      if (label.includes('Best')) {
+        detail = c.golden[0] ? `\n   🟢 "${c.golden[0].quote}"` : '';
+      } else if (c.tough[0]) {
+        detail = `\n   🔴 ${c.tough[0].why_it_was_tough || 'tough moment'}${c.tough[0].what_to_do_instead ? ' → ' + c.tough[0].what_to_do_instead : ''}`;
+      } else if (c.why_tough_fallback) {
+        detail = `\n   🔴 ${c.why_tough_fallback}`;
+      }
+      const link = c.link ? `\n   <${c.link}|open call →>` : '';
+      return head + detail + link;
     };
     const samDigestSlack = [
       `📊 *Daily QC Digest — ${windowLabel}*`,
