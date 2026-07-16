@@ -51,6 +51,17 @@ cron.schedule('15 * * * *', async () => {
   catch (e) { console.error('[Cron sweep]', e.message); }
 });
 
+// Morning: post yesterday's QC digest to Slack at 8:00 AM US Eastern (DST-aware).
+// Skips silently if yesterday had no scored calls, so we never spam an empty post.
+cron.schedule('0 8 * * *', async () => {
+  try {
+    const { sendDailyDigest } = require('./services/slackService');
+    const r = await sendDailyDigest({ preset: 'yesterday' });
+    if (r.posted) console.log(`[Slack] Daily digest posted (${r.calls} calls, ${r.window})`);
+    else console.log(`[Slack] Digest not posted: ${r.reason}`);
+  } catch (e) { console.error('[Slack cron]', e.message); }
+}, { timezone: 'America/New_York' });
+
 // Start: migrate then listen
 async function start() {
   try {
