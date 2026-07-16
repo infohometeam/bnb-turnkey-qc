@@ -1178,6 +1178,20 @@ router.post('/golden-moments/relook-all', express.json(), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Slack ───────────────────────────────────────────────────────
+// Post the daily digest to Slack on demand (for setup verification). force=true
+// posts even when the window has no calls, so you can confirm the wiring works.
+router.post('/slack/test-digest', express.json(), async (req, res) => {
+  try {
+    const { sendDailyDigest } = require('../services/slackService');
+    const r = await sendDailyDigest({ preset: (req.body && req.body.preset) || 'yesterday', force: true });
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.get('/slack/status', (req, res) => {
+  try { const { slackStatus } = require('../services/slackService'); res.json(slackStatus()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 router.get('/tags/suggestions', async (req, res) => {
   try {
@@ -1913,7 +1927,7 @@ router.get('/report', async (req, res) => {
          AND ${periodClause}`)).rows;
 
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-    const base = `${proto}://${req.get('host')}`;
+    const base = process.env.PUBLIC_BASE_URL || `${proto}://${req.get('host')}`;
     const parseArr = (v) => { if (Array.isArray(v)) return v; try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
     const toughnessOf = (c) => {
       const s = Number(c.overall_score_adj);
