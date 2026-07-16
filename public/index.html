@@ -1288,6 +1288,11 @@ function ExportPage(){
   const[report,setReport]=useState(null);
   const[loading,setLoading]=useState(false);
   const[copied,setCopied]=useState(false);
+  const[copiedId,setCopiedId]=useState(null);
+  function copyLink(c){
+    const url=c.link||`${location.origin}/#/calls/${c.id}`;
+    navigator.clipboard?.writeText(url).then(()=>{setCopiedId(c.id);setTimeout(()=>setCopiedId(null),1600);},()=>alert("Copy failed."));
+  }
   function copySlack(){
     const t=report?.sam_digest_slack||"";
     if(!t){alert("No digest to copy yet.");return;}
@@ -1351,29 +1356,32 @@ function ExportPage(){
         {mode==="daily"&&report.sam_digest&&(()=>{
           const D=report.sam_digest;
           const CallCard=({c,kind})=>{
-            if(!c)return<div className="card" style={{padding:14,opacity:.6}}><div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:kind==="best"?"#fbbf24":"#fb7185"}}>{kind==="best"?"🏆 Best call":"💪 Toughest call"}</div><div style={{fontSize:12,color:"#4b5563",marginTop:6}}>No calls in this window.</div></div>;
+            if(!c)return<div className="card" style={{padding:16,marginBottom:14,opacity:.6}}><div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:kind==="best"?"#fbbf24":"#fb7185"}}>{kind==="best"?"🏆 Best call":"💪 Toughest call"}</div><div style={{fontSize:12,color:"#4b5563",marginTop:6}}>No calls in this window.</div></div>;
             const gm=c.golden&&c.golden[0]; const tm=c.tough&&c.tough[0];
-            return<div className="card" style={{padding:14,borderColor:kind==="best"?"#3f3610":"#3f1622"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:6}}>
+            return<div className="card" style={{padding:16,marginBottom:14,borderColor:kind==="best"?"#3f3610":"#3f1622"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}>
                 <span style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:kind==="best"?"#fbbf24":"#fb7185"}}>{kind==="best"?"🏆 Best call":"💪 Toughest call"}</span>
                 <span style={{fontSize:16,fontWeight:900,fontFamily:"var(--m)",color:sClr(c.score)}}>{c.score??"—"}</span>
               </div>
               <div style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>{c.rep_name} → {c.client_name||"?"}{kind==="toughest"&&c.tough_count>0&&<span style={{fontSize:10,color:"#fb7185",marginLeft:6}}>{c.tough_count} tough</span>}</div>
-              {kind==="best"&&gm&&<div style={{fontSize:12,color:"#94a3b8",fontStyle:"italic",lineHeight:1.5,marginTop:6,borderLeft:"3px solid #4338ca",paddingLeft:10}}>"{gm.quote}"</div>}
-              {kind==="toughest"&&tm&&<div style={{fontSize:12,color:"#94a3b8",lineHeight:1.5,marginTop:6,borderLeft:"3px solid #9f1239",paddingLeft:10}}>{tm.why_it_was_tough&&<div><b style={{color:"#9f1239"}}>Tough: </b>{tm.why_it_was_tough}</div>}{tm.what_to_do_instead&&<div style={{marginTop:2}}><b style={{color:"#34d399"}}>Fix: </b>{tm.what_to_do_instead}</div>}</div>}
-              {kind==="toughest"&&!tm&&<div style={{fontSize:11,color:"#4b5563",marginTop:6}}>Re-look this call for tough moments.</div>}
-              <button className="btn no-print" onClick={()=>goTo("calls",c.id)} style={{fontSize:10,padding:"3px 9px",marginTop:8}}>Read call →</button>
+              {kind==="best"&&gm&&<div style={{fontSize:12,color:"#94a3b8",fontStyle:"italic",lineHeight:1.55,marginTop:8,borderLeft:"3px solid #4338ca",paddingLeft:10}}>"{gm.quote}"</div>}
+              {kind==="toughest"&&tm&&<div style={{fontSize:12,color:"#94a3b8",lineHeight:1.55,marginTop:8,borderLeft:"3px solid #9f1239",paddingLeft:10}}>{tm.why_it_was_tough&&<div><b style={{color:"#fb7185"}}>Tough: </b>{tm.why_it_was_tough}</div>}{tm.what_to_do_instead&&<div style={{marginTop:2}}><b style={{color:"#34d399"}}>Fix: </b>{tm.what_to_do_instead}</div>}</div>}
+              {kind==="toughest"&&!tm&&c.why_tough_fallback&&<div style={{fontSize:12,color:"#94a3b8",lineHeight:1.55,marginTop:8,borderLeft:"3px solid #9f1239",paddingLeft:10}}><b style={{color:"#fb7185"}}>Why it's tough: </b>{c.why_tough_fallback}</div>}
+              <div style={{display:"flex",gap:6,marginTop:10}}>
+                <button className="btn no-print" onClick={()=>goTo("calls",c.id)} style={{fontSize:10,padding:"3px 9px"}}>Read call →</button>
+                <button className="btn no-print" onClick={()=>copyLink(c)} style={{fontSize:10,padding:"3px 9px",color:copiedId===c.id?"#34d399":"",borderColor:copiedId===c.id?"#14532d":""}}>{copiedId===c.id?"✓ Copied":"⧉ Copy link"}</button>
+              </div>
             </div>;
           };
-          return<div className="card" style={{padding:20,borderColor:"#312e81"}}>
+          return<div className="card" style={{padding:22,borderColor:"#312e81"}}>
             <div className="no-print" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:6,flexWrap:"wrap"}}>
               <div className="section-head" style={{marginBottom:0,color:"#c7d2fe"}}>📋 Daily Digest for Sam</div>
               <button className="btn" onClick={copySlack} style={{fontSize:12,padding:"6px 12px",background:copied?"#0f2a1a":"",borderColor:copied?"#14532d":"",color:copied?"#34d399":""}}>{copied?"✓ Copied":"⧉ Copy Slack block"}</button>
             </div>
-            <div style={{fontSize:11,color:"#64748b",marginBottom:14}}>Setters and closers — best and toughest call for {windowLabel.toLowerCase()}. Toughest blends a low score with tough-moment load.</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-              <div className="flex-col gap-10"><div style={{fontSize:12,fontWeight:800,color:"#818cf8"}}>🎧 Setters <span style={{color:"#4b5563",fontWeight:600}}>({D.setters.count})</span></div><CallCard c={D.setters.best} kind="best"/><CallCard c={D.setters.toughest} kind="toughest"/></div>
-              <div className="flex-col gap-10"><div style={{fontSize:12,fontWeight:800,color:"#60a5fa"}}>📞 Closers <span style={{color:"#4b5563",fontWeight:600}}>({D.closers.count})</span></div><CallCard c={D.closers.best} kind="best"/><CallCard c={D.closers.toughest} kind="toughest"/></div>
+            <div style={{fontSize:11,color:"#64748b",marginBottom:18}}>Setters and closers — best and toughest call for {windowLabel.toLowerCase()}. Toughest blends a low score with tough-moment load.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
+              <div><div style={{fontSize:12,fontWeight:800,color:"#818cf8",marginBottom:12}}>🎧 Setters <span style={{color:"#4b5563",fontWeight:600}}>({D.setters.count})</span></div><CallCard c={D.setters.best} kind="best"/><CallCard c={D.setters.toughest} kind="toughest"/></div>
+              <div><div style={{fontSize:12,fontWeight:800,color:"#60a5fa",marginBottom:12}}>📞 Closers <span style={{color:"#4b5563",fontWeight:600}}>({D.closers.count})</span></div><CallCard c={D.closers.best} kind="best"/><CallCard c={D.closers.toughest} kind="toughest"/></div>
             </div>
           </div>;
         })()}
