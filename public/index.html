@@ -1016,7 +1016,7 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
       <Pill label="Qualified" ok={c.pass_fail.qualified_investor_fit}/>
     </div>}
     {c.pass_fail?.beliefs_covered&&<div className="card" style={{padding:18}}><div className="section-head" style={{marginBottom:10}}>🎯 Sam's 7 Sales Beliefs</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>{['pain','doubt','desire','cost','money','support','trust'].map(b=>{const ok=c.pass_fail.beliefs_covered[b];return<div key={b} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:ok?"#041a0e":"#1a0a0a",borderRadius:8,border:`1px solid ${ok?"#166534":"#991b1b"}`}}><span style={{fontSize:14}}>{ok?"✓":"✗"}</span><span style={{fontSize:11,fontWeight:700,color:ok?"#22c55e":"#ef4444",textTransform:"capitalize"}}>{b}</span></div>})}</div>{(c.pass_fail.frame_assessment||c.pass_fail.temperature_check)&&<div style={{display:"flex",gap:16,marginTop:12,fontSize:11,flexWrap:"wrap"}}>{c.pass_fail.frame_assessment&&<div><span style={{color:"#64748b"}}>Frame:</span> <span style={{color:"#c9d1d9",fontWeight:700,textTransform:"capitalize"}}>{c.pass_fail.frame_assessment}</span></div>}{c.pass_fail.temperature_check&&c.pass_fail.temperature_check!=='not-taken'&&<div><span style={{color:"#64748b"}}>Temp Check:</span> <span style={{color:"#c9d1d9",fontWeight:700}}>{c.pass_fail.temperature_check}</span></div>}</div>}</div>}
-    {c.pass_fail?.deductions?.length>0&&<div className="card" style={{padding:18}}><div className="section-head" style={{marginBottom:10}}>⚠ Score Deductions</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{c.pass_fail.deductions.map((d,i)=>{const isCritical=d.severity==='critical';return<div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:isCritical?"#1a0a0a":"#1a1400",borderRadius:8,border:`1px solid ${isCritical?"#991b1b":"#92400e"}`}}><span style={{fontSize:18,fontFamily:"var(--m)",fontWeight:900,color:isCritical?"#ef4444":"#f59e0b",minWidth:36}}>{d.points}</span><div style={{flex:1}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>{d.label}</div><div style={{fontSize:10,color:"#64748b"}}>{d.source}</div></div></div>})}<div style={{fontSize:10,color:"#4b5563",marginTop:4,fontStyle:"italic"}}>Raw AI score: {c.overall_score}/10 → adjusted: {c.overall_score_adj}/10</div></div></div>}
+    {c.pass_fail?.deductions?.length>0&&<div className="card" style={{padding:18}}><div className="section-head" style={{marginBottom:10}}>⚠ Score Deductions</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{c.pass_fail.deductions.map((d,i)=>{const isCritical=d.severity==='critical';return<div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:isCritical?"#1a0a0a":"#1a1400",borderRadius:8,border:`1px solid ${isCritical?"#991b1b":"#92400e"}`}}><span style={{fontSize:18,fontFamily:"var(--m)",fontWeight:900,color:isCritical?"#ef4444":"#f59e0b",minWidth:36}}>{d.points}</span><div style={{flex:1}}><div style={{fontSize:12,fontWeight:700,color:"#c9d1d9"}}>{d.label}</div><div style={{fontSize:10,color:"#64748b"}}>{d.source}</div></div>{d.points!=0&&<button className="btn no-print" onClick={()=>goTo("resources",playbookFor(d.label))} style={{fontSize:10,padding:"2px 9px",whiteSpace:"nowrap"}} title="Open the manual that fixes this">Learn →</button>}</div>})}<div style={{fontSize:10,color:"#4b5563",marginTop:4,fontStyle:"italic"}}>Raw AI score: {c.overall_score}/10 → adjusted: {c.overall_score_adj}/10</div></div></div>}
     {c.pass_fail?.rubric_version&&<div style={{fontSize:10,color:"#64748b"}}>Scored with rubric v{c.pass_fail.rubric_version}</div>}
     <CallScoreHistory callId={c.id}/>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{c.strengths?.length>0&&<div className="card" style={{padding:18,background:"#041a0e",borderColor:"#166534"}}><div style={{fontSize:10,fontWeight:700,color:"#22c55e",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>✦ Strengths</div>{c.strengths.map((s,i)=><div key={i} style={{fontSize:12,color:"#a7f3d0",lineHeight:1.7}}>• {s}</div>)}</div>}{c.improvements?.length>0&&<div className="card" style={{padding:18,background:"#1a0a0a",borderColor:"#991b1b"}}><div style={{fontSize:10,fontWeight:700,color:"#ef4444",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>△ Improve</div>{c.improvements.map((s,i)=><div key={i} style={{fontSize:12,color:"#fca5a5",lineHeight:1.7}}>• {s}</div>)}</div>}</div>
@@ -2595,13 +2595,14 @@ function PracticeHistoryPage(){
   </div>
 }
 
-function ResourcesPage(){
+function ResourcesPage({initial}){
   const[manuals,setManuals]=useState(null);
   const[active,setActive]=useState(null);
   const[content,setContent]=useState(null);
   const[loading,setLoading]=useState(false);
   React.useEffect(()=>{fetch(`${API}/resources`).then(r=>r.json()).then(d=>setManuals(d.manuals||[])).catch(()=>setManuals([]))},[]);
   async function open(id){setLoading(true);setActive(id);const r=await fetch(`${API}/resources/${id}`).then(r=>r.json()).catch(()=>null);setContent(r);setLoading(false);window.scrollTo(0,0)}
+  React.useEffect(()=>{if(initial)open(initial)},[initial]);
   if(active&&content){return<div className="flex-col gap-16" style={{maxWidth:820}}>
     <button className="btn" onClick={()=>{setActive(null);setContent(null)}} style={{alignSelf:"flex-start"}}>← All manuals</button>
     <div style={{display:"flex",alignItems:"center",gap:14}}><span style={{fontSize:32}}>{content.icon}</span><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>{content.title}</h2><p style={{fontSize:12,color:"#64748b",marginTop:2}}>{content.subtitle}</p></div></div>
@@ -2622,6 +2623,16 @@ function ResourcesPage(){
   </div>
 }
 
+// Maps a score deduction to the training manual that fixes it (Resources tab).
+function playbookFor(label){
+  const s=(label||"").toLowerCase();
+  if(s.includes("discovery"))return"discovery";
+  if(s.includes("financial")||s.includes("qualification"))return"philosophy";
+  if(s.includes("objection"))return"philosophy";
+  if(s.includes("pitch"))return"pitching";
+  if(s.includes("talk")||s.includes("frame")||s.includes("tonality"))return"tonality";
+  return"philosophy";
+}
 const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"progress",icon:"📈",label:"My Progress",color:"#4ade80"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"team",icon:"👥",label:"Team",color:"#818cf8"},{id:"outcomes",icon:"🏷️",label:"Outcomes",color:"#f59e0b"},{id:"referrals",icon:"🔀",label:"Referrals",color:"#14b8a6"},{id:"moments",icon:"🏆",label:"Golden Moments",color:"#fbbf24"},{id:"stitch",icon:"🔗",label:"Stitching",color:"#2dd4bf"},{id:"calibration",icon:"🎯",label:"Calibration",color:"#a5b4fc"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
 const NAV_BY_ID=Object.fromEntries(NAV.map(n=>[n.id,n]));
 // Grouped sidebar — 20 flat tabs were too many to scan. Same tabs, sectioned.
@@ -2797,7 +2808,7 @@ function App(){
     <main><div className="max-w">{
       pg==="calls"&&param?<CallDetail call={{id:Number(param)}} onBack={()=>goTo("calls")}/>:
       pg==="rep"&&param?<RepDetailPage name={param}/>:
-      pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={c=>goTo("calls",c.id)}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="outcomes"?<OutcomesPage/>:pg==="referrals"?<ReferralsPage/>:pg==="moments"?<GoldenMomentsPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null
+      pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={c=>goTo("calls",c.id)}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage initial={param}/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="outcomes"?<OutcomesPage/>:pg==="referrals"?<ReferralsPage/>:pg==="moments"?<GoldenMomentsPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null
     }</div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
