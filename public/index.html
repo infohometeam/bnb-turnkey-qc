@@ -454,7 +454,7 @@ function GoldenMomentsPage(){
         {relook?.running&&relook.remaining!=null&&<div style={{fontSize:10,color:"#64748b",marginTop:4}}>{relook.remaining} calls left</div>}
         {!relook?.running&&relook&&!relook.error&&<div style={{fontSize:10,color:"#34d399",marginTop:4}}>✓ Done — {relook.done} calls re-looked</div>}
         {relook?.error&&<div style={{fontSize:10,color:"#f87171",marginTop:4}}>{relook.error}</div>}
-        {!relook&&relookStatus?.need_relook>0&&<div style={{fontSize:10,color:"#f59e0b",marginTop:4}}>{relookStatus.need_relook} calls missing Rep/Lead tags</div>}
+        {!relook&&relookStatus?.need_relook>0&&<div style={{fontSize:10,color:"#64748b",marginTop:4}}>Rep/Lead tags auto-detected · re-look adds tough moments to {relookStatus.need_relook} calls</div>}
       </div>
     </div>
 
