@@ -18,6 +18,19 @@ services:
       # ── Trainer voice (ElevenLabs) — team-wide TTS ──
       - key: ELEVENLABS_API_KEY
         sync: false
+      # ── Slack daily digest → #qc-bot-reports-digest ──
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: SLACK_DIGEST_CHANNEL
+        value: C0BHVR3777C
+      - key: SLACK_DIGEST_MENTION
+        value: channel
+      # Optional incoming-webhook fallback (used only if SLACK_BOT_TOKEN is unset)
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      # Public base URL for deep links inside the Slack digest
+      - key: PUBLIC_BASE_URL
+        value: https://bnb-turnkey-qc.onrender.com
       # ── Database (Supabase Postgres connection string) ──
       - key: DATABASE_URL
         sync: false
