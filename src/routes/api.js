@@ -1253,6 +1253,27 @@ router.get('/slack/status', (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Activity ping: the dashboard beacons here on page change. We collapse a visitor's
+// clicking into ONE Slack ping per session (throttle window) so it signals "someone's
+// using the bot" without spamming. Off unless SLACK_ACTIVITY_CHANNEL is set.
+const _activitySeen = new Map(); // visitorId -> last-posted epoch ms (in-memory; resets on restart)
+router.post('/activity/visit', express.json(), async (req, res) => {
+  try {
+    if (!process.env.SLACK_ACTIVITY_CHANNEL) return res.json({ ok: true, posted: false, off: true });
+    const { page, visitorId } = req.body || {};
+    const vid = String(visitorId || 'anon').slice(0, 64);
+    const throttleMs = (Number(process.env.SLACK_ACTIVITY_THROTTLE_MIN) || 20) * 60000;
+    const now = Date.now();
+    const last = _activitySeen.get(vid) || 0;
+    if (now - last < throttleMs) return res.json({ ok: true, posted: false, throttled: true });
+    _activitySeen.set(vid, now);
+    if (_activitySeen.size > 2000) _activitySeen.clear(); // bound memory
+    const { postActivity } = require('../services/slackService');
+    const r = await postActivity(page);
+    res.json({ ok: true, posted: !!r.ok });
+  } catch (err) { res.status(200).json({ ok: false, error: err.message }); }
+});
+
 router.get('/tags/suggestions', async (req, res) => {
   try {
     const r = await q(
