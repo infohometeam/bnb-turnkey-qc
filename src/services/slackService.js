@@ -75,6 +75,16 @@ async function sendDailyDigest({ preset = 'yesterday', force = false } = {}) {
     : { posted: false, reason: res.error, window: report.window_label, calls: total };
 }
 
+// Post a lightweight "someone's using the bot" ping to a dedicated activity
+// channel. Off unless SLACK_ACTIVITY_CHANNEL is set. No user identity exists in
+// the app, so this is intentionally anonymous ("a teammate").
+async function postActivity(page) {
+  const ch = process.env.SLACK_ACTIVITY_CHANNEL;
+  if (!ch) return { ok: false, reason: 'activity channel not configured' };
+  const where = page ? ` — landed on *${String(page).slice(0, 40)}*` : '';
+  return postToSlack({ text: `👀 A teammate is active in the QC Bot${where}`, channel: ch });
+}
+
 function slackStatus() {
   return {
     configured: !!(process.env.SLACK_BOT_TOKEN || process.env.SLACK_WEBHOOK_URL),
@@ -85,4 +95,4 @@ function slackStatus() {
   };
 }
 
-module.exports = { postToSlack, sendDailyDigest, slackStatus };
+module.exports = { postToSlack, sendDailyDigest, postActivity, slackStatus };
