@@ -42,8 +42,8 @@ async function postToSlack({ text, channel }) {
 // SLACK_DIGEST_MENTION = 'channel' (@channel, all members) | 'here' (active only) | 'none'.
 function mentionPrefix() {
   const m = (process.env.SLACK_DIGEST_MENTION || 'channel').toLowerCase();
-  if (m === 'channel') return '<!channel>\n';
-  if (m === 'here') return '<!here>\n';
+  if (m === 'channel') return '<!channel>\n\n';
+  if (m === 'here') return '<!here>\n\n';
   return '';
 }
 
