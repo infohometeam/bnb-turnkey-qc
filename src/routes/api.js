@@ -695,6 +695,24 @@ router.post('/queue/pull', express.json(), async (req, res) => {
   }
 });
 
+// Targeted per-rep Fathom backfill for a webhook outage. Dry-run by default
+// (reports what Fathom returns, ingests nothing); set commit:true to ingest.
+// POST body: { srcTag, limit, commit, hostMatch, allowUnfiltered }
+router.post('/pull/fathom-backfill', express.json(), async (req, res) => {
+  try {
+    const { pullFathomBackfill } = require('../services/pullService');
+    const b = req.body || {};
+    const r = await pullFathomBackfill({
+      srcTag: b.srcTag || 'fathom-closers-1',
+      limit: Math.min(Number(b.limit) || 25, 50),
+      dryRun: b.commit !== true,
+      hostMatch: b.hostMatch || '',
+      allowUnfiltered: b.allowUnfiltered === true,
+    });
+    res.json(r);
+  } catch (err) { res.status(200).json({ ok: false, error: err.message }); }
+});
+
 // ─── Call Stitching ──────────────────────────────────────────
 // Log of every merge that has happened — so you can see what was stitched, when, and by whom.
 router.get('/stitch/log', async (req, res) => {
