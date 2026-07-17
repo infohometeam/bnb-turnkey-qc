@@ -25,6 +25,12 @@ services:
         value: C0BHVR3777C
       - key: SLACK_DIGEST_MENTION
         value: channel
+      # Optional: activity pings ("someone's using the bot"). Set the channel ID to
+      # turn it on; leave blank to keep it off. Throttled to 1 ping / visitor / N min.
+      - key: SLACK_ACTIVITY_CHANNEL
+        sync: false
+      - key: SLACK_ACTIVITY_THROTTLE_MIN
+        value: "20"
       # Optional incoming-webhook fallback (used only if SLACK_BOT_TOKEN is unset)
       - key: SLACK_WEBHOOK_URL
         sync: false
