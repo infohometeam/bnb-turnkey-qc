@@ -85,6 +85,23 @@ async function postActivity(page) {
   return postToSlack({ text: `👀 A teammate is active in the QC Bot${where}`, channel: ch });
 }
 
+// Build + post the daily usage summary to the activity channel. Reuses the
+// /activity/summary endpoint so the numbers match anything shown in-app.
+async function sendUsageSummary({ preset = 'yesterday', force = false } = {}) {
+  const ch = process.env.SLACK_ACTIVITY_CHANNEL;
+  if (!ch) return { posted: false, reason: 'SLACK_ACTIVITY_CHANNEL not set' };
+  const port = process.env.PORT || 3001;
+  let data;
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/api/activity/summary?preset=${encodeURIComponent(preset)}`);
+    data = await r.json();
+  } catch (e) { return { posted: false, reason: `summary fetch failed: ${e.message}` }; }
+  if (!data || !data.summary_slack) return { posted: false, reason: 'no summary' };
+  if (!data.opens && !force) return { posted: false, reason: 'no activity in window (skipped)' };
+  const res = await postToSlack({ text: data.summary_slack, channel: ch });
+  return res.ok ? { posted: true, opens: data.opens, visitors: data.visitors } : { posted: false, reason: res.error };
+}
+
 function slackStatus() {
   return {
     configured: !!(process.env.SLACK_BOT_TOKEN || process.env.SLACK_WEBHOOK_URL),
@@ -95,4 +112,4 @@ function slackStatus() {
   };
 }
 
-module.exports = { postToSlack, sendDailyDigest, postActivity, slackStatus };
+module.exports = { postToSlack, sendDailyDigest, postActivity, sendUsageSummary, slackStatus };
