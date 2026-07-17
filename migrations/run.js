@@ -109,6 +109,10 @@ async function migrate() {
     `CREATE TABLE IF NOT EXISTS webhook_debug (
       id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       received_at text, src_tag text, base_source text, raw_payload text)`,
+    `CREATE TABLE IF NOT EXISTS usage_events (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      ts text, page text, visitor_id text)`,
+    `CREATE INDEX IF NOT EXISTS idx_usage_events_ts ON usage_events(ts)`,
     `CREATE TABLE IF NOT EXISTS daily_counters (
       date_key text PRIMARY KEY, full_qc_used integer DEFAULT 0,
       est_cost_usd real DEFAULT 0, updated_at text)`,
