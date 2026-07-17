@@ -1023,6 +1023,18 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
     {c.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>🎯 Coaching</div><p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{c.coaching_notes}</p></div>}
     {c.next_step_text&&<div className="card" style={{padding:16,background:"#14224a",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
     {c.score_adjust_notes&&(()=>{const parts=c.score_adjust_notes.split('Confidence:');const adj=parts[0]?.replace(/\|\s*$/,'').trim();const conf=parts[1]?.trim();const confLevel=conf?.split(/[\s—-]/)[0]?.toLowerCase();const confColor=confLevel==='high'?'#22c55e':confLevel==='medium'?'#f59e0b':'#ef4444';const confBg=confLevel==='high'?'#052e16':confLevel==='medium'?'#2a1a00':'#2a0a0a';const confBd=confLevel==='high'?'#166534':confLevel==='medium'?'#92400e':'#991b1b';return<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>{conf&&<div style={{display:"flex",alignItems:"center",gap:8}}><span className="badge" style={{background:confBg,color:confColor,border:`1px solid ${confBd}`,fontSize:10}}>Confidence: {confLevel?.toUpperCase()}</span><span style={{fontSize:10,color:"#4b5563"}}>{conf.replace(/^(high|medium|low)[\s—-]*/i,'')}</span></div>}{adj&&adj!=='No adjustments'&&<div style={{fontSize:11,color:"#374151"}}>Adjustments: {adj}</div>}</div>})()}
+    {c.mechanics&&(()=>{const m=c.mechanics;const tile=(label,val,sub,flag)=><div style={{background:flag==="amber"?"#241c08":flag==="green"?"#0f2a1a":"#141a24",border:`1px solid ${flag==="amber"?"#5c4a12":flag==="green"?"#14532d":"#1e2635"}`,borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:20,fontWeight:900,fontFamily:"var(--m)",color:flag==="amber"?"#f59e0b":flag==="green"?"#34d399":"#e2e8f0"}}>{val}</div><div style={{fontSize:11,fontWeight:700,color:"#c9d1d9",marginTop:2}}>{label}</div><div style={{fontSize:10,color:"#64748b"}}>{sub}</div></div>;
+      return<div className="card" style={{padding:18}}>
+        <div className="section-head" style={{marginBottom:12}}>📊 Call Mechanics</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
+          {tile("Talk balance",m.rep_talk_pct!=null?`${m.rep_talk_pct}%`:"—","rep share of words",m.rep_talk_pct>75?"amber":(m.rep_talk_pct>=40&&m.rep_talk_pct<=65?"green":null))}
+          {tile("Questions asked",m.rep_questions,m.questions_per_min!=null?`${m.questions_per_min}/min by rep`:"by rep",m.rep_questions>=8?"green":(m.rep_questions<=2?"amber":null))}
+          {tile("Longest monologue",m.longest_rep_monologue_words,"words, single rep turn",m.longest_rep_monologue_words>250?"amber":null)}
+          {tile("Exchanges",m.exchanges,"back-and-forth turns",null)}
+        </div>
+        <div style={{fontSize:10,color:"#4b5563",marginTop:10}}>Derived from the transcript — a read on pacing and discovery. Not part of the score.</div>
+      </div>;
+    })()}
     {(goldenM.length>0||toughM.length>0||c.status==="SCORED")&&<div className="card" style={{padding:20}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12,flexWrap:"wrap"}}>
         <span className="section-head" style={{marginBottom:0}}>🏆 Moments</span>
