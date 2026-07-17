@@ -1999,11 +1999,17 @@ router.get('/report', async (req, res) => {
       `📊 *Daily QC Digest — ${windowLabel}*`,
       ``,
       `🎧 *SETTERS* (${setters.length} scored)`,
+      ``,
       `🏆 ${slackLine('Best', samDigest.setters.best)}`,
+      ``,
       `💪 ${slackLine('Toughest', samDigest.setters.toughest)}`,
       ``,
+      `━━━━━━━━━━━━━━━`,
+      ``,
       `📞 *CLOSERS* (${closers.length} scored)`,
+      ``,
       `🏆 ${slackLine('Best', samDigest.closers.best)}`,
+      ``,
       `💪 ${slackLine('Toughest', samDigest.closers.toughest)}`,
     ].join('\n');
 
