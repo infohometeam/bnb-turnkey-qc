@@ -63,6 +63,11 @@ select,input[type=date]{background:var(--card);border:1px solid var(--border);bo
 <script type="text/babel">
 const {useState,useEffect,useCallback} = React;
 const API="/api";
+// Fire-and-forget activity beacon. A stable per-browser id lets the server collapse
+// a session's clicks into one Slack ping. No-op server-side unless the activity
+// channel is configured. Never blocks or surfaces errors to the user.
+function qcVisitorId(){try{let v=localStorage.getItem("qc_visitor");if(!v){v=Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem("qc_visitor",v);}return v;}catch(e){return "anon";}}
+function pingActivity(page){try{fetch(`${API}/activity/visit`,{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,body:JSON.stringify({page,visitorId:qcVisitorId()})}).catch(()=>{});}catch(e){}}
 function useApi(p,deps=[]){const[d,setD]=useState(null);const[l,setL]=useState(true);const reload=useCallback(()=>{setL(true);fetch(API+p).then(r=>r.json()).then(setD).catch(e=>console.error(e)).finally(()=>setL(false))},[p]);useEffect(()=>{reload()},[reload,...deps]);return{data:d,loading:l,reload}}
 async function postApi(p,b){return fetch(API+p,{method:"POST",headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined}).then(r=>r.json())}
 async function patchApi(p,b){return fetch(API+p,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(r=>r.json())}
@@ -2809,6 +2814,7 @@ function App(){
   const[route,setRoute]=useState(parseHash());
   const pg=route.page,param=route.param;
   const sPg=(id)=>{ if(typeof id==="function")id=id(pg); goTo(id); };
+  useEffect(()=>{ const n=NAV.find(x=>x.id===pg); pingActivity(n?n.label:(pg==="rep"?"Rep page":pg)); },[pg]);
   useEffect(()=>{
     const onHash=()=>setRoute(parseHash());
     window.addEventListener("hashchange",onHash);
