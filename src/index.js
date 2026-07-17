@@ -62,6 +62,17 @@ cron.schedule('0 8 * * *', async () => {
   } catch (e) { console.error('[Slack cron]', e.message); }
 }, { timezone: 'America/New_York' });
 
+// Morning: post yesterday's bot-usage summary to the activity channel at 8:30 AM ET.
+// Skips silently if there was no activity (never posts an empty summary).
+cron.schedule('30 8 * * *', async () => {
+  try {
+    const { sendUsageSummary } = require('./services/slackService');
+    const r = await sendUsageSummary({ preset: 'yesterday' });
+    if (r.posted) console.log(`[Slack] Usage summary posted (${r.opens} opens, ${r.visitors} visitors)`);
+    else console.log(`[Slack] Usage summary not posted: ${r.reason}`);
+  } catch (e) { console.error('[Slack usage cron]', e.message); }
+}, { timezone: 'America/New_York' });
+
 // Start: migrate then listen
 async function start() {
   try {
