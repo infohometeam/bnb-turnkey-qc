@@ -109,9 +109,51 @@ router.get('/calls/:id', async (req, res) => {
         call[key] = arr;
       }
     }
+    // Call mechanics — computed live from the transcript (no stored columns needed).
+    call.mechanics = computeCallMechanics(call.transcript, call.rep_name, call.call_duration_sec, call.transcript_quality);
     res.json(call);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// Conversation-mechanics metrics derived from the transcript. Rep/lead split uses
+// the same content-based logic as the golden-moment speaker inference. Returns null
+// on degraded (scrambled) transcripts, where per-speaker counts can't be trusted.
+function computeCallMechanics(transcript, repName, durationSec, quality) {
+  if (!transcript || quality === 'degraded') return null;
+  const repFirst = (repName || '').split(/\s+/)[0].toLowerCase();
+  const isRep = (label) => {
+    const l = (label || '').toLowerCase();
+    if (/^agent\b/.test(l) || l === 'rep' || l === 'salesperson') return true;
+    if (/^contact\b/.test(l) || l === 'customer' || l === 'prospect' || l === 'client') return false;
+    return !!(repFirst && l.includes(repFirst));
+  };
+  const wc = (s) => (String(s).trim().match(/\S+/g) || []).length;
+  const turns = [];
+  for (const ln of String(transcript).split('\n')) {
+    const m = ln.match(/^\s*(?:\[[^\]]*\]\s*)?([^:]{1,40}):\s*(.*)$/);
+    if (m) turns.push({ rep: isRep(m[1].trim()), text: m[2] || '' });
+  }
+  if (turns.length < 4) return null;
+  let repWords = 0, leadWords = 0, repQ = 0, leadQ = 0, longestRep = 0, switches = 0, prev = null;
+  for (const t of turns) {
+    const w = wc(t.text), qm = (t.text.match(/\?/g) || []).length;
+    if (t.rep) { repWords += w; repQ += qm; if (w > longestRep) longestRep = w; }
+    else { leadWords += w; leadQ += qm; }
+    if (prev !== null && prev !== t.rep) switches++;
+    prev = t.rep;
+  }
+  const total = repWords + leadWords;
+  const dmin = durationSec ? durationSec / 60 : null;
+  return {
+    rep_talk_pct: total ? Math.round((repWords / total) * 100) : null,
+    rep_words: repWords, lead_words: leadWords,
+    rep_questions: repQ, lead_questions: leadQ,
+    questions_per_min: dmin ? Math.round((repQ / dmin) * 10) / 10 : null,
+    longest_rep_monologue_words: longestRep,
+    exchanges: switches,
+    duration_min: dmin ? Math.round(dmin) : null,
+  };
+}
 
 router.patch('/calls/:id', async (req, res) => {
   try {
