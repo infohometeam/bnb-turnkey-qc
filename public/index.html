@@ -2636,7 +2636,7 @@ function CoachConsolePage(){
   if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Building coaching briefs…</div>;
   const briefs=data.briefs||[];const themes=data.team_themes||[];
   const TREND={improving:{t:"↗ improving",c:"#34d399"},worsening:{t:"↘ worsening",c:"#f87171"},steady:{t:"→ steady",c:"#64748b"}};
-  return<div className="flex-col gap-16" style={{maxWidth:900}}>
+  return<div className="flex-col gap-24" style={{maxWidth:900}}>
     <div>
       <h2 style={{fontSize:24,fontWeight:900,margin:0}}>Coach's Console</h2>
       <div style={{fontSize:13,color:"#94a3b8",marginTop:3,lineHeight:1.5,maxWidth:640}}>
@@ -2647,9 +2647,9 @@ function CoachConsolePage(){
     {themes.length>0&&<div className="card" style={{padding:20,borderColor:"#7c2d12"}}>
       <div className="section-head" style={{marginBottom:6,color:"#fdba74"}}>⚑ Team-wide themes</div>
       <div style={{fontSize:11,color:"#64748b",marginBottom:12}}>Shared by multiple reps — worth one group session instead of separate 1-on-1s.</div>
-      {themes.map(t=><div key={t.label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #1a1f2e",flexWrap:"wrap"}}>
+      {themes.map(t=><div key={t.label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,padding:"14px 0",borderBottom:"1px solid #1a1f2e",flexWrap:"wrap"}}>
         <div><div style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>{t.label}</div>
-          <div style={{fontSize:11,color:"#64748b"}}>{t.reps.join(" · ")}</div></div>
+          <div style={{fontSize:11,color:"#64748b",marginTop:3}}>{t.reps.join(" · ")}</div></div>
         <span style={{fontSize:11,fontWeight:800,color:"#fb923c",whiteSpace:"nowrap"}}>{t.rep_count} reps</span>
       </div>)}
     </div>}
@@ -2659,8 +2659,8 @@ function CoachConsolePage(){
         <div style={{fontSize:14,fontWeight:800,color:"#c9d1d9"}}>{b.rep} <span style={{fontSize:11,color:"#4b5563"}}>· {b.role}</span></div>
         <div style={{fontSize:12,color:"#64748b",marginTop:4}}>{b.note}</div></div>;
       const f=b.focus;const mo=b.momentum;
-      return<div key={b.rep_id} className="card" style={{padding:20}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:12}}>
+      return<div key={b.rep_id} className="card" style={{padding:26}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:20,paddingBottom:16,borderBottom:"1px solid #1a1f2e"}}>
           <div><span style={{fontSize:16,fontWeight:900,color:"#e2e8f0"}}>{b.rep}</span>
             <span style={{fontSize:11,color:"#4b5563",marginLeft:8}}>{b.role} · {b.based_on} calls</span></div>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -2669,12 +2669,12 @@ function CoachConsolePage(){
           </div>
         </div>
         {!f?<div style={{fontSize:12,color:"#34d399"}}>No recurring gaps — reinforce what's working.</div>:
-        <div className="flex-col gap-10">
-          <div style={{background:"#1a1005",border:"1px solid #7c2d12",borderRadius:8,padding:"12px 14px"}}>
-            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#fdba74",marginBottom:4}}>COACH THIS</div>
-            <div style={{fontSize:14,fontWeight:700,color:"#e2e8f0",lineHeight:1.5}}>{f.coach}</div>
-            <div style={{fontSize:11,color:"#94a3b8",marginTop:6,lineHeight:1.5}}>{f.why}</div>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
+        <div className="flex-col gap-18">
+          <div style={{background:"#1a1005",border:"1px solid #7c2d12",borderRadius:8,padding:"16px 18px"}}>
+            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#fdba74",marginBottom:7}}>COACH THIS</div>
+            <div style={{fontSize:15,fontWeight:700,color:"#e2e8f0",lineHeight:1.55}}>{f.coach}</div>
+            <div style={{fontSize:12,color:"#94a3b8",marginTop:9,lineHeight:1.65}}>{f.why}</div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginTop:14,flexWrap:"wrap"}}>
               <span style={{fontSize:10,color:"#64748b",fontFamily:"var(--m)"}}>{f.frequency}</span>
               <span style={{fontSize:10,color:(TREND[f.trend]||TREND.steady).c}}>{(TREND[f.trend]||TREND.steady).t}</span>
               {f.belief&&<span style={{fontSize:10,color:"#a78bfa"}}>Belief: {f.belief}</span>}
@@ -2682,20 +2682,20 @@ function CoachConsolePage(){
             </div>
           </div>
           <div style={{borderLeft:"3px solid #4338ca",paddingLeft:12}}>
-            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#818cf8",marginBottom:3}}>HOW TO OPEN IT</div>
-            <div style={{fontSize:13,color:"#c9d1d9",fontStyle:"italic",lineHeight:1.55}}>"{f.open_with}"</div>
+            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#818cf8",marginBottom:6}}>HOW TO OPEN IT</div>
+            <div style={{fontSize:13,color:"#c9d1d9",fontStyle:"italic",lineHeight:1.7}}>"{f.open_with}"</div>
           </div>
           <div style={{borderLeft:"3px solid #15803d",paddingLeft:12}}>
-            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#34d399",marginBottom:3}}>HAVE THEM DO</div>
-            <div style={{fontSize:13,color:"#c9d1d9",lineHeight:1.55}}>{f.have_them_do}</div>
-            {f.manual&&<button className="btn" onClick={()=>goTo("resources",f.manual)} style={{fontSize:10,padding:"2px 9px",marginTop:6}}>Open the manual →</button>}
+            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#34d399",marginBottom:6}}>HAVE THEM DO</div>
+            <div style={{fontSize:13,color:"#c9d1d9",lineHeight:1.7}}>{f.have_them_do}</div>
+            {f.manual&&<button className="btn" onClick={()=>goTo("resources",f.manual)} style={{fontSize:10,padding:"4px 11px",marginTop:10}}>Open the manual →</button>}
           </div>
           {b.model&&<div style={{borderLeft:"3px solid #a16207",paddingLeft:12}}>
-            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#fbbf24",marginBottom:3}}>MODEL OF GOOD — {b.model.rep_name}</div>
-            <div style={{fontSize:12,color:"#94a3b8",fontStyle:"italic",lineHeight:1.5}}>"{b.model.quote}"</div>
-            <button className="btn" onClick={()=>goTo("calls",b.model.call_id)} style={{fontSize:9,padding:"2px 7px",marginTop:5}}>Hear the call →</button>
+            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#fbbf24",marginBottom:6}}>MODEL OF GOOD — {b.model.rep_name}</div>
+            <div style={{fontSize:12,color:"#94a3b8",fontStyle:"italic",lineHeight:1.7}}>"{b.model.quote}"</div>
+            <button className="btn" onClick={()=>goTo("calls",b.model.call_id)} style={{fontSize:10,padding:"4px 10px",marginTop:10}}>Hear the call →</button>
           </div>}
-          {b.strengths?.length>0&&<div style={{fontSize:11,color:"#64748b",marginTop:2}}>
+          {b.strengths?.length>0&&<div style={{fontSize:11,color:"#64748b",marginTop:6,paddingTop:14,borderTop:"1px solid #1a1f2e",lineHeight:1.6}}>
             <b style={{color:"#34d399"}}>Lead with: </b>{b.strengths.map(s=>s.label).join(" · ")}
           </div>}
         </div>}
