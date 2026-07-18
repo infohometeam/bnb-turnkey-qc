@@ -111,6 +111,21 @@ router.get('/calls/:id', async (req, res) => {
     }
     // Call mechanics — computed live from the transcript (no stored columns needed).
     call.mechanics = computeCallMechanics(call.transcript, call.rep_name, call.call_duration_sec, call.transcript_quality);
+    // Habit tie-in: which of THIS call's issues are part of a wider pattern for the rep.
+    try {
+      if (call.status === 'SCORED' && call.rep_name && call.rep_name !== 'Unknown Setter') {
+        const h = await computeRepHabits(call.rep_name, call.role, 30);
+        if (h.enough_data) {
+          let pf = call.pass_fail; if (typeof pf === 'string') { try { pf = JSON.parse(pf); } catch { pf = null; } }
+          const labels = ((pf && pf.deductions) || []).filter(d => Number(d.points) !== 0).map(d => d.label || d.rule);
+          call.habit_flags = (h.habits || [])
+            .filter(x => x.type === 'watch')
+            .filter(x => (x.call_ids || []).includes(call.id) ||
+                         labels.some(l => x.key === 'deduction:' + l))
+            .map(x => ({ label: x.label, frequency: x.frequency, trend: x.trend }));
+        }
+      }
+    } catch (e) { /* habits are additive — never block the call view */ }
     res.json(call);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1401,11 +1416,9 @@ router.get('/reps/:id/insights', async (req, res) => {
 // an incident is not a habit. Excludes tagged calls, same as every aggregate.
 // Returns evidencing call ids so every habit is clickable, plus a trend
 // (recent half vs older half) so we can say "improving" rather than just "bad".
-router.get('/reps/:id/habits', async (req, res) => {
-  try {
-    const rep = (await q('SELECT name, role FROM rep_roster WHERE id=?', [req.params.id])).rows[0];
-    if (!rep) return res.status(404).json({ error: 'Rep not found' });
-    const limit = Math.min(Number(req.query.limit) || 30, 60);
+async function computeRepHabits(repName, role, limit = 30) {
+  {
+    const rep = { name: repName, role };
     const rows = (await q(
       `SELECT id, client_name, overall_score_adj, agent_talk_pct, category_scores,
               pass_fail, next_step_text, received_at
@@ -1414,8 +1427,8 @@ router.get('/reps/:id/habits', async (req, res) => {
 
     const MIN_CALLS = 5;
     if (rows.length < MIN_CALLS) {
-      return res.json({ rep: rep.name, based_on: rows.length, enough_data: false,
-        note: `Needs at least ${MIN_CALLS} scored calls to detect habits.`, habits: [] });
+      return { rep: rep.name, based_on: rows.length, enough_data: false,
+        note: `Needs at least ${MIN_CALLS} scored calls to detect habits.`, habits: [] };
     }
 
     const J = (v) => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
@@ -1527,14 +1540,147 @@ router.get('/reps/:id/habits', async (req, res) => {
 
     const scores = rows.map(r => Number(r.overall_score_adj)).filter(isFinite);
     const avgOf = (a) => a.length ? Math.round((a.reduce((s, x) => s + x, 0) / a.length) * 10) / 10 : null;
-    res.json({
+    return {
       rep: rep.name, role: rep.role, based_on: n, enough_data: true,
       avg_score: avgOf(scores),
       avg_recent: avgOf(recent.map(r => Number(r.overall_score_adj)).filter(isFinite)),
       avg_older: avgOf(older.map(r => Number(r.overall_score_adj)).filter(isFinite)),
       category_averages: catAvgs,
       habits,
-    });
+    };
+  }
+}
+
+// ── Coach's Console ──────────────────────────────────────────────
+// Sam's cockpit: per rep, the one thing to coach, how to open the conversation,
+// and what to have them do — plus team-wide themes (a gap 3+ reps share is a
+// team problem, not five individual ones). Built on the Habit Engine.
+// Coaching copy is deterministic and grounded in the 7 Beliefs / 5-step framework,
+// so it's consistent and costs nothing per view.
+const COACH_PLAYS = {
+  over_talking: {
+    coach: 'Talk less, ask more — discovery is being crowded out.',
+    open: "Let's listen to the first ten minutes of one of your calls together. I want you to count how many questions you asked before you started explaining.",
+    do: 'Target a 40–60% talk share. Before answering any question, ask one back. Silence after a question is the tool — let them fill it.',
+    manual: 'tonality', belief: 'Pain / Desire',
+  },
+  under_leading: {
+    coach: "Take the wheel — the expert frame isn't showing up.",
+    open: "You're great at letting the prospect talk. Now I want to work on steering — an expert leads the conversation, not just receives it.",
+    do: 'Open with a frame ("here\'s how I\'d like to use our time"), then drive the agenda. Teach something they didn\'t know before the call ends.',
+    manual: 'tonality', belief: 'Trust',
+  },
+  soft_next_step: {
+    coach: 'Land a specific, committed next step every single call.',
+    open: "Your calls are landing well but they're ending soft. Let's work on how you close the loop.",
+    do: 'Never end without a day, a time, and a named person. "I\'ll follow up" is not a next step — put it on the calendar while you\'re both on the line.',
+    manual: 'philosophy', belief: 'Cost / Support',
+  },
+  weak_category: {
+    coach: 'Focus the whole week on the one category that keeps scoring lowest.',
+    open: "I want to pick one thing to work on this week rather than ten. Looking across your recent calls, this is the one that keeps showing up.",
+    do: 'Pick two upcoming calls and prep this category specifically. Review them together afterwards.',
+    manual: 'discovery', belief: 'Varies',
+  },
+  default: {
+    coach: 'Work the recurring gap showing up across recent calls.',
+    open: "Let's look at a pattern I'm seeing across your last several calls — not one call, the pattern.",
+    do: 'Pick the framework step being skipped and rehearse it before the next call.',
+    manual: 'philosophy', belief: 'Varies',
+  },
+};
+// Deduction-driven plays (keyed by what the label contains)
+const DEDUCTION_PLAYS = [
+  { match: /objection/i, play: {
+    coach: 'Objection handling — run the 5 steps instead of answering on reflex.',
+    open: "When a prospect pushes back, I've noticed we jump straight to answering. I want to slow that down and run the framework.",
+    do: 'Isolate → Hypothetical Remove → Clarify → Handle → Loop. Practise on the last objection they got hit with, out loud, until the isolate step is automatic.',
+    manual: 'philosophy', belief: 'Doubt / Money' } },
+  { match: /financial|qualification/i, play: {
+    coach: "Confirm the money before pitching — qualification is being skipped.",
+    open: "I want to talk about the qualification step. On a few calls we got deep into the pitch without confirming they can actually fund it.",
+    do: 'Ask the capital question directly and get an explicit yes before moving to pitch. Whatever you tolerate in discovery becomes an objection at the close.',
+    manual: 'philosophy', belief: 'Money' } },
+  { match: /discovery/i, play: {
+    coach: 'Discovery depth — the pitch is starting before the pain is found.',
+    open: "Let's look at how the first ten minutes are going. I think we're moving to solution before we've earned it.",
+    do: 'Spend the first third of the call on questions only. Surface Pain and Cost before anything about the offer.',
+    manual: 'discovery', belief: 'Pain / Cost' } },
+  { match: /pitch/i, play: {
+    coach: 'Tailor the pitch — it\'s landing generic.',
+    open: "The pitch is solid but it sounds the same on every call. I want it to sound like it was built for that one prospect.",
+    do: 'Name their exact situation back to them in the pitch. Reference two specifics they told you in discovery before you get to the offer.',
+    manual: 'pitching', belief: 'Desire' } },
+];
+function playFor(habit) {
+  if (habit.key && habit.key.startsWith('deduction:')) {
+    const hit = DEDUCTION_PLAYS.find(d => d.match.test(habit.label));
+    if (hit) return hit.play;
+  }
+  return COACH_PLAYS[habit.key] || COACH_PLAYS.default;
+}
+
+router.get('/coaching/console', async (req, res) => {
+  try {
+    const reps = (await q("SELECT id, name, role FROM rep_roster WHERE active=1 ORDER BY role, name")).rows;
+    const limit = Math.min(Number(req.query.limit) || 30, 60);
+
+    // Teammate models: best recent call per rep that has a golden moment.
+    const modelRows = (await q(
+      `SELECT id, rep_name, overall_score_adj, golden_moments FROM calls
+       WHERE status='SCORED' AND overall_score_adj >= 7 ${EXCL_TAGGED}
+         AND golden_moments IS NOT NULL AND golden_moments <> '[]' AND golden_moments <> ''
+       ORDER BY overall_score_adj DESC, received_at DESC LIMIT 40`)).rows;
+    const models = [];
+    for (const m of modelRows) {
+      let arr = m.golden_moments;
+      try { if (typeof arr === 'string') arr = JSON.parse(arr); } catch { arr = null; }
+      const first = Array.isArray(arr) ? arr.find(x => x && x.quote) : null;
+      if (first) models.push({ call_id: m.id, rep_name: m.rep_name, score: m.overall_score_adj, quote: first.quote, why: first.why_it_matters || '' });
+    }
+
+    const briefs = [];
+    const themeCount = {};
+    for (const r of reps) {
+      const h = await computeRepHabits(r.name, r.role, limit);
+      if (!h.enough_data) { briefs.push({ rep_id: r.id, rep: r.name, role: r.role, enough_data: false, note: h.note }); continue; }
+      const watch = (h.habits || []).filter(x => x.type === 'watch');
+      const strengths = (h.habits || []).filter(x => x.type === 'strength');
+      watch.forEach(w => { const k = w.label; themeCount[k] = themeCount[k] || { label: k, reps: [] }; themeCount[k].reps.push(r.name); });
+      const top = watch[0] || null;
+      const play = top ? playFor(top) : null;
+      const model = models.find(m => m.rep_name !== r.name) || null;
+      briefs.push({
+        rep_id: r.id, rep: r.name, role: r.role, enough_data: true,
+        based_on: h.based_on, avg_score: h.avg_score,
+        momentum: (h.avg_recent != null && h.avg_older != null)
+          ? Math.round((h.avg_recent - h.avg_older) * 10) / 10 : null,
+        focus: top ? {
+          habit: top.label, frequency: top.frequency, trend: top.trend, call_ids: top.call_ids,
+          why: top.detail, coach: play.coach, open_with: play.open, have_them_do: play.do,
+          manual: play.manual, belief: play.belief,
+        } : null,
+        strengths: strengths.map(s => ({ label: s.label, detail: s.detail })),
+        watch_count: watch.length,
+        category_averages: h.category_averages,
+        model,
+      });
+    }
+    const themes = Object.values(themeCount)
+      .map(t => ({ label: t.label, rep_count: t.reps.length, reps: t.reps }))
+      .filter(t => t.rep_count >= 2)
+      .sort((a, b) => b.rep_count - a.rep_count);
+
+    res.json({ generated: new Date().toISOString(), rep_count: reps.length, team_themes: themes, briefs });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/reps/:id/habits', async (req, res) => {
+  try {
+    const rep = (await q('SELECT name, role FROM rep_roster WHERE id=?', [req.params.id])).rows[0];
+    if (!rep) return res.status(404).json({ error: 'Rep not found' });
+    const limit = Math.min(Number(req.query.limit) || 30, 60);
+    res.json(await computeRepHabits(rep.name, rep.role, limit));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
