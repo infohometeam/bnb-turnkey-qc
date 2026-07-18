@@ -1028,6 +1028,16 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
     {c.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>🎯 Coaching</div><p style={{fontSize:13,color:"#94a3b8",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{c.coaching_notes}</p></div>}
     {c.next_step_text&&<div className="card" style={{padding:16,background:"#14224a",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
     {c.score_adjust_notes&&(()=>{const parts=c.score_adjust_notes.split('Confidence:');const adj=parts[0]?.replace(/\|\s*$/,'').trim();const conf=parts[1]?.trim();const confLevel=conf?.split(/[\s—-]/)[0]?.toLowerCase();const confColor=confLevel==='high'?'#22c55e':confLevel==='medium'?'#f59e0b':'#ef4444';const confBg=confLevel==='high'?'#052e16':confLevel==='medium'?'#2a1a00':'#2a0a0a';const confBd=confLevel==='high'?'#166534':confLevel==='medium'?'#92400e':'#991b1b';return<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>{conf&&<div style={{display:"flex",alignItems:"center",gap:8}}><span className="badge" style={{background:confBg,color:confColor,border:`1px solid ${confBd}`,fontSize:10}}>Confidence: {confLevel?.toUpperCase()}</span><span style={{fontSize:10,color:"#4b5563"}}>{conf.replace(/^(high|medium|low)[\s—-]*/i,'')}</span></div>}{adj&&adj!=='No adjustments'&&<div style={{fontSize:11,color:"#374151"}}>Adjustments: {adj}</div>}</div>})()}
+    {c.habit_flags?.length>0&&<div className="card" style={{padding:16,borderColor:"#7c2d12"}}>
+      <div style={{fontSize:11,fontWeight:800,letterSpacing:.5,color:"#fdba74",marginBottom:6}}>⚑ PART OF A PATTERN</div>
+      <div style={{fontSize:11,color:"#64748b",marginBottom:8}}>What happened here isn't isolated — it recurs across {c.rep_name}'s recent calls.</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {c.habit_flags.map((h,i)=><div key={i} style={{background:"#1a1005",border:"1px solid #7c2d12",borderRadius:6,padding:"6px 10px"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#e2e8f0"}}>{h.label}</div>
+          <div style={{fontSize:10,color:"#94a3b8"}}>{h.frequency}</div>
+        </div>)}
+      </div>
+    </div>}
     {c.mechanics&&(()=>{const m=c.mechanics;const tile=(label,val,sub,flag)=><div style={{background:flag==="amber"?"#241c08":flag==="green"?"#0f2a1a":"#141a24",border:`1px solid ${flag==="amber"?"#5c4a12":flag==="green"?"#14532d":"#1e2635"}`,borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:20,fontWeight:900,fontFamily:"var(--m)",color:flag==="amber"?"#f59e0b":flag==="green"?"#34d399":"#e2e8f0"}}>{val}</div><div style={{fontSize:11,fontWeight:700,color:"#c9d1d9",marginTop:2}}>{label}</div><div style={{fontSize:10,color:"#64748b"}}>{sub}</div></div>;
       return<div className="card" style={{padding:18}}>
         <div className="section-head" style={{marginBottom:12}}>📊 Call Mechanics</div>
@@ -2618,6 +2628,81 @@ function PracticeHistoryPage(){
 // Habits — cross-call patterns for one rep. Watch items first (what coaching acts
 // on), strengths after. Developmental framing: never a ranking, always a pattern
 // with evidence you can click into.
+// Coach's Console — Sam's cockpit. Per rep: the one thing to coach, how to open
+// the conversation, what to have them do. Plus team-wide themes: a gap several
+// reps share is a team problem, not five separate conversations.
+function CoachConsolePage(){
+  const{data}=useApi("/coaching/console");
+  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Building coaching briefs…</div>;
+  const briefs=data.briefs||[];const themes=data.team_themes||[];
+  const TREND={improving:{t:"↗ improving",c:"#34d399"},worsening:{t:"↘ worsening",c:"#f87171"},steady:{t:"→ steady",c:"#64748b"}};
+  return<div className="flex-col gap-16" style={{maxWidth:900}}>
+    <div>
+      <h2 style={{fontSize:24,fontWeight:900,margin:0}}>Coach's Console</h2>
+      <div style={{fontSize:13,color:"#94a3b8",marginTop:3,lineHeight:1.5,maxWidth:640}}>
+        One focus per rep, drawn from patterns across their recent calls — with a way to open the conversation and something concrete to practise.
+      </div>
+    </div>
+
+    {themes.length>0&&<div className="card" style={{padding:20,borderColor:"#7c2d12"}}>
+      <div className="section-head" style={{marginBottom:6,color:"#fdba74"}}>⚑ Team-wide themes</div>
+      <div style={{fontSize:11,color:"#64748b",marginBottom:12}}>Shared by multiple reps — worth one group session instead of separate 1-on-1s.</div>
+      {themes.map(t=><div key={t.label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #1a1f2e",flexWrap:"wrap"}}>
+        <div><div style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>{t.label}</div>
+          <div style={{fontSize:11,color:"#64748b"}}>{t.reps.join(" · ")}</div></div>
+        <span style={{fontSize:11,fontWeight:800,color:"#fb923c",whiteSpace:"nowrap"}}>{t.rep_count} reps</span>
+      </div>)}
+    </div>}
+
+    {briefs.map(b=>{
+      if(!b.enough_data)return<div key={b.rep_id} className="card" style={{padding:16,opacity:.7}}>
+        <div style={{fontSize:14,fontWeight:800,color:"#c9d1d9"}}>{b.rep} <span style={{fontSize:11,color:"#4b5563"}}>· {b.role}</span></div>
+        <div style={{fontSize:12,color:"#64748b",marginTop:4}}>{b.note}</div></div>;
+      const f=b.focus;const mo=b.momentum;
+      return<div key={b.rep_id} className="card" style={{padding:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:12}}>
+          <div><span style={{fontSize:16,fontWeight:900,color:"#e2e8f0"}}>{b.rep}</span>
+            <span style={{fontSize:11,color:"#4b5563",marginLeft:8}}>{b.role} · {b.based_on} calls</span></div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            {mo!=null&&mo!==0&&<span style={{fontSize:11,fontWeight:700,color:mo>0?"#34d399":"#f87171"}}>{mo>0?"↗ +":"↘ "}{mo} recent</span>}
+            <span style={{fontSize:20,fontWeight:900,fontFamily:"var(--m)",color:sClr(b.avg_score)}}>{b.avg_score??"—"}</span>
+          </div>
+        </div>
+        {!f?<div style={{fontSize:12,color:"#34d399"}}>No recurring gaps — reinforce what's working.</div>:
+        <div className="flex-col gap-10">
+          <div style={{background:"#1a1005",border:"1px solid #7c2d12",borderRadius:8,padding:"12px 14px"}}>
+            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#fdba74",marginBottom:4}}>COACH THIS</div>
+            <div style={{fontSize:14,fontWeight:700,color:"#e2e8f0",lineHeight:1.5}}>{f.coach}</div>
+            <div style={{fontSize:11,color:"#94a3b8",marginTop:6,lineHeight:1.5}}>{f.why}</div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:"#64748b",fontFamily:"var(--m)"}}>{f.frequency}</span>
+              <span style={{fontSize:10,color:(TREND[f.trend]||TREND.steady).c}}>{(TREND[f.trend]||TREND.steady).t}</span>
+              {f.belief&&<span style={{fontSize:10,color:"#a78bfa"}}>Belief: {f.belief}</span>}
+              {(f.call_ids||[]).slice(0,3).map(id=><button key={id} className="btn" onClick={()=>goTo("calls",id)} style={{fontSize:9,padding:"2px 7px"}}>#{id}</button>)}
+            </div>
+          </div>
+          <div style={{borderLeft:"3px solid #4338ca",paddingLeft:12}}>
+            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#818cf8",marginBottom:3}}>HOW TO OPEN IT</div>
+            <div style={{fontSize:13,color:"#c9d1d9",fontStyle:"italic",lineHeight:1.55}}>"{f.open_with}"</div>
+          </div>
+          <div style={{borderLeft:"3px solid #15803d",paddingLeft:12}}>
+            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#34d399",marginBottom:3}}>HAVE THEM DO</div>
+            <div style={{fontSize:13,color:"#c9d1d9",lineHeight:1.55}}>{f.have_them_do}</div>
+            {f.manual&&<button className="btn" onClick={()=>goTo("resources",f.manual)} style={{fontSize:10,padding:"2px 9px",marginTop:6}}>Open the manual →</button>}
+          </div>
+          {b.model&&<div style={{borderLeft:"3px solid #a16207",paddingLeft:12}}>
+            <div style={{fontSize:10,fontWeight:800,letterSpacing:.5,color:"#fbbf24",marginBottom:3}}>MODEL OF GOOD — {b.model.rep_name}</div>
+            <div style={{fontSize:12,color:"#94a3b8",fontStyle:"italic",lineHeight:1.5}}>"{b.model.quote}"</div>
+            <button className="btn" onClick={()=>goTo("calls",b.model.call_id)} style={{fontSize:9,padding:"2px 7px",marginTop:5}}>Hear the call →</button>
+          </div>}
+          {b.strengths?.length>0&&<div style={{fontSize:11,color:"#64748b",marginTop:2}}>
+            <b style={{color:"#34d399"}}>Lead with: </b>{b.strengths.map(s=>s.label).join(" · ")}
+          </div>}
+        </div>}
+      </div>;
+    })}
+  </div>;
+}
 function HabitsCard({repId}){
   const{data}=useApi(repId?`/reps/${repId}/habits`:null,[repId]);
   if(!data)return null;
@@ -2690,13 +2775,13 @@ function playbookFor(label){
   if(s.includes("talk")||s.includes("frame")||s.includes("tonality"))return"tonality";
   return"philosophy";
 }
-const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"progress",icon:"📈",label:"My Progress",color:"#4ade80"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"team",icon:"👥",label:"Team",color:"#818cf8"},{id:"outcomes",icon:"🏷️",label:"Outcomes",color:"#f59e0b"},{id:"referrals",icon:"🔀",label:"Referrals",color:"#14b8a6"},{id:"moments",icon:"🏆",label:"Golden Moments",color:"#fbbf24"},{id:"stitch",icon:"🔗",label:"Stitching",color:"#2dd4bf"},{id:"calibration",icon:"🎯",label:"Calibration",color:"#a5b4fc"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
+const NAV=[{id:"dashboard",icon:"◉",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"📊",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"🎯",label:"Coaching",color:"#f59e0b"},{id:"console",icon:"🧭",label:"Coach Console",color:"#fb923c"},{id:"progress",icon:"📈",label:"My Progress",color:"#4ade80"},{id:"train",icon:"🥊",label:"Train",color:"#22c55e"},{id:"history",icon:"📊",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"📞",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"📏",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"📚",label:"Resources",color:"#f59e0b"},{id:"records",icon:"📋",label:"Non-Sales",color:"#94a3b8"},{id:"queue",icon:"☰",label:"Queue",color:"#a78bfa"},{id:"health",icon:"♥",label:"Health",color:"#f472b6"},{id:"team",icon:"👥",label:"Team",color:"#818cf8"},{id:"outcomes",icon:"🏷️",label:"Outcomes",color:"#f59e0b"},{id:"referrals",icon:"🔀",label:"Referrals",color:"#14b8a6"},{id:"moments",icon:"🏆",label:"Golden Moments",color:"#fbbf24"},{id:"stitch",icon:"🔗",label:"Stitching",color:"#2dd4bf"},{id:"calibration",icon:"🎯",label:"Calibration",color:"#a5b4fc"},{id:"export",icon:"📥",label:"Reports",color:"#22d3ee"},{id:"about",icon:"ℹ",label:"About",color:"#64748b"}];
 const NAV_BY_ID=Object.fromEntries(NAV.map(n=>[n.id,n]));
 // Grouped sidebar — 20 flat tabs were too many to scan. Same tabs, sectioned.
 const NAV_GROUPS=[
   {title:"Overview",ids:["dashboard","analytics"]},
   {title:"Calls",ids:["calls","outcomes","referrals","records","stitch"]},
-  {title:"Coaching",ids:["coaching","progress","moments","rubric","resources"]},
+  {title:"Coaching",ids:["console","coaching","progress","moments","rubric","resources"]},
   {title:"Training",ids:["train","history"]},
   {title:"Admin",ids:["team","calibration","queue","health","export","about"]},
 ];
@@ -2866,7 +2951,7 @@ function App(){
     <main><div className="max-w">{
       pg==="calls"&&param?<CallDetail call={{id:Number(param)}} onBack={()=>goTo("calls")}/>:
       pg==="rep"&&param?<RepDetailPage name={param}/>:
-      pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={c=>goTo("calls",c.id)}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage initial={param}/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="outcomes"?<OutcomesPage/>:pg==="referrals"?<ReferralsPage/>:pg==="moments"?<GoldenMomentsPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null
+      pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="console"?<CoachConsolePage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={c=>goTo("calls",c.id)}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage initial={param}/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="outcomes"?<OutcomesPage/>:pg==="referrals"?<ReferralsPage/>:pg==="moments"?<GoldenMomentsPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null
     }</div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
