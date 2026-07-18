@@ -1504,16 +1504,19 @@ async function computeRepHabits(repName, role, limit = 30) {
       .filter(k => catCounts[k] >= Math.max(3, Math.floor(n * 0.5)))
       .map(k => ({ category: k, avg: Math.round((catTotals[k] / catCounts[k]) * 10) / 10 }))
       .sort((a, b) => a.avg - b.avg);
+    const CAT_LABEL = { discovery:'Discovery', qualification:'Qualification', pitch:'Pitch',
+      frame_control:'Frame / Control', objections_close:'Objections & Close' };
+    const catName = (k) => CAT_LABEL[k] || String(k).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     if (catAvgs.length) {
       const low = catAvgs[0], high = catAvgs[catAvgs.length - 1];
       if (low.avg < 6.5) {
         const lowCall = (r) => { const cs = J(r.category_scores) || {}; return Number(cs[low.category]) < 6.5; };
-        push({ key: 'weak_category', type: 'watch', label: `${low.category} is the consistent gap`,
+        push({ key: 'weak_category', type: 'watch', label: `${catName(low.category)} is the consistent gap`,
           detail: `Averages ${low.avg}/10 across ${catCounts[low.category]} calls — the lowest of any category. This is the highest-leverage thing to work on.`,
           frequency: `avg ${low.avg}/10`, trend: trendOf(lowCall), call_ids: rate(rows, lowCall).ids.slice(0, 6) });
       }
       if (high.avg >= 7.5 && high.category !== low.category) {
-        push({ key: 'strong_category', type: 'strength', label: `${high.category} is a strength`,
+        push({ key: 'strong_category', type: 'strength', label: `${catName(high.category)} is a strength`,
           detail: `Averages ${high.avg}/10 — consistently the strongest category. Worth having them model this for the team.`,
           frequency: `avg ${high.avg}/10`, trend: 'steady', call_ids: [] });
       }
