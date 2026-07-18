@@ -1756,6 +1756,7 @@ function MyProgressPage(){
       </div>}
 
       {/* What you're good at / what to work on */}
+      {repId&&<HabitsCard repId={repId}/>}
       {ins&&(ins.strengths?.length>0||ins.pain_points?.length>0)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
         {ins.strengths?.length>0&&<div className="card" style={{padding:20,borderColor:"#166534"}}>
           <div className="section-head" style={{color:"#4ade80",marginBottom:4}}>What you do well</div>
@@ -2086,6 +2087,8 @@ function RepDetailPage({name}){
           </div>
         </div>}
       </div>}
+
+      {rep&&<HabitsCard repId={rep.id}/>}
 
       {data.trend?.length>1&&<div className="card" style={{padding:20}}>
         <div className="section-head" style={{marginBottom:12}}>Score trend</div>
@@ -2612,6 +2615,43 @@ function PracticeHistoryPage(){
   </div>
 }
 
+// Habits — cross-call patterns for one rep. Watch items first (what coaching acts
+// on), strengths after. Developmental framing: never a ranking, always a pattern
+// with evidence you can click into.
+function HabitsCard({repId}){
+  const{data}=useApi(repId?`/reps/${repId}/habits`:null,[repId]);
+  if(!data)return null;
+  if(!data.enough_data)return<div className="card" style={{padding:18}}>
+    <div className="section-head" style={{marginBottom:6}}>🔁 Habits</div>
+    <div style={{fontSize:12,color:"#64748b"}}>{data.note||"Not enough calls yet."}</div></div>;
+  const habits=data.habits||[];
+  const TREND={improving:{t:"↗ improving",c:"#34d399"},worsening:{t:"↘ worsening",c:"#f87171"},steady:{t:"→ steady",c:"#64748b"}};
+  return<div className="card" style={{padding:18}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",flexWrap:"wrap",gap:8,marginBottom:4}}>
+      <div className="section-head" style={{marginBottom:0}}>🔁 Habits</div>
+      <div style={{fontSize:10,color:"#4b5563"}}>across last {data.based_on} calls</div>
+    </div>
+    <div style={{fontSize:11,color:"#64748b",marginBottom:14}}>Patterns that repeat — not one-off calls. Each one links to the calls behind it.</div>
+    {habits.length===0?<div style={{fontSize:12,color:"#64748b"}}>No strong patterns yet — scores look consistent across calls.</div>:
+      <div className="flex-col gap-10">{habits.map(h=>{
+        const watch=h.type==="watch";const tr=TREND[h.trend]||TREND.steady;
+        return<div key={h.key} style={{borderLeft:`3px solid ${watch?"#9f1239":"#15803d"}`,paddingLeft:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <span style={{fontSize:9,fontWeight:800,letterSpacing:.5,padding:"2px 7px",borderRadius:20,
+              background:watch?"#2a1119":"#0f2a1a",color:watch?"#fb7185":"#34d399",
+              border:`1px solid ${watch?"#7f1d3a":"#14532d"}`}}>{watch?"WATCH":"STRENGTH"}</span>
+            <span style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>{h.label}</span>
+            <span style={{fontSize:10,color:tr.c}}>{tr.t}</span>
+          </div>
+          <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.55,marginTop:4}}>{h.detail}</div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6,flexWrap:"wrap"}}>
+            <span style={{fontSize:10,color:"#4b5563",fontFamily:"var(--m)"}}>{h.frequency}</span>
+            {(h.call_ids||[]).slice(0,4).map(id=><button key={id} className="btn" onClick={()=>goTo("calls",id)} style={{fontSize:9,padding:"2px 7px"}}>#{id}</button>)}
+          </div>
+        </div>;})}
+      </div>}
+  </div>;
+}
 function ResourcesPage({initial}){
   const[manuals,setManuals]=useState(null);
   const[active,setActive]=useState(null);
