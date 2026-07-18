@@ -1395,6 +1395,149 @@ router.get('/reps/:id/insights', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Habit Engine v1 (deterministic) ──────────────────────────────
+// Cross-call patterns for one rep, computed from columns we already store
+// (no transcript reads). A habit only fires when it RECURS above a threshold —
+// an incident is not a habit. Excludes tagged calls, same as every aggregate.
+// Returns evidencing call ids so every habit is clickable, plus a trend
+// (recent half vs older half) so we can say "improving" rather than just "bad".
+router.get('/reps/:id/habits', async (req, res) => {
+  try {
+    const rep = (await q('SELECT name, role FROM rep_roster WHERE id=?', [req.params.id])).rows[0];
+    if (!rep) return res.status(404).json({ error: 'Rep not found' });
+    const limit = Math.min(Number(req.query.limit) || 30, 60);
+    const rows = (await q(
+      `SELECT id, client_name, overall_score_adj, agent_talk_pct, category_scores,
+              pass_fail, next_step_text, received_at
+       FROM calls WHERE status='SCORED' AND rep_name=? ${EXCL_TAGGED}
+       ORDER BY received_at DESC LIMIT ?`, [rep.name, limit])).rows;
+
+    const MIN_CALLS = 5;
+    if (rows.length < MIN_CALLS) {
+      return res.json({ rep: rep.name, based_on: rows.length, enough_data: false,
+        note: `Needs at least ${MIN_CALLS} scored calls to detect habits.`, habits: [] });
+    }
+
+    const J = (v) => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
+    const n = rows.length;
+    const half = Math.floor(n / 2);
+    const recent = rows.slice(0, half || 1);      // rows are DESC = newest first
+    const older = rows.slice(half);
+
+    // Rate of a predicate across a set of calls.
+    const rate = (set, fn) => { const hits = set.filter(fn); return { pct: set.length ? hits.length / set.length : 0, ids: hits.map(r => r.id) }; };
+    const trendOf = (fn) => {
+      if (!older.length || !recent.length) return 'steady';
+      const r = rate(recent, fn).pct, o = rate(older, fn).pct;
+      if (r <= o - 0.2) return 'improving';
+      if (r >= o + 0.2) return 'worsening';
+      return 'steady';
+    };
+
+    const habits = [];
+    const push = (h) => habits.push(h);
+
+    // 1. Talk balance
+    const overTalk = (r) => Number(r.agent_talk_pct) > 70;
+    const oT = rate(rows, overTalk);
+    if (oT.pct >= 0.4 && oT.ids.length >= 3) {
+      const avg = Math.round(rows.reduce((s, r) => s + (Number(r.agent_talk_pct) || 0), 0) / n);
+      push({ key: 'over_talking', type: 'watch', label: 'Dominates the conversation',
+        detail: `Talks over 70% on ${Math.round(oT.pct * 100)}% of calls (avg ${avg}%). Whatever you don't let them say in discovery becomes an objection at the close.`,
+        frequency: `${oT.ids.length} of ${n} calls`, trend: trendOf(overTalk), call_ids: oT.ids.slice(0, 6) });
+    }
+    const underTalk = (r) => Number(r.agent_talk_pct) > 0 && Number(r.agent_talk_pct) < 25;
+    const uT = rate(rows, underTalk);
+    if (uT.pct >= 0.4 && uT.ids.length >= 3) {
+      push({ key: 'under_leading', type: 'watch', label: 'Not driving the call',
+        detail: `Speaks under 25% on ${Math.round(uT.pct * 100)}% of calls. The expert frame means the rep leads and teaches — let the prospect talk, but keep control.`,
+        frequency: `${uT.ids.length} of ${n} calls`, trend: trendOf(underTalk), call_ids: uT.ids.slice(0, 6) });
+    }
+    const balanced = (r) => { const p = Number(r.agent_talk_pct); return p >= 40 && p <= 65; };
+    const bT = rate(rows, balanced);
+    if (bT.pct >= 0.6 && bT.ids.length >= 3) {
+      push({ key: 'balanced_talk', type: 'strength', label: 'Well-balanced conversations',
+        detail: `Holds a healthy 40–65% talk share on ${Math.round(bT.pct * 100)}% of calls — leading without steamrolling.`,
+        frequency: `${bT.ids.length} of ${n} calls`, trend: trendOf(balanced), call_ids: bT.ids.slice(0, 6) });
+    }
+
+    // 2. Recurring deductions — the concrete, fixable failures
+    const dedOf = (r) => { const pf = J(r.pass_fail); return (pf && Array.isArray(pf.deductions) ? pf.deductions : []).filter(d => Number(d.points) !== 0); };
+    const dedLabels = {};
+    rows.forEach(r => dedOf(r).forEach(d => {
+      const k = d.label || d.rule; if (!k) return;
+      (dedLabels[k] = dedLabels[k] || []).push(r.id);
+    }));
+    Object.entries(dedLabels)
+      .filter(([, ids]) => ids.length >= 3 && ids.length / n >= 0.3)
+      .sort((a, b) => b[1].length - a[1].length).slice(0, 3)
+      .forEach(([label, ids]) => {
+        const has = (r) => dedOf(r).some(d => (d.label || d.rule) === label);
+        push({ key: 'deduction:' + label, type: 'watch', label: `Recurring: ${label}`,
+          detail: `This deduction has hit ${ids.length} of the last ${n} calls. It's a pattern, not a one-off — worth a focused drill.`,
+          frequency: `${ids.length} of ${n} calls`, trend: trendOf(has), call_ids: ids.slice(0, 6) });
+      });
+
+    // 3. Category habits — chronically weak and consistently strong
+    const catTotals = {}, catCounts = {};
+    rows.forEach(r => {
+      const cs = J(r.category_scores) || {};
+      Object.entries(cs).forEach(([k, v]) => {
+        const num = Number(v); if (!isFinite(num)) return;
+        catTotals[k] = (catTotals[k] || 0) + num; catCounts[k] = (catCounts[k] || 0) + 1;
+      });
+    });
+    const catAvgs = Object.keys(catTotals)
+      .filter(k => catCounts[k] >= Math.max(3, Math.floor(n * 0.5)))
+      .map(k => ({ category: k, avg: Math.round((catTotals[k] / catCounts[k]) * 10) / 10 }))
+      .sort((a, b) => a.avg - b.avg);
+    if (catAvgs.length) {
+      const low = catAvgs[0], high = catAvgs[catAvgs.length - 1];
+      if (low.avg < 6.5) {
+        const lowCall = (r) => { const cs = J(r.category_scores) || {}; return Number(cs[low.category]) < 6.5; };
+        push({ key: 'weak_category', type: 'watch', label: `${low.category} is the consistent gap`,
+          detail: `Averages ${low.avg}/10 across ${catCounts[low.category]} calls — the lowest of any category. This is the highest-leverage thing to work on.`,
+          frequency: `avg ${low.avg}/10`, trend: trendOf(lowCall), call_ids: rate(rows, lowCall).ids.slice(0, 6) });
+      }
+      if (high.avg >= 7.5 && high.category !== low.category) {
+        push({ key: 'strong_category', type: 'strength', label: `${high.category} is a strength`,
+          detail: `Averages ${high.avg}/10 — consistently the strongest category. Worth having them model this for the team.`,
+          frequency: `avg ${high.avg}/10`, trend: 'steady', call_ids: [] });
+      }
+    }
+
+    // 4. Next step discipline
+    const softNext = (r) => !String(r.next_step_text || '').trim();
+    const sN = rate(rows, softNext);
+    if (sN.pct >= 0.4 && sN.ids.length >= 3) {
+      push({ key: 'soft_next_step', type: 'watch', label: 'Ends without a firm next step',
+        detail: `No clear next step captured on ${sN.ids.length} of ${n} calls. A specific day/time commitment is what separates a booked call from a "let me think about it".`,
+        frequency: `${sN.ids.length} of ${n} calls`, trend: trendOf(softNext), call_ids: sN.ids.slice(0, 6) });
+    }
+    const firmNext = (r) => String(r.next_step_text || '').trim().length > 0;
+    const fN = rate(rows, firmNext);
+    if (fN.pct >= 0.8 && fN.ids.length >= 4) {
+      push({ key: 'firm_next_step', type: 'strength', label: 'Always lands a next step',
+        detail: `Captured a clear next step on ${fN.ids.length} of ${n} calls — strong close discipline.`,
+        frequency: `${fN.ids.length} of ${n} calls`, trend: trendOf(firmNext), call_ids: fN.ids.slice(0, 6) });
+    }
+
+    // Watch items first (that's what coaching acts on), strengths after.
+    habits.sort((a, b) => (a.type === b.type ? 0 : a.type === 'watch' ? -1 : 1));
+
+    const scores = rows.map(r => Number(r.overall_score_adj)).filter(isFinite);
+    const avgOf = (a) => a.length ? Math.round((a.reduce((s, x) => s + x, 0) / a.length) * 10) / 10 : null;
+    res.json({
+      rep: rep.name, role: rep.role, based_on: n, enough_data: true,
+      avg_score: avgOf(scores),
+      avg_recent: avgOf(recent.map(r => Number(r.overall_score_adj)).filter(isFinite)),
+      avg_older: avgOf(older.map(r => Number(r.overall_score_adj)).filter(isFinite)),
+      category_averages: catAvgs,
+      habits,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/reps/:id/outcomes', async (req, res) => {
   try {
     const rep = (await q('SELECT name FROM rep_roster WHERE id=?', [req.params.id])).rows[0];
