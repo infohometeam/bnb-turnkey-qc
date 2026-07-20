@@ -5,7 +5,20 @@
 <title>BNB Turnkey QC — The Rise Collective</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--f:'Outfit',sans-serif;--m:'IBM Plex Mono',monospace;--bg:#12161f;--card:#1a1f2b;--border:#2a3140;--t1:#eef1f6;--t2:#aab4c5;--t3:#6b7686;--t4:#55606f;--t5:#2a3140;--accent:#7c83ff}
+:root{--f:'Outfit',sans-serif;--m:'IBM Plex Mono',monospace;--bg:#12161f;--card:#1a1f2b;--border:#2a3140;--t1:#eef1f6;--t2:#aab4c5;--t3:#6b7686;--t4:#55606f;--t5:#2a3140;--accent:#7c83ff;
+/* ── P1 semantic tokens (Design Lab, Jul 20) — additive only, no visual change. Passes P2+ migrate inline hex onto these. ── */
+/* Spacing scale (dashboard density 4→48) */
+--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;--s7:48px;
+/* Radii (match existing: btn 8, card 14) */
+--r-sm:6px;--r-md:8px;--r-lg:14px;
+/* Typography scale + rhythm */
+--fs1:12px;--fs2:14px;--fs3:16px;--fs4:18px;--fs5:24px;--fs6:32px;--lh:1.5;
+/* Status semantics (fg + paired bg) — mirror sClr()/stClr() */
+--pos:#34d399;--pos-bg:#052e16;--neg:#ef4444;--neg-bg:#2a0a0a;--warn:#fbbf24;--warn-bg:#2a1a00;--info:#60a5fa;--info-bg:#14224a;
+/* Action accent (captures the live #6366f1 button drift so it can be reconciled with --accent later) */
+--accent-solid:#6366f1;--accent-solid-h:#4f46e5;
+/* Interaction */
+--focus:#818cf8;--dur:.18s}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:var(--f);background:var(--bg);color:var(--t1);min-height:100vh}
 #root{display:flex;min-height:100vh;width:100%}
