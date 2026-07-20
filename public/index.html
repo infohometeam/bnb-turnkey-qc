@@ -80,6 +80,10 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 }
 /* Decorative emoji/glyph icons shouldn't be announced by screen readers */
 .nav-ico{speak:none}
+/* ── P3 loading/error states (Design Lab, Jul 20) ── */
+@keyframes sksh{0%{background-position:-300px 0}100%{background-position:300px 0}}
+.sk{background:linear-gradient(90deg,var(--card) 0%,var(--border) 40%,var(--card) 80%);background-size:600px 100%;animation:sksh 1.3s infinite linear;border-radius:var(--r-sm)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 </style>
 </head>
 <body>
@@ -95,10 +99,14 @@ const API="/api";
 // channel is configured. Never blocks or surfaces errors to the user.
 function qcVisitorId(){try{let v=localStorage.getItem("qc_visitor");if(!v){v=Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem("qc_visitor",v);}return v;}catch(e){return "anon";}}
 function pingActivity(page){try{fetch(`${API}/activity/visit`,{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,body:JSON.stringify({page,visitorId:qcVisitorId()})}).catch(()=>{});}catch(e){}}
-function useApi(p,deps=[]){const[d,setD]=useState(null);const[l,setL]=useState(true);const reload=useCallback(()=>{setL(true);fetch(API+p).then(r=>r.json()).then(setD).catch(e=>console.error(e)).finally(()=>setL(false))},[p]);useEffect(()=>{reload()},[reload,...deps]);return{data:d,loading:l,reload}}
+function useApi(p,deps=[]){const[d,setD]=useState(null);const[l,setL]=useState(true);const[err,setErr]=useState(null);const reload=useCallback(()=>{setL(true);setErr(null);fetch(API+p).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(x=>{setD(x);setErr(null)}).catch(e=>{console.error("useApi",p,e);setErr(e)}).finally(()=>setL(false))},[p]);useEffect(()=>{reload()},[reload,...deps]);return{data:d,loading:l,error:err,reload}}
 async function postApi(p,b){return fetch(API+p,{method:"POST",headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined}).then(r=>r.json())}
 async function patchApi(p,b){return fetch(API+p,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(r=>r.json())}
 async function deleteApi(p){return fetch(API+p,{method:"DELETE"}).then(r=>r.json())}
+// ── P3 shared async-state UI ──
+function Skel({rows=5,pad=40}){return<div className="card" style={{padding:pad}} aria-busy="true"><span className="sr-only">Loading…</span><div className="flex-col" style={{gap:12}}><div className="sk" style={{height:18,width:"38%",marginBottom:6}}/>{Array.from({length:rows}).map((_,i)=><div key={i} className="sk" style={{height:12,width:[92,78,85,66,73,80][i%6]+"%"}}/>)}</div></div>}
+function SkelStats({n=5}){return<div className="grid grid-stats" aria-busy="true"><span className="sr-only">Loading…</span>{Array.from({length:n}).map((_,i)=><div key={i} className="card" style={{padding:"18px 20px"}}><div className="sk" style={{height:10,width:"55%",marginBottom:14}}/><div className="sk" style={{height:26,width:"40%"}}/></div>)}</div>}
+function PageError({onRetry,msg}){return<div className="card" style={{padding:"44px 40px",textAlign:"center"}} role="alert"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginBottom:12}}><path d="M12 3l9 17H3z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17.5" r=".6" fill="var(--warn)"/></svg><div style={{fontSize:15,fontWeight:800,color:"var(--t1)",marginBottom:5}}>Couldn't load this data</div><div style={{fontSize:12.5,color:"var(--t3)",lineHeight:1.6,maxWidth:340,margin:"0 auto 18px"}}>{msg||"The request failed — the server likely hiccuped. Nothing was lost; this view is showing no numbers rather than wrong ones."}</div>{onRetry&&<button className="btn" onClick={onRetry}>Retry</button>}</div>}
 const TZ="America/New_York";
 function toUTC(d){if(!d)return null;const s=String(d);return new Date(s.includes('Z')||s.includes('+')?s:s.replace(' ','T')+'Z');}
 const fmt=d=>{const dt=toUTC(d);return dt?dt.toLocaleDateString("en-US",{month:"short",day:"numeric",timeZone:TZ}):"—"};
@@ -264,7 +272,7 @@ function downloadCSV(rows,filename){
 }
 
 // ── Dashboard ───────────────────────────────────────────────
-function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:qd}=useApi("/queue/status");const{data:fd}=useApi(`/calls?flagged=true&limit=5${dq}`,[p,f,t]);const{data:rd}=useApi("/report?days=7");const{data:recent}=useApi(`/calls?status=SCORED&limit=8${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"}</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div><div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div><div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div></div>{data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} onClick={()=>goTo("rep",r.rep_name)} title={`View ${r.rep_name}`} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12,cursor:"pointer",padding:"6px 8px",margin:"0 -8px 6px",borderRadius:8}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}{fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Flagged</div>{fd.calls.map(c=><div key={c.id} onClick={()=>goTo("calls",c.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 6px",margin:"0 -6px",borderRadius:8,borderBottom:"1px solid #2a3140",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"var(--t2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}
+function Dashboard(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data,error,reload}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:qd}=useApi("/queue/status");const{data:fd}=useApi(`/calls?flagged=true&limit=5${dq}`,[p,f,t]);const{data:rd}=useApi("/report?days=7");const{data:recent}=useApi(`/calls?status=SCORED&limit=8${dq}`,[p,f,t]);if(error&&!data)return<PageError onRetry={reload}/>;if(!data)return<Skel/>;const s=data.stats||{};return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Dashboard</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>BNB Turnkey QC · {qd?.engine?.toUpperCase()||"AI"}</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div><div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div><div className="stat-sub">{s.scored||0} scored</div></div><div className="card stat-card"><div className="stat-label"><span>☰</span> Queue</div><div className="stat-value" style={{color:"#60a5fa"}}>{s.queued||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div></div>{data.repStats?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">Rep Performance</div>{data.repStats.map(r=><div key={r.rep_name} onClick={()=>goTo("rep",r.rep_name)} title={`View ${r.rep_name}`} style={{display:"flex",alignItems:"center",gap:14,marginBottom:12,cursor:"pointer",padding:"6px 8px",margin:"0 -8px 6px",borderRadius:8}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><div style={{width:36,height:36,borderRadius:10,background:RC[r.rep_name]||"#334",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#fff"}}>{r.rep_name?.[0]}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{r.rep_name} <span style={{color:"#2a3040",fontWeight:500}}>· {r.role} · {r.call_count} calls</span></span></div><MiniBar value={r.avg_score}/></div></div>)}</div>}{fd?.calls?.length>0&&<div className="card" style={{padding:24}}><div className="section-head">⚠ Flagged</div>{fd.calls.map(c=><div key={c.id} onClick={()=>goTo("calls",c.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 6px",margin:"0 -6px",borderRadius:8,borderBottom:"1px solid #2a3140",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><ScoreRing value={c.overall_score_adj} size={32} sw={2.5}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{c.rep_name} → {c.client_name}</div><div style={{fontSize:11,color:"var(--t2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.quick_summary}</div></div><span style={{fontSize:10,color:"#2a3040"}}>{fmt(c.received_at)}</span></div>)}</div>}
 
     {/* Team focus areas — weakest category first */}
     {rd?.team_categories?.length>0&&<div className="card" style={{padding:24}}>
@@ -301,7 +309,7 @@ function CallsList({onSelect}){const[sf,sSf]=useState("ALL");const[rf,sRf]=useSt
   function clearSearch(){sSq('');setSearchResults(null);}
   async function bulkDel(){if(!sel.size||!confirm(`Delete ${sel.size} calls?`))return;setDel(true);await postApi('/calls/bulk-delete',{ids:[...sel]});setSel(new Set());reload();setDel(false)}
   async function bulkRescore(){if(!sel.size)return;const est=(sel.size*0.006).toFixed(3);if(!confirm(`Re-score ${sel.size} calls?\n\nEstimated cost: $${est}\nCurrent scores will be archived before re-scoring.\n\nProceed?`))return;const r=await fetch(`${API}/calls/rescore-selected`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[...sel]})}).then(r=>r.json());alert(`✓ ${r.queued} calls queued for re-score. They'll process on the next worker cycles.`);setSel(new Set());reload();}
-  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const displayCalls=searchResults?searchResults.calls:data.calls;const displayTotal=searchResults?searchResults.total:data.total;const tp=Math.ceil(displayTotal/PER);
+  if(!data)return<Skel/>;const displayCalls=searchResults?searchResults.calls:data.calls;const displayTotal=searchResults?searchResults.total:data.total;const tp=Math.ceil(displayTotal/PER);
   return<div className="flex-col gap-20"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Calls</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{displayTotal} {searchResults?`results for "${searchResults.query}"`:"calls"}</p></div><div className="flex-col gap-8"><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="text" value={sq} onChange={e=>sSq(e.target.value)} onKeyDown={e=>e.key==='Enter'&&doSearch()} placeholder="Search transcripts..." style={{minWidth:200,background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,padding:"6px 12px",color:"var(--t1)",fontSize:11}}/><button className="btn btn-primary btn-sm" onClick={doSearch} disabled={searching}>{searching?"...":"🔍"}</button>{searchResults&&<button className="btn btn-sm" onClick={clearSearch}>✕ Clear</button>}</div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><select value={sf} onChange={e=>{sSf(e.target.value);sPg(0)}}><option value="ALL">All Status</option>{["SCORED","NEW","REQC","ERROR","WAIT_RETRY_FULL","WAIT_TRANSCRIPT"].map(s=><option key={s}>{s}</option>)}</select><select value={rf} onChange={e=>{sRf(e.target.value);sPg(0)}}><option value="ALL">All Reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select><button className="btn btn-sm" onClick={()=>{reload();setSel(new Set());clearSearch()}}>↻</button>{sel.size>0&&<button className="btn btn-sm" style={{background:"#1e1b4b",color:"#a5b4fc",border:"1px solid #4338ca"}} onClick={bulkRescore}>↻ Re-score {sel.size}</button>}{sel.size>0&&<button className="btn btn-red btn-sm" onClick={bulkDel} disabled={del}>🗑 {sel.size}</button>}</div></div></div>
     <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:"calc(100vh - 280px)",minHeight:380,overflowY:"auto"}}>{displayCalls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:14,padding:"16px 20px",cursor:"pointer",borderBottom:"1px solid var(--bg)",background:sel.has(c.id)?"#2a3140":c.flagged?"rgba(245,158,11,.03)":"transparent"}} onClick={()=>onSelect(c)}><input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1",width:15,height:15}}/><ScoreRing value={c.overall_score_adj} size={40} sw={2.5}/><div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:14.5,fontWeight:700,color:"var(--t1)",display:"flex",alignItems:"center",gap:7}}>
@@ -517,7 +525,7 @@ function GoldenMomentsPage(){
     </div>}
 
     {(()=>{
-      if(!data)return<div style={{padding:40,textAlign:"center",color:"#374151"}}>Loading…</div>;
+      if(!data)return<Skel/>;
       if(moments.length===0)return<div className="card" style={{padding:40,textAlign:"center",color:"var(--t2)"}}>No moments match those filters.</div>;
       const totalPages=Math.max(1,Math.ceil(moments.length/PAGE_SIZE));
       const cur=Math.min(page,totalPages);
@@ -605,7 +613,7 @@ function ReferralsPage(){
       {view==="suggested"&&<span style={{fontSize:11,color:"var(--t3)",marginLeft:6}}>These are the bot's guesses — confirm the real ones.</span>}
     </div>
 
-    {!data?<div style={{padding:40,textAlign:"center",color:"#374151"}}>Loading…</div>:
+    {!data?<Skel/>:
      refs.length===0?<div className="card" style={{padding:40,textAlign:"center"}}>
        <div style={{fontSize:14,color:"var(--t2)"}}>No {view==="confirmed"?"confirmed":"pending"} referrals{brand?" for this brand":""}.</div>
        <div style={{fontSize:12,color:"var(--t3)",marginTop:6}}>
@@ -712,7 +720,7 @@ function OutcomesPage(){
       <b style={{color:"#7dd3fc"}}>Nothing changes until you confirm.</b> A suggestion has zero effect on anyone's numbers. Only <b>Confirm</b> removes a call from the scored average — and even then the call stays visible and attributed to the rep.
     </div>
 
-    {!data?<div style={{padding:40,textAlign:"center",color:"#374151"}}>Loading…</div>:
+    {!data?<Skel/>:
      sug.length===0?<div className="card" style={{padding:40,textAlign:"center"}}>
        <div style={{fontSize:14,color:"var(--t2)"}}>No pending suggestions.</div>
        <div style={{fontSize:12,color:"var(--t3)",marginTop:6}}>New calls get checked automatically. Use <b>Scan old calls</b> to review already-scored ones.</div>
@@ -1130,7 +1138,7 @@ function RecordsPage(){
     }catch(e){alert("Rescue failed — nothing changed.");}
     setBusy(false);
   }
-  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  if(!data)return<Skel/>;
   const bd=data.breakdown||[];
   return<div className="flex-col gap-24">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
@@ -1217,7 +1225,7 @@ function TrendChart({data}){
   </div>;
 }
 
-function AnalyticsPage(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:trends}=useApi('/analytics/trends?days=30');const{data:dist}=useApi(`/analytics/distribution?_=1${dq}`,[p,f,t]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const s=data.stats||{};const mx=Math.max(...(trends?.trends||[]).map(t=>t.scored||0),1);
+function AnalyticsPage(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const dq=buildDQ(p,f,t);const{data}=useApi(`/analytics?_=1${dq}`,[p,f,t]);const{data:trends}=useApi('/analytics/trends?days=30');const{data:dist}=useApi(`/analytics/distribution?_=1${dq}`,[p,f,t]);if(!data)return<Skel/>;const s=data.stats||{};const mx=Math.max(...(trends?.trends||[]).map(t=>t.scored||0),1);
   return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Analytics</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>{s.scored||0} scored</p></div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div>
     <div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><span>◉</span> Avg Score</div><div className="stat-value" style={{color:sClr(s.avg_score)}}>{s.avg_score??"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>⏱</span> Avg Dur</div><div className="stat-value">{fmtD(s.avg_duration)}</div></div><div className="card stat-card"><div className="stat-label"><span>🎙</span> Agent Talk</div><div className="stat-value" style={{color:s.avg_agent_talk>70?"#ef4444":"#34d399"}}>{s.avg_agent_talk?s.avg_agent_talk+"%":"—"}</div></div><div className="card stat-card"><div className="stat-label"><span>⚠</span> Flagged</div><div className="stat-value" style={{color:"#f59e0b"}}>{s.flagged||0}</div></div></div>
     {trends?.trends?.length>1&&<div className="card" style={{padding:24}}><div className="section-head">30-Day Score Trend</div><TrendChart data={trends.trends}/></div>}
@@ -1227,11 +1235,11 @@ function AnalyticsPage(){const[p,sP]=useState("week");const[f,sF]=useState('');c
   </div>}
 
 // ── Queue ────────────────────────────────────────────────────
-function QueuePage(){const SHOW_PULL_BUTTON=false; /* set true when Aloware/Fathom API tokens are added to Render */ const{data,reload}=useApi("/queue/status");const{data:errors}=useApi("/calls?status=ERROR&limit=20&hideVm=false");const[pr,setPr]=useState(false);const[rt,setRt]=useState(false);const[pl,setPl]=useState(false);
+function QueuePage(){const SHOW_PULL_BUTTON=false; /* set true when Aloware/Fathom API tokens are added to Render */ const{data,reload,error}=useApi("/queue/status");const{data:errors}=useApi("/calls?status=ERROR&limit=20&hideVm=false");const[pr,setPr]=useState(false);const[rt,setRt]=useState(false);const[pl,setPl]=useState(false);
   async function pull(){setPl(true);try{const r=await postApi("/queue/pull");const parts=(r.results||[]).map(x=>x.ok?`${x.source}: ${x.ingested} pulled`:`${x.source}: ${x.reason||"failed"}`);alert(parts.length?parts.join("\n"):(r.error||"Nothing pulled."));reload();}catch(e){alert("Pull failed — nothing changed.");}setPl(false)}
   async function proc(){setPr(true);const r=await postApi("/queue/process?max=5");const sc=r.processed||0;const cl=r.classified||0;alert(`${sc} scored, ${cl} classified, ${(r.results||[]).filter(x=>x.status==='ERROR'||x.status==='RETRY').length} errors`);reload();setPr(false)}
   async function retry(){setRt(true);await postApi("/queue/retry-all");reload();setRt(false)}
-  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const d=data.daily||{};
+  if(error&&!data)return<PageError onRetry={reload}/>;if(!data)return<Skel/>;const d=data.daily||{};
   return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap"}}><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Queue</h2><div style={{display:"flex",gap:8}}><button className="btn btn-primary" onClick={proc} disabled={pr}>{pr?"...":"▶ Process"}</button><button className="btn btn-green" onClick={retry} disabled={rt}>↻ Retry</button><button className="btn" onClick={async()=>{if(!confirm("Reset retry counters on stuck calls so they can be processed again?"))return;const r=await postApi("/queue/reset-retries",{});alert(`Reset ${r.reset||0} stuck call(s). They'll re-process within ~2 min.`);reload();}} title="Calls that hit the max retry limit are skipped by the worker forever. This resets their counter so they can run again.">⟲ Reset Stuck</button>{SHOW_PULL_BUTTON&&<button className="btn" onClick={pull} disabled={pl} title="Fetch recent calls from Aloware/Fathom APIs (backfill missed webhooks)">{pl?"Pulling…":"⇩ Pull Calls"}</button>}</div></div>
     <div className="card" style={{padding:"16px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:10,height:10,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 10px #22c55e55"}}/><span style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{data.engine?.toUpperCase()}</span></div><div style={{display:"flex",gap:24}}><div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:"#22c55e",fontFamily:"var(--m)"}}>{d.scored_today||0}</div><div style={{fontSize:9,color:"#374151"}}>SCORED TODAY</div></div><div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:"#60a5fa",fontFamily:"var(--m)"}}>{d.full_qc_used||0}</div><div style={{fontSize:9,color:"#374151"}}>API CALLS</div></div><div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:"#f59e0b",fontFamily:"var(--m)"}}>${Number(d.est_cost_usd||0).toFixed(3)}</div><div style={{fontSize:9,color:"#374151"}}>COST</div></div></div></div>
     <div className="grid" style={{gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))"}}>
@@ -1241,9 +1249,10 @@ function QueuePage(){const SHOW_PULL_BUTTON=false; /* set true when Aloware/Fath
   </div>}
 
 // ── Health (detailed) ───────────────────────────────────────
-function HealthPage(){const{data,reload}=useApi("/health");const[rt,setRt]=useState(false);
+function HealthPage(){const{data,reload,error}=useApi("/health");const[rt,setRt]=useState(false);
   async function retry(){setRt(true);await postApi("/queue/retry-all");reload();setRt(false)}
-  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  if(error&&!data)return<PageError onRetry={reload}/>;
+  if(!data)return<Skel/>;
   return<div className="flex-col gap-24">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><h2 style={{fontSize:24,fontWeight:900,margin:0}}>System Health</h2><button className="btn btn-green" onClick={retry} disabled={rt}>↻ Retry All</button></div>
     <div className="grid grid-stats">
@@ -1304,7 +1313,7 @@ function CoachingCard({c}){
   </div>
 }
 
-function CoachingPage(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const{data:reps}=useApi("/reps");const[tab,setTab]=useState("team");const roleF=tab==="closers"?"&role=Closer":tab==="setters"?"&role=Setter":tab.startsWith("rep:")?`&rep=${tab.split(":")[1]}`:"";const dq=buildDQ(p,f,t);const{data}=useApi(`/calls?status=SCORED&limit=100${roleF}${dq}`,[p,f,t,tab]);if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;const calls=data.calls||[];const av=arr=>{const ff=arr.filter(v=>v!=null&&isFinite(v));return ff.length?+(ff.reduce((a,b)=>a+b,0)/ff.length).toFixed(1):0};const catAvgs=Object.fromEntries(CATS.map(c=>[c,av(calls.map(x=>x.category_scores?.[c]))]));const sorted=Object.entries(catAvgs).sort((a,b)=>a[1]-b[1]);const impFreq={};calls.forEach(c=>(c.improvements||[]).forEach(i=>{impFreq[i]=(impFreq[i]||0)+1}));const topImps=Object.entries(impFreq).sort((a,b)=>b[1]-a[1]).slice(0,5);const TABS=[{id:"team",l:"Team"},{id:"closers",l:"Closers"},{id:"setters",l:"Setters"},...(reps||[]).map(r=>({id:`rep:${r.name}`,l:r.name}))];
+function CoachingPage(){const[p,sP]=useState("week");const[f,sF]=useState('');const[t,sT]=useState('');const{data:reps}=useApi("/reps");const[tab,setTab]=useState("team");const roleF=tab==="closers"?"&role=Closer":tab==="setters"?"&role=Setter":tab.startsWith("rep:")?`&rep=${tab.split(":")[1]}`:"";const dq=buildDQ(p,f,t);const{data}=useApi(`/calls?status=SCORED&limit=100${roleF}${dq}`,[p,f,t,tab]);if(!data)return<Skel/>;const calls=data.calls||[];const av=arr=>{const ff=arr.filter(v=>v!=null&&isFinite(v));return ff.length?+(ff.reduce((a,b)=>a+b,0)/ff.length).toFixed(1):0};const catAvgs=Object.fromEntries(CATS.map(c=>[c,av(calls.map(x=>x.category_scores?.[c]))]));const sorted=Object.entries(catAvgs).sort((a,b)=>a[1]-b[1]);const impFreq={};calls.forEach(c=>(c.improvements||[]).forEach(i=>{impFreq[i]=(impFreq[i]||0)+1}));const topImps=Object.entries(impFreq).sort((a,b)=>b[1]-a[1]).slice(0,5);const TABS=[{id:"team",l:"Team"},{id:"closers",l:"Closers"},{id:"setters",l:"Setters"},...(reps||[]).map(r=>({id:`rep:${r.name}`,l:r.name}))];
   return<div className="flex-col gap-24"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Coaching</h2><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/></div>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{TABS.map(tt=><button key={tt.id} className={`tab-btn${tab===tt.id?" active":""}`} onClick={()=>setTab(tt.id)} style={tab===tt.id?{background:RC[tt.l]||"#f59e0b",borderColor:RC[tt.l]||"#f59e0b"}:{}}>{tt.l}</button>)}</div>
     <div className="grid" style={{gridTemplateColumns:"1fr 1fr 1fr"}}><div className="card stat-card"><div className="stat-label">Scored</div><div className="stat-value" style={{color:"#60a5fa"}}>{calls.length}</div></div>{sorted[0]&&sorted[0][1]>0&&<div className="card stat-card" style={{background:"#1a0a0a",borderColor:"#991b1b"}}><div style={{fontSize:10,color:"#ef4444",fontWeight:700,fontFamily:"var(--m)",marginBottom:4}}>FOCUS</div><div style={{fontSize:20,fontWeight:900,color:"#fca5a5"}}>{CL[sorted[0][0]]}</div><div style={{fontSize:12,color:"#ef4444",opacity:.7}}>Avg: {sorted[0][1]}</div></div>}{sorted.length>0&&sorted[sorted.length-1][1]>0&&<div className="card stat-card" style={{background:"#041a0e",borderColor:"#166534"}}><div style={{fontSize:10,color:"#22c55e",fontWeight:700,fontFamily:"var(--m)",marginBottom:4}}>STRONGEST</div><div style={{fontSize:20,fontWeight:900,color:"#a7f3d0"}}>{CL[sorted[sorted.length-1][0]]}</div><div style={{fontSize:12,color:"#22c55e",opacity:.7}}>Avg: {sorted[sorted.length-1][1]}</div></div>}</div>
@@ -1574,7 +1583,7 @@ function TeamPage(){
     setEditing(null); setShowForm(true);
   }
 
-  if(!reps)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  if(!reps)return<Skel/>;
   const active=reps.filter(r=>r.active);const inactive=reps.filter(r=>!r.active);
 
   return<div className="flex-col gap-20" style={{maxWidth:900}}>
@@ -1767,7 +1776,7 @@ function MyProgressPage(){
       </select>}
     </div>
 
-    {!data?<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>:
+    {!data?<Skel/>:
      data.stats.scored==0?<div className="card" style={{padding:40,textAlign:"center",color:"var(--t2)"}}>No scored calls yet for {data.rep.name}.</div>:<>
       <div className="grid grid-stats">
         <div className="card stat-card"><div className="stat-label">Scored calls</div><div style={{fontSize:26,fontWeight:900,color:"var(--t2)"}}>{data.stats.scored}</div></div>
@@ -1859,7 +1868,7 @@ function MyProgressPage(){
 function CalibrationPage(){
   const{data}=useApi("/calibration");
   const{data:dw}=useApi("/deduction-weights");
-  if(!data)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  if(!data)return<Skel/>;
   const ovr=data.overrides||[];
   const avg=data.avg_delta;
   // Per-rep and per-role rollups of the gap
@@ -2075,7 +2084,7 @@ function RepDetailPage({name}){
   const{data:oc}=useApi(rep?`/reps/${rep.id}/outcomes`:null,[rep?.id]);
   const CAT_LABELS={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",frame_control:"Frame/Control",objections_close:"Objections & Close"};
 
-  if(!reps)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading...</div>;
+  if(!reps)return<Skel/>;
   if(!rep)return<div className="flex-col gap-16"><button className="btn" onClick={()=>goTo("dashboard")} style={{alignSelf:"flex-start"}}>← Back</button><div className="card" style={{padding:40,textAlign:"center",color:"var(--t2)"}}>Rep "{name}" not found.</div></div>;
 
   const st=data?.stats||{};
@@ -2642,7 +2651,7 @@ function PracticeHistoryPage(){
       <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Practice History</h2><p style={{fontSize:12,color:"var(--t3)",marginTop:4}}>Every practice session, scored on the same rubric as real calls. Click any to review.</p></div>
       <select value={rep} onChange={e=>setRep(e.target.value)} style={{padding:"7px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="">All reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
     </div>
-    {!sessions&&<div style={{padding:40,textAlign:"center",color:"#374151"}}>Loading…</div>}
+    {!sessions&&<Skel/>}
     {sessions&&sessions.length===0&&<div className="card" style={{padding:40,textAlign:"center",color:"var(--t3)"}}>No practice sessions yet. Head to the <b>Train</b> tab to start one.</div>}
     {sessions&&sessions.map(s=><div key={s.id} onClick={()=>s.status==="scored"&&setDetail(s)} className="card" style={{padding:"16px 20px",cursor:s.status==="scored"?"pointer":"default",display:"flex",alignItems:"center",gap:16}}>
       {s.status==="scored"?<ScoreRing value={s.overall_score_adj} size={40} sw={3}/>:<div style={{width:40,height:40,borderRadius:"50%",border:"2px dashed #374151",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#374151"}}>{s.status==="in_progress"?"…":"—"}</div>}
@@ -2779,7 +2788,7 @@ function ResourcesPage({initial}){
   </div>}
   return<div className="flex-col gap-20" style={{maxWidth:820}}>
     <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Resources</h2><p style={{fontSize:12,color:"var(--t3)",marginTop:4}}>The training manuals behind the rubric. Read these to understand what great looks like — then see it reflected in your scores.</p></div>
-    {!manuals&&<div style={{padding:40,textAlign:"center",color:"#374151"}}>Loading…</div>}
+    {!manuals&&<Skel/>}
     <div className="grid" style={{gridTemplateColumns:"1fr 1fr",gap:14}}>
       {(manuals||[]).map(m=><div key={m.id} onClick={()=>open(m.id)} className="card" style={{padding:22,cursor:"pointer",transition:"all .15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#4338ca"} onMouseLeave={e=>e.currentTarget.style.borderColor=""}>
         <div style={{fontSize:30,marginBottom:10}}>{m.icon}</div>
