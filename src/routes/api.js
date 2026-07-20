@@ -650,7 +650,7 @@ router.get('/analytics', async (req, res) => {
         (SELECT COUNT(*) FROM jsonb_each_text(COALESCE((pass_fail::jsonb->'beliefs_covered'), '{}'::jsonb)) WHERE value='true')
       )::numeric / 7 * 100, 0) AS avg_pct
       FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED}
-        AND pass_fail::jsonb ? 'beliefs_covered' ${df} ${rf}`, p);
+        AND jsonb_exists(pass_fail::jsonb, 'beliefs_covered') ${df} ${rf}`, p);
     const qz = quality.rows[0] || {}, gradedN = Number(qz.graded) || 0;
 
     const repStats = await q(`SELECT rep_name, role, COUNT(*) as call_count, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score, ROUND(AVG(call_duration_sec)::numeric,0) as avg_duration, ROUND(AVG(agent_talk_pct)::numeric,1) as avg_agent_talk, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged_count FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED} ${df} ${rf} GROUP BY rep_name, role ORDER BY avg_score DESC`, p);
