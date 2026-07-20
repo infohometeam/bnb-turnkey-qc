@@ -66,6 +66,19 @@ select,input[type=date]{background:var(--card);border:1px solid var(--border);bo
   .card{border:1px solid #ddd!important;box-shadow:none!important;background:#fff!important}
   .report-sheet .stat-value{color:#111!important}
 }
+/* ── P2 accessibility (Design Lab, Jul 20) — global, consumes --focus/--dur from P1 ── */
+/* Kill the default focus outline only when a mouse is used; show a clear ring for keyboard nav */
+:focus{outline:none}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{
+  outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--r-sm)}
+/* Standardise interactive transitions on the P1 duration token (was ad-hoc .15s/.2s) */
+.btn,.tab-btn,.period-toggle button,nav button{transition:background var(--dur) ease,color var(--dur) ease,border-color var(--dur) ease}
+/* Respect the OS "reduce motion" setting — neutralise transitions + animations, incl. skeleton shimmer */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
+/* Decorative emoji/glyph icons shouldn't be announced by screen readers */
+.nav-ico{speak:none}
 </style>
 </head>
 <body>
@@ -2807,14 +2820,14 @@ function NavList({pg,onNav}){
     {NAV_GROUPS.map(g=>{
       const open=!collapsed[g.title]||g.title===activeGroup;  // active group is always visible
       return<div key={g.title} style={{marginBottom:6}}>
-        <button onClick={()=>toggle(g.title)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",
+        <button onClick={()=>toggle(g.title)} aria-expanded={open} aria-label={`${g.title} section`} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",
           background:"transparent",border:"none",cursor:"pointer",padding:"6px 12px 4px",color:"#5b6472",
           fontSize:10,fontWeight:800,letterSpacing:.8,textTransform:"uppercase"}}>
           <span>{g.title}</span><span style={{fontSize:9,color:"#3b4250"}}>{open?"▾":"▸"}</span>
         </button>
-        {open&&g.ids.map(id=>{const n=NAV_BY_ID[id];if(!n)return null;return<button key={n.id} className={pg===n.id?"active":""}
+        {open&&g.ids.map(id=>{const n=NAV_BY_ID[id];if(!n)return null;return<button key={n.id} className={pg===n.id?"active":""} aria-label={n.label} aria-current={pg===n.id?"page":undefined}
           onClick={()=>onNav(n.id)} style={pg===n.id?{color:n.color,background:`${n.color}12`,borderLeftColor:n.color}:{}}>
-          <span style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>;})}
+          <span className="nav-ico" aria-hidden="true" style={{fontSize:14,width:22,textAlign:"center",flexShrink:0}}>{n.icon}</span><span>{n.label}</span></button>;})}
       </div>;
     })}
   </nav>;
