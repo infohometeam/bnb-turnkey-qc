@@ -639,6 +639,20 @@ router.get('/analytics', async (req, res) => {
 
     const stats = await q(`SELECT COUNT(*) as total_calls, SUM(CASE WHEN status='SCORED' THEN 1 ELSE 0 END) as scored, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged, SUM(CASE WHEN status IN ('NEW','REQC','WAIT_RETRY_FULL') THEN 1 ELSE 0 END) as queued, SUM(CASE WHEN status='ERROR' THEN 1 ELSE 0 END) as errors, SUM(CASE WHEN status='WAIT_TRANSCRIPT' THEN 1 ELSE 0 END) as missing_transcripts, ROUND(AVG(CASE WHEN status='SCORED' THEN overall_score_adj END)::numeric,1) as avg_score, ROUND(AVG(CASE WHEN status='SCORED' THEN call_duration_sec END)::numeric,0) as avg_duration, ROUND(AVG(CASE WHEN status='SCORED' THEN agent_talk_pct END)::numeric,1) as avg_agent_talk, ROUND(AVG(CASE WHEN status='SCORED' THEN contact_talk_pct END)::numeric,1) as avg_contact_talk FROM calls WHERE rep_name != 'Unknown Setter' ${EXCL_TAGGED} ${df} ${rf}`, p);
 
+    // Cheap, additive KPIs for the Design Lab's dashboard rebuild (P6). Both read
+    // stored columns — no transcript re-reads, no heavy scan — same window/role/
+    // exclusion scope as everything else on this endpoint.
+    const quality = await q(`SELECT
+        COUNT(*) FILTER (WHERE transcript_quality='degraded') AS degraded,
+        COUNT(*) FILTER (WHERE transcript_quality IS NOT NULL) AS graded
+      FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED} ${df} ${rf}`, p);
+    const beliefs = await q(`SELECT ROUND(AVG(
+        (SELECT COUNT(*) FROM jsonb_each_text(COALESCE((pass_fail::jsonb->'beliefs_covered'), '{}'::jsonb)) WHERE value='true')
+      )::numeric / 7 * 100, 0) AS avg_pct
+      FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED}
+        AND pass_fail::jsonb ? 'beliefs_covered' ${df} ${rf}`, p);
+    const qz = quality.rows[0] || {}, gradedN = Number(qz.graded) || 0;
+
     const repStats = await q(`SELECT rep_name, role, COUNT(*) as call_count, ROUND(AVG(overall_score_adj)::numeric,1) as avg_score, ROUND(AVG(call_duration_sec)::numeric,0) as avg_duration, ROUND(AVG(agent_talk_pct)::numeric,1) as avg_agent_talk, SUM(CASE WHEN flagged=1 THEN 1 ELSE 0 END) as flagged_count FROM calls WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED} ${df} ${rf} GROUP BY rep_name, role ORDER BY avg_score DESC`, p);
 
     const catAvgs = await q(`SELECT rep_name, category_scores FROM calls WHERE status='SCORED' AND category_scores IS NOT NULL ${df} ${rf}`, p);
@@ -654,7 +668,15 @@ router.get('/analytics', async (req, res) => {
       categoryAvgs[rep] = {};
       for (const [cat, vals] of Object.entries(cats)) { categoryAvgs[rep][cat] = vals.length ? +(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : null; }
     }
-    res.json({ stats: stats.rows[0], repStats: repStats.rows, categoryAvgs });
+    res.json({
+      stats: {
+        ...stats.rows[0],
+        degraded_transcript_count: Number(qz.degraded) || 0,
+        degraded_transcript_pct: gradedN ? Math.round((Number(qz.degraded) || 0) / gradedN * 100) : null,
+        belief_coverage_pct: beliefs.rows[0]?.avg_pct != null ? Number(beliefs.rows[0].avg_pct) : null,
+      },
+      repStats: repStats.rows, categoryAvgs,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
