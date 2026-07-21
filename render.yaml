@@ -15,6 +15,14 @@ services:
         sync: false
       - key: CLAUDE_MODEL
         value: claude-haiku-4-5-20251001
+      # Token pricing per MILLION tokens — drives the in-app cost figure.
+      # Defaults match Claude Haiku 4.5 list rates ($1 in / $5 out).
+      # UPDATE THESE IF CLAUDE_MODEL CHANGES, or the cost display will be wrong.
+      #   Haiku 4.5 = 1 / 5   ·   Sonnet 5 = 3 / 15   ·   Opus 4.8 = 5 / 25
+      - key: PRICE_INPUT_PER_MTOK
+        value: "1"
+      - key: PRICE_OUTPUT_PER_MTOK
+        value: "5"
       # ── Trainer voice (ElevenLabs) — team-wide TTS ──
       - key: ELEVENLABS_API_KEY
         sync: false
