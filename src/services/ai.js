@@ -120,10 +120,17 @@ function parseJsonSafe(text) {
   throw new Error(`JSON_PARSE_ERROR (len=${raw.length}): ${head}${tail}`);
 }
 
+// Token pricing per MILLION tokens. Defaults are Claude Haiku 4.5 list rates
+// ($1 in / $5 out, verified Jul 2026). Overridable via env so a model or price
+// change never silently produces a wrong cost figure again — the previous
+// hardcoded $3/$15 were Sonnet-tier rates and overstated spend by ~3x.
+const PRICE_IN_PER_MTOK = Number(process.env.PRICE_INPUT_PER_MTOK ?? 1);
+const PRICE_OUT_PER_MTOK = Number(process.env.PRICE_OUTPUT_PER_MTOK ?? 5);
+
 function estimateCost(usage) {
   if (usage.engine === 'gemini') return 0;
-  const input = (usage.inputTokens / 1e6) * 3;
-  const output = (usage.outputTokens / 1e6) * 15;
+  const input = (usage.inputTokens / 1e6) * PRICE_IN_PER_MTOK;
+  const output = (usage.outputTokens / 1e6) * PRICE_OUT_PER_MTOK;
   return Math.round((input + output) * 10000) / 10000;
 }
 
