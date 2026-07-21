@@ -85,7 +85,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .nav-ico{speak:none}
 /* ── Call Detail two-pane (Design Lab, Jul 22): sticky score rail + tabbed pane ── */
 .cd-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:20px;align-items:start}
-.cd-rail{position:sticky;top:16px;display:flex;flex-direction:column;gap:16px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px}
+.cd-rail{position:sticky;top:16px;display:flex;flex-direction:column;gap:14px}
 @media(max-width:1000px){.cd-grid{grid-template-columns:1fr}.cd-rail{position:static}}
 /* ── P3 loading/error states (Design Lab, Jul 20) ── */
 @keyframes sksh{0%{background-position:-300px 0}100%{background-position:300px 0}}
@@ -948,7 +948,7 @@ function ExternalLinks({call:c}){
   const L=({href,children,primary,title})=><a href={href} target="_blank" rel="noopener" title={title}
     className={"btn"+(primary?" btn-primary":"")} style={{textDecoration:"none",fontSize:12}}>{children}</a>;
 
-  return<div className="card" style={{padding:14,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+  return<div className="card" style={{padding:"9px 14px",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
     <span style={{fontSize:10,fontWeight:700,color:"#55606f",letterSpacing:.5,marginRight:2}}>OPEN IN</span>
     {rec&&<>
       <L href={rec} primary title="Open the recording directly (full player, scrub, download)">▶ Recording</L>
@@ -1041,7 +1041,7 @@ function CalibrationBox({call}){
   </div>;
 }
 
-function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const[stx,setStx]=useState(false);const[ed,setEd]=useState(false);const{data:fc,reload}=useApi(`/calls/${initial.id}`,[initial.id]);const c=fc||initial;
+function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const[stx,setStx]=useState(false);const[ed,setEd]=useState(false);const[coachOpen,setCoachOpen]=useState(false);const{data:fc,reload}=useApi(`/calls/${initial.id}`,[initial.id]);const c=fc||initial;
   const[exps,setExps]=useState(false);
   function exportCall(withTranscript){
     const parse=(v)=>{try{return typeof v==="string"?JSON.parse(v):v;}catch(e){return v;}};
@@ -1120,8 +1120,9 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
   const confLevel=(()=>{if(!c.score_adjust_notes)return null;const p=c.score_adjust_notes.split('Confidence:')[1];return p?(p.trim().split(/[\s\u2014-]/)[0]||'').toLowerCase():null;})();
   const confColor=confLevel==='high'?'#22c55e':confLevel==='medium'?'#f59e0b':confLevel==='low'?'#ef4444':'var(--t3)';
   const momCount=goldenM.length+toughM.length;
+  const tagCount=Array.isArray(c.tags)?c.tags.length:0;
   const initials=(c.rep_name||'?').split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
-  const TABS=[["overview","Overview"],["scoring","Scoring"],["transcript","Transcript"],["moments",momCount?`Moments ${momCount}`:"Moments"],["tags","Tags"],["history","History"],["notes","Comments"]];
+  const TABS=[["overview","Overview"],["scoring","Scoring"],["transcript","Transcript"],["moments","Moments",momCount||0,"#fbbf24"],["tags","Tags",tagCount||0,"#818cf8"],["history","History"],["notes","Comments"]];
   const at=TABS.some(t=>t[0]===dtab)?dtab:"overview";
   return<div className="flex-col gap-20">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
@@ -1154,11 +1155,11 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
     </aside>
     <div className="cd-main flex-col gap-20">
     <ExternalLinks call={c}/>
-    <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}} role="tablist">{TABS.map(([k,l])=><button key={k} role="tab" aria-selected={at===k} onClick={()=>setDtab(k)} style={{padding:"9px 16px",background:"transparent",border:"none",borderBottom:at===k?"2px solid #818cf8":"2px solid transparent",color:at===k?"#a5b4fc":"var(--t3)",fontWeight:at===k?800:600,fontSize:13,cursor:"pointer",marginBottom:-1}}>{l}</button>)}</div>
+    <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}} role="tablist">{TABS.map(([k,l,cnt,col])=><button key={k} role="tab" aria-selected={at===k} onClick={()=>setDtab(k)} style={{padding:"9px 16px",background:"transparent",border:"none",borderBottom:at===k?"2px solid #818cf8":"2px solid transparent",color:at===k?"#a5b4fc":"var(--t3)",fontWeight:at===k?800:600,fontSize:13,cursor:"pointer",marginBottom:-1}}>{l}{cnt?<span style={{marginLeft:6,fontFamily:"var(--m)",fontWeight:800,color:col}}>{cnt}</span>:null}</button>)}</div>
     {at==="overview"&&<React.Fragment>
-    {c.quick_summary&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>Summary</div><p style={{fontSize:14,color:"var(--t2)",lineHeight:1.7}}>{c.quick_summary}</p></div>}
+    {c.quick_summary&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>Summary</div><p style={{fontSize:14,color:"var(--t2)",lineHeight:1.75,maxWidth:860}}>{c.quick_summary}</p></div>}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>{c.strengths?.length>0&&<div className="card" style={{padding:18,background:"#041a0e",borderColor:"#166534"}}><div style={{fontSize:10,fontWeight:700,color:"#22c55e",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>✦ Strengths</div>{c.strengths.map((s,i)=><div key={i} style={{fontSize:12,color:"#a7f3d0",lineHeight:1.7}}>• {s}</div>)}</div>}{c.improvements?.length>0&&<div className="card" style={{padding:18,background:"#1a0a0a",borderColor:"#991b1b"}}><div style={{fontSize:10,fontWeight:700,color:"#ef4444",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:"var(--m)"}}>△ Improve</div>{c.improvements.map((s,i)=><div key={i} style={{fontSize:12,color:"#fca5a5",lineHeight:1.7}}>• {s}</div>)}</div>}</div>
-    {c.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>🎯 Coaching</div><p style={{fontSize:13,color:"var(--t2)",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{c.coaching_notes}</p></div>}
+    {c.coaching_notes&&(()=>{const long=c.coaching_notes.length>340;return<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:8}}>🎯 Coaching</div><div style={{position:"relative",maxHeight:long&&!coachOpen?150:"none",overflow:"hidden"}}><p style={{fontSize:13,color:"var(--t2)",lineHeight:1.85,whiteSpace:"pre-wrap",maxWidth:820}}>{c.coaching_notes}</p>{long&&!coachOpen&&<div style={{position:"absolute",left:0,right:0,bottom:0,height:56,background:"linear-gradient(transparent,var(--card))"}}/>}</div>{long&&<button className="btn btn-sm" style={{marginTop:12,fontSize:11}} onClick={()=>setCoachOpen(o=>!o)}>{coachOpen?"Show less":"Show more"}</button>}</div>;})()}
     {c.next_step_text&&<div className="card" style={{padding:16,background:"#14224a",borderColor:"#1e40af"}}><span style={{fontSize:10,color:"#60a5fa",fontWeight:700,fontFamily:"var(--m)"}}>Next Step: </span><span style={{fontSize:13,color:"#93c5fd"}}>{c.next_step_text}</span></div>}
     </React.Fragment>}
     {at==="scoring"&&<React.Fragment>
