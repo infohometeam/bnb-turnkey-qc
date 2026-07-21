@@ -1999,14 +1999,53 @@ router.patch('/reps/:id', express.json(), async (req, res) => {
 // Deactivate / reactivate (never hard-delete — preserves historical call attribution).
 router.post('/reps/:id/deactivate', async (req, res) => {
   try {
-    const r = await q('UPDATE rep_roster SET active=0 WHERE id=?', [req.params.id]);
-    res.json({ ok: true, changed: r.rowCount });
+    const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const r = await q('UPDATE rep_roster SET active=0, deactivated_at=? WHERE id=?', [ts, req.params.id]);
+    res.json({ ok: true, changed: r.rowCount, deactivated_at: ts });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 router.post('/reps/:id/reactivate', async (req, res) => {
   try {
-    const r = await q('UPDATE rep_roster SET active=1 WHERE id=?', [req.params.id]);
+    const r = await q('UPDATE rep_roster SET active=1, deactivated_at=NULL WHERE id=?', [req.params.id]);
     res.json({ ok: true, changed: r.rowCount });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Coaching 1-on-1 log ─────────────────────────────────────────
+// Human-authored coaching notes surfaced in the Coach Console.
+// DESIGN INVARIANT: these are read/write for humans only. They never feed the
+// habit engine, scoring, or a rep's average — a rep's own notes must not be able
+// to move their numbers ("bot suggests, human confirms" / ungameable by design).
+router.get('/reps/:id/one-on-ones', async (req, res) => {
+  try {
+    const rep = (await q('SELECT id, name FROM rep_roster WHERE id=?', [req.params.id])).rows[0];
+    if (!rep) return res.status(404).json({ error: 'Rep not found' });
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const r = await q(
+      `SELECT id, rep_id, rep_name, date, author, focus_tag, note, next_checkin, created_at
+       FROM one_on_ones WHERE rep_id=? ORDER BY date DESC, id DESC LIMIT ?`,
+      [req.params.id, limit]);
+    res.json({ rep: rep.name, rep_id: rep.id, count: r.rows.length, entries: r.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/reps/:id/one-on-ones', express.json(), async (req, res) => {
+  try {
+    const rep = (await q('SELECT id, name FROM rep_roster WHERE id=?', [req.params.id])).rows[0];
+    if (!rep) return res.status(404).json({ error: 'Rep not found' });
+    const b = req.body || {};
+    const note = String(b.note || '').trim();
+    if (!note) return res.status(400).json({ error: 'note is required' });
+    // Default the date to TODAY IN ET, consistent with the digest's day boundary.
+    const etToday = new Date(Date.now() - 4 * 3600 * 1000).toISOString().slice(0, 10);
+    const date = String(b.date || '').trim() || etToday;
+    const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const ins = await q(
+      `INSERT INTO one_on_ones (rep_id, rep_name, date, author, focus_tag, note, next_checkin, created_at)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      [rep.id, rep.name, date, (b.author || '').trim() || null,
+       (b.focus_tag || '').trim() || null, note, (b.next_checkin || '').trim() || null, ts]);
+    res.json({ ok: true, id: ins.lastInsertRowid, rep: rep.name, date });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
