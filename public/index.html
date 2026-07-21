@@ -492,7 +492,7 @@ function GoldenMomentsPage(){
   function Moment({m}){
     const key=m.call_id+"-"+m.moment_index;
     const[picking,setPicking]=useState(false);
-    return<div className="card" style={{padding:18,borderColor:m.pinned?"#a16207":"#1e2635",background:m.pinned?"#1a1505":"var(--card)"}}>
+    return<div className="card" style={{padding:18,borderColor:m.pinned?"#a16207":"#1e2635",background:m.pinned?"#1a1505":"var(--card)",height:"100%",display:"flex",flexDirection:"column"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
         {m.speaker&&<span style={{fontSize:9,fontWeight:800,letterSpacing:.5,padding:"2px 8px",borderRadius:20,
           background:m.speaker==="lead"?"#0f2a1a":"#0f1f33",color:m.speaker==="lead"?"#34d399":"#60a5fa",
@@ -514,7 +514,7 @@ function GoldenMomentsPage(){
         <b style={{color:"var(--t3)"}}>Why it works: </b>{m.why}
       </div>}
 
-      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",paddingTop:10,borderTop:"1px solid #1e2635"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",paddingTop:10,borderTop:"1px solid #1e2635",marginTop:"auto"}}>
         <div style={{width:24,height:24,borderRadius:7,background:RC[m.rep_name],display:"flex",alignItems:"center",
           justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",flexShrink:0}}>{m.rep_name?.[0]}</div>
         <span onClick={()=>goTo("rep",m.rep_name)} style={{fontSize:12,fontWeight:700,color:"var(--t2)",cursor:"pointer"}}>{m.rep_name}</span>
@@ -610,7 +610,7 @@ function GoldenMomentsPage(){
         return<div className="flex-col gap-12">
           <Pager/>
           {hero&&<Moment m={hero}/>}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:12,alignItems:"start"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:12,alignItems:"stretch"}}>
             {rest.map(m=><Moment key={m.call_id+"-"+m.moment_index} m={m}/>)}
           </div>
           {totalPages>1&&<Pager/>}
