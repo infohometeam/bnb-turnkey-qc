@@ -199,6 +199,10 @@ async function migrate() {
     // Populated at score time and by the "re-look at moments" re-extract pass.
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS tough_moments text`,
 
+    // One-line scannable summary (max ~120 chars) for dense table rows in the
+    // Calls list. Distinct from quick_summary (2-3 sentences, shown on detail).
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS list_summary text`,
+
     // ── Rep lifecycle ──────────────────────────────────────────────────
     // Soft-delete audit stamp. History is retained automatically because calls
     // reference rep_name (not a FK), so deactivating never orphans past calls.
