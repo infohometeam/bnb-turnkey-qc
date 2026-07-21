@@ -39,7 +39,7 @@ nav button:hover{background:rgba(255,255,255,.05);color:var(--t2);transform:tran
 nav button:hover .nav-ico{color:var(--t2)}
 nav button.active{font-weight:800;border-left-color:currentColor;box-shadow:0 0 16px -6px currentColor,inset 0 0 0 1px rgba(255,255,255,.05)}
 nav button.active .nav-ico{filter:drop-shadow(0 0 5px currentColor)}
-main{flex:1;overflow:auto;padding:28px 32px}.max-w{max-width:min(1600px,94vw);margin:0 auto}
+main{flex:1;overflow:auto;padding:28px 32px}.max-w{max-width:1100px;margin:0 auto}
 select,input[type=date]{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:6px 12px;color:var(--t1);font-size:11px;cursor:pointer}
 .period-toggle{display:flex;gap:2px;background:var(--card);border-radius:8px;padding:3px;border:1px solid var(--border)}
 .period-toggle button{padding:6px 14px;border-radius:6px;border:none;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--f);background:transparent;color:var(--t3)}
@@ -83,6 +83,10 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 }
 /* Decorative emoji/glyph icons shouldn't be announced by screen readers */
 .nav-ico{speak:none}
+/* ── Call Detail two-pane (Design Lab, Jul 22): sticky score rail + tabbed pane ── */
+.cd-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:20px;align-items:start}
+.cd-rail{position:sticky;top:16px;display:flex;flex-direction:column;gap:16px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px}
+@media(max-width:1000px){.cd-grid{grid-template-columns:1fr}.cd-rail{position:static}}
 /* ── P3 loading/error states (Design Lab, Jul 20) ── */
 @keyframes sksh{0%{background-position:-300px 0}100%{background-position:300px 0}}
 .sk{background:linear-gradient(90deg,var(--card) 0%,var(--border) 40%,var(--card) 80%);background-size:600px 100%;animation:sksh 1.3s infinite linear;border-radius:var(--r-sm)}
@@ -492,7 +496,7 @@ function GoldenMomentsPage(){
   function Moment({m}){
     const key=m.call_id+"-"+m.moment_index;
     const[picking,setPicking]=useState(false);
-    return<div className="card" style={{padding:18,borderColor:m.pinned?"#a16207":"#1e2635",background:m.pinned?"#1a1505":"var(--card)",height:"100%",display:"flex",flexDirection:"column"}}>
+    return<div className="card" style={{padding:18,borderColor:m.pinned?"#a16207":"#1e2635",background:m.pinned?"#1a1505":"var(--card)"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
         {m.speaker&&<span style={{fontSize:9,fontWeight:800,letterSpacing:.5,padding:"2px 8px",borderRadius:20,
           background:m.speaker==="lead"?"#0f2a1a":"#0f1f33",color:m.speaker==="lead"?"#34d399":"#60a5fa",
@@ -514,7 +518,7 @@ function GoldenMomentsPage(){
         <b style={{color:"var(--t3)"}}>Why it works: </b>{m.why}
       </div>}
 
-      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",paddingTop:10,borderTop:"1px solid #1e2635",marginTop:"auto"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",paddingTop:10,borderTop:"1px solid #1e2635"}}>
         <div style={{width:24,height:24,borderRadius:7,background:RC[m.rep_name],display:"flex",alignItems:"center",
           justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",flexShrink:0}}>{m.rep_name?.[0]}</div>
         <span onClick={()=>goTo("rep",m.rep_name)} style={{fontSize:12,fontWeight:700,color:"var(--t2)",cursor:"pointer"}}>{m.rep_name}</span>
@@ -540,7 +544,7 @@ function GoldenMomentsPage(){
     </div>;
   }
 
-  return<div className="flex-col gap-16">
+  return<div className="flex-col gap-16" style={{maxWidth:900}}>
     <div style={{display:"flex",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
       <div style={{flex:1,minWidth:280}}>
         <h2 style={{fontSize:24,fontWeight:900,margin:0}}>Golden Moments</h2>
@@ -587,49 +591,36 @@ function GoldenMomentsPage(){
       </div>
     </div>
 
-    {/* Two-column teaching wall: moments grid + sticky contributor rail */}
-    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 264px",gap:20,alignItems:"start"}}>
-      <div className="flex-col gap-12">
-      {(()=>{
-        if(!data)return<Skel/>;
-        if(moments.length===0)return<div className="card" style={{padding:40,textAlign:"center",color:"var(--t2)"}}>No moments match those filters.</div>;
-        const totalPages=Math.max(1,Math.ceil(moments.length/PAGE_SIZE));
-        const cur=Math.min(page,totalPages);
-        const start=(cur-1)*PAGE_SIZE;
-        const pageItems=moments.slice(start,start+PAGE_SIZE);
-        const hero=pageItems.find(m=>m.pinned)||null;
-        const rest=pageItems.filter(m=>m!==hero);
-        const Pager=()=><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
-          <div style={{fontSize:11,color:"var(--t3)"}}>Showing <b style={{color:"var(--t2)"}}>{start+1}–{start+pageItems.length}</b> of <b style={{color:"var(--t2)"}}>{moments.length}</b></div>
-          {totalPages>1&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
-            <button className="btn" disabled={cur<=1} onClick={()=>setPage(cur-1)} style={{fontSize:11,padding:"4px 10px",opacity:cur<=1?.4:1}}>← Prev</button>
-            <span style={{fontSize:11,color:"var(--t3)",fontFamily:"var(--m)",minWidth:64,textAlign:"center"}}>Page {cur}/{totalPages}</span>
-            <button className="btn" disabled={cur>=totalPages} onClick={()=>setPage(cur+1)} style={{fontSize:11,padding:"4px 10px",opacity:cur>=totalPages?.4:1}}>Next →</button>
-          </div>}
-        </div>;
-        return<div className="flex-col gap-12">
-          <Pager/>
-          {hero&&<Moment m={hero}/>}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:12,alignItems:"stretch"}}>
-            {rest.map(m=><Moment key={m.call_id+"-"+m.moment_index} m={m}/>)}
-          </div>
-          {totalPages>1&&<Pager/>}
-        </div>;
-      })()}
+    {/* Who's contributing */}
+    {data?.by_rep?.length>0&&!rep&&<div style={{marginTop:2}}>
+      <div style={{fontSize:10,fontWeight:800,letterSpacing:.6,textTransform:"uppercase",color:"#5b6472",marginBottom:8}}>Contributors — tap to filter</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {data.by_rep.map(r=><button key={r.rep_name} className="btn" onClick={()=>setRep(r.rep_name)}
+          style={{fontSize:11,padding:"4px 10px"}}>{r.rep_name} <b style={{color:"#818cf8"}}>{r.n}</b></button>)}
       </div>
-      <div className="card" style={{padding:16,position:"sticky",top:8}}>
-        <div style={{fontSize:10,fontWeight:800,letterSpacing:.6,textTransform:"uppercase",color:"#5b6472",marginBottom:12}}>Contributors · tap to filter</div>
-        <div style={{display:"flex",flexDirection:"column",gap:4}}>
-          <button className="btn" onClick={()=>setRep("")} style={{fontSize:11,padding:"5px 10px",justifyContent:"flex-start",background:rep?"":"#1e1b4b",borderColor:rep?"":"#3730a3",color:rep?"":"#a5b4fc"}}>All reps</button>
-          {(data?.by_rep||[]).map(r=><button key={r.rep_name} className="btn" onClick={()=>setRep(r.rep_name===rep?"":r.rep_name)} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,padding:"6px 10px",background:rep===r.rep_name?"#1e1b4b":"",borderColor:rep===r.rep_name?"#3730a3":""}}>
-            <span style={{width:22,height:22,borderRadius:6,background:RC[r.rep_name],display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",flexShrink:0}}>{r.rep_name?.[0]}</span>
-            <span style={{flex:1,textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.rep_name}</span>
-            <b style={{color:"#818cf8",fontFamily:"var(--m)"}}>{r.n}</b>
-          </button>)}
-        </div>
-        {data?.pinned_count>0&&<div style={{marginTop:14,paddingTop:12,borderTop:"1px solid var(--border)",fontSize:11,color:"var(--t3)"}}><b style={{color:"#fbbf24"}}>{data.pinned_count}</b> pinned to the playbook</div>}
-      </div>
-    </div>
+    </div>}
+
+    {(()=>{
+      if(!data)return<Skel/>;
+      if(moments.length===0)return<div className="card" style={{padding:40,textAlign:"center",color:"var(--t2)"}}>No moments match those filters.</div>;
+      const totalPages=Math.max(1,Math.ceil(moments.length/PAGE_SIZE));
+      const cur=Math.min(page,totalPages);
+      const start=(cur-1)*PAGE_SIZE;
+      const pageItems=moments.slice(start,start+PAGE_SIZE);
+      const Pager=()=><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+        <div style={{fontSize:11,color:"var(--t3)"}}>Showing <b style={{color:"var(--t2)"}}>{start+1}–{start+pageItems.length}</b> of <b style={{color:"var(--t2)"}}>{moments.length}</b></div>
+        {totalPages>1&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
+          <button className="btn" disabled={cur<=1} onClick={()=>setPage(cur-1)} style={{fontSize:11,padding:"4px 10px",opacity:cur<=1?.4:1}}>← Prev</button>
+          <span style={{fontSize:11,color:"var(--t3)",fontFamily:"var(--m)",minWidth:64,textAlign:"center"}}>Page {cur}/{totalPages}</span>
+          <button className="btn" disabled={cur>=totalPages} onClick={()=>setPage(cur+1)} style={{fontSize:11,padding:"4px 10px",opacity:cur>=totalPages?.4:1}}>Next →</button>
+        </div>}
+      </div>;
+      return<div className="flex-col gap-12">
+        <Pager/>
+        {pageItems.map(m=><Moment key={m.call_id+"-"+m.moment_index} m={m}/>)}
+        {totalPages>1&&<Pager/>}
+      </div>;
+    })()}
   </div>;
 }
 
@@ -1124,13 +1115,25 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
   const SpeakerBadge=({sp})=>sp?<span style={{fontSize:9,fontWeight:800,letterSpacing:.5,padding:"2px 8px",borderRadius:20,background:sp==="lead"?"#0f2a1a":"#0f1f33",color:sp==="lead"?"#34d399":"#60a5fa",border:`1px solid ${sp==="lead"?"#14532d":"#1e3a5f"}`}}>{sp==="lead"?"◂ LEAD":"▸ REP"}</span>:null;
   return<div className="flex-col gap-20">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}><button className="btn" onClick={onBack}>← Back</button><div style={{display:"flex",gap:6,position:"relative"}}><div style={{position:"relative"}}><button className="btn" onClick={()=>setExps(v=>!v)}>⤓ Export</button>{exps&&<div style={{position:"absolute",top:"100%",right:0,marginTop:4,background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,padding:4,zIndex:20,minWidth:180,boxShadow:"0 6px 20px rgba(0,0,0,.4)"}}><div onClick={()=>exportCall(false)} style={{padding:"8px 12px",fontSize:12,color:"var(--t2)",cursor:"pointer",borderRadius:6}} onMouseEnter={e=>e.currentTarget.style.background="var(--card)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>Scorecard only</div><div onClick={()=>exportCall(true)} style={{padding:"8px 12px",fontSize:12,color:"var(--t2)",cursor:"pointer",borderRadius:6}} onMouseEnter={e=>e.currentTarget.style.background="var(--card)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>Scorecard + transcript</div></div>}</div><button className="btn" onClick={()=>setEd(true)}>✏ Edit</button><button className="btn btn-green" onClick={reqc} disabled={rs}>{rs?"...":"↻ Re-score"}</button><button className="btn btn-red btn-sm" onClick={del}>🗑</button></div></div>
-    <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}><ScoreRing value={c.overall_score_adj} size={72} sw={4.5}/><div><h2 style={{fontSize:22,fontWeight:900,margin:0}}>{c.rep_name} → {c.client_name||"?"}</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}><span title="Call ID — click to copy (use this for stitching)" onClick={()=>{navigator.clipboard?.writeText(String(c.id));}} style={{cursor:"pointer",fontFamily:"var(--m)",color:"#818cf8",fontWeight:700,background:"#1e1b4b",padding:"1px 6px",borderRadius:5,border:"1px solid #3730a3"}}>#{c.id}</span> · {fmtF(c.received_at)} · {c.source} · {fmtD(c.call_duration_sec)}</p><div style={{display:"flex",gap:8,marginTop:8}}><Badge status={c.status}/>{c.flagged&&<span className="badge" style={{background:"#2a1a00",color:"#f59e0b",border:"1px solid #92400e"}}>⚠ FLAGGED</span>}</div></div></div>
+    <div className="cd-grid">
+    <aside className="cd-rail">
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,textAlign:"center"}}><ScoreRing value={c.overall_score_adj} size={96} sw={6}/><div><h2 style={{fontSize:19,fontWeight:900,margin:0}}>{c.rep_name}</h2><div style={{fontSize:13,color:"var(--t3)",marginTop:2}}>→ {c.client_name||"?"}</div></div><div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}><Badge status={c.status}/>{c.flagged&&<span className="badge" style={{background:"#2a1a00",color:"#f59e0b",border:"1px solid #92400e"}}>⚠ FLAGGED</span>}</div></div>
+      <div style={{display:"flex",flexDirection:"column",gap:8,fontSize:12,borderTop:"1px solid var(--border)",paddingTop:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8}}><span style={{color:"var(--t4)"}}>Call ID</span><span title="Call ID — click to copy (use this for stitching)" onClick={()=>{navigator.clipboard?.writeText(String(c.id));}} style={{cursor:"pointer",fontFamily:"var(--m)",color:"#818cf8",fontWeight:700,background:"#1e1b4b",padding:"1px 6px",borderRadius:5,border:"1px solid #3730a3"}}>#{c.id}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8}}><span style={{color:"var(--t4)"}}>Date</span><span style={{color:"var(--t2)",fontFamily:"var(--m)"}}>{fmtF(c.received_at)}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8}}><span style={{color:"var(--t4)"}}>Duration</span><span style={{color:"var(--t2)",fontFamily:"var(--m)"}}>{fmtD(c.call_duration_sec)}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8}}><span style={{color:"var(--t4)"}}>Agent talk</span><span style={{fontFamily:"var(--m)",color:c.agent_talk_pct>75||c.agent_talk_pct<20?"#ef4444":"#22c55e"}}>{c.agent_talk_pct!=null?c.agent_talk_pct+"%":"—"}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8}}><span style={{color:"var(--t4)"}}>Raw score</span><span style={{fontFamily:"var(--m)",color:sClr(c.overall_score)}}>{c.overall_score??"—"}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8}}><span style={{color:"var(--t4)"}}>Source</span><span style={{color:"var(--t2)"}}>{c.source||"—"}</span></div>
+      </div>
+      {c.overall_score_adj!=null&&<CalibrationBox call={c}/>}
+    </aside>
+    <div className="cd-main flex-col gap-20">
     <ExternalLinks call={c}/>
     <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}} role="tablist">{[["overview","Overview"],["moments","Moments"],["transcript","Transcript"],["notes","Team Notes"]].map(([k,l])=><button key={k} role="tab" aria-selected={dtab===k} onClick={()=>setDtab(k)} style={{padding:"9px 16px",background:"transparent",border:"none",borderBottom:dtab===k?"2px solid #818cf8":"2px solid transparent",color:dtab===k?"#a5b4fc":"var(--t3)",fontWeight:dtab===k?800:600,fontSize:13,cursor:"pointer",marginBottom:-1}}>{l}</button>)}</div>
     {dtab==="overview"&&<React.Fragment>
     {c.quick_summary&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:6}}>Summary</div><p style={{fontSize:14,color:"var(--t2)",lineHeight:1.7}}>{c.quick_summary}</p></div>}
     {c.status==="SCORED"&&<TagBox call={c}/>}
-    {c.overall_score_adj!=null&&<CalibrationBox call={c}/>}
     <div className="grid grid-stats"><div className="card stat-card"><div className="stat-label"><Icon name="clock" size={13} style={{marginRight:5,verticalAlign:"-2px"}}/>Duration</div><div className="stat-value" style={{fontSize:20}}>{fmtD(c.call_duration_sec)}</div></div><div className="card stat-card"><div className="stat-label"><Icon name="mic" size={13} style={{marginRight:5,verticalAlign:"-2px"}}/>Agent</div><div className="stat-value" style={{fontSize:20,color:c.agent_talk_pct>75||c.agent_talk_pct<20?"#ef4444":"#22c55e"}}>{c.agent_talk_pct!=null?c.agent_talk_pct+"%":"—"}</div></div><div className="card stat-card"><div className="stat-label"><Icon name="user" size={13} style={{marginRight:5,verticalAlign:"-2px"}}/>Contact</div><div className="stat-value" style={{fontSize:20}}>{c.contact_talk_pct!=null?c.contact_talk_pct+"%":"—"}</div></div><div className="card stat-card"><div className="stat-label"><Icon name="target" size={13} style={{marginRight:5,verticalAlign:"-2px"}}/>Raw</div><div className="stat-value" style={{fontSize:20,color:sClr(c.overall_score)}}>{c.overall_score??"—"}</div></div></div>
     {c.category_scores&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:14}}>Categories</div>{activeCategories(c.category_scores).map(cat=><div key={cat} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><span style={{fontSize:11,color:"var(--t3)",fontWeight:600,width:130}}>{CL[cat]}</span><div style={{flex:1}}><MiniBar value={c.category_scores[cat]}/></div></div>)}</div>}
     {c.pass_fail&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -1204,6 +1207,8 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
     }
     {dtab==="notes"&&<CallComments callId={c.id}/>}
     {ed&&<EditModal call={c} onClose={()=>setEd(false)} onSave={()=>{setEd(false);reload()}}/>}
+    </div>
+    </div>
   </div>}
 
 function EditModal({call,onClose,onSave}){const[fm,setFm]=useState({rep_name:call.rep_name||'',client_name:call.client_name||'',role:call.role||'',call_duration_sec:call.call_duration_sec||'',agent_talk_pct:call.agent_talk_pct||'',contact_talk_pct:call.contact_talk_pct||''});const set=(k,v)=>setFm(f=>({...f,[k]:v}));async function save(){await patchApi(`/calls/${call.id}`,{...fm,call_duration_sec:fm.call_duration_sec?Number(fm.call_duration_sec):null,agent_talk_pct:fm.agent_talk_pct?Number(fm.agent_talk_pct):null,contact_talk_pct:fm.contact_talk_pct?Number(fm.contact_talk_pct):null});onSave()}return<div className="modal-overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}><h3 style={{fontSize:16,fontWeight:800,marginBottom:20}}>Edit Call</h3><label>Rep</label><input value={fm.rep_name} onChange={e=>set('rep_name',e.target.value)}/><label>Client</label><input value={fm.client_name} onChange={e=>set('client_name',e.target.value)}/><label>Role</label><select value={fm.role} onChange={e=>set('role',e.target.value)}><option>Setter</option><option>Closer</option></select><label>Duration (sec)</label><input type="number" value={fm.call_duration_sec} onChange={e=>set('call_duration_sec',e.target.value)}/><label>Agent Talk %</label><input type="number" value={fm.agent_talk_pct} onChange={e=>set('agent_talk_pct',e.target.value)}/><label>Contact Talk %</label><input type="number" value={fm.contact_talk_pct} onChange={e=>set('contact_talk_pct',e.target.value)}/><div style={{display:"flex",gap:8,marginTop:8}}><button className="btn btn-primary" onClick={save}>Save</button><button className="btn" onClick={onClose}>Cancel</button></div></div></div>}
