@@ -71,7 +71,7 @@ router.get('/calls', async (req, res) => {
       w += ` AND EXISTS (SELECT 1 FROM call_tag_assignments a WHERE a.call_id=calls.id AND a.tag_key=? AND a.status='CONFIRMED')`;
       p.push(req.query.tag);
     }
-    const r = await q(`SELECT id,received_at,source,rep_name,rep_id,role,team,client_name,call_url,audio_url,call_duration_sec,agent_talk_pct,contact_talk_pct,overall_score,overall_score_adj,score_adjust_notes,category_scores,pass_fail,quick_summary,strengths,improvements,next_step_text,coaching_notes,golden_moments,status,flagged,error,retry_count,weekstart,processed_at,stitch_status,stitched_from_ids,aloware_contact_id,aloware_call_id FROM calls WHERE ${w} ORDER BY received_at DESC LIMIT ? OFFSET ?`, [...p, Number(limit), Number(offset)]);
+    const r = await q(`SELECT id,received_at,source,rep_name,rep_id,role,team,client_name,call_url,audio_url,call_duration_sec,agent_talk_pct,contact_talk_pct,overall_score,overall_score_adj,score_adjust_notes,category_scores,pass_fail,quick_summary,list_summary,strengths,improvements,next_step_text,coaching_notes,golden_moments,status,flagged,error,retry_count,weekstart,processed_at,stitch_status,stitched_from_ids,aloware_contact_id,aloware_call_id FROM calls WHERE ${w} ORDER BY received_at DESC LIMIT ? OFFSET ?`, [...p, Number(limit), Number(offset)]);
     const cnt = await q(`SELECT COUNT(*) as c FROM calls WHERE ${w}`, p);
 
     // Attach tags to each call in ONE query (avoids N+1) so the list can show them.
@@ -1038,7 +1038,7 @@ function inferMomentSpeaker(quote, transcript, repName, quality) {
 // read time rather than denormalising, so a re-score can't orphan a pin.
 router.get('/golden-moments', async (req, res) => {
   try {
-    const { rep, search, pinned, minScore } = req.query;
+    const { rep, search, pinned, minScore, skill } = req.query;
     const limit = Math.min(Number(req.query.limit) || 200, 500);
 
     let w = `c.status='SCORED' AND c.golden_moments IS NOT NULL
@@ -1077,6 +1077,10 @@ router.get('/golden-moments', async (req, res) => {
           call_id: c.call_id, moment_index: i,
           quote: m.quote, timestamp: m.timestamp || '', why: m.why_it_matters || m.why || '',
           speaker: sp,
+          // Bot-assigned rubric skill (discovery / qualification / pitch /
+          // frame_control / objections_close). Kept distinct from `category`,
+          // which is the human-assigned PIN label — don't merge them.
+          skill_category: (m.category || '').trim().toLowerCase() || null,
           rep_name: c.rep_name, role: c.role, client_name: c.client_name,
           score: c.overall_score_adj, received_at: c.received_at,
           aloware_contact_id: c.aloware_contact_id, aloware_call_id: c.aloware_call_id,
@@ -1097,6 +1101,9 @@ router.get('/golden-moments', async (req, res) => {
       out = out.filter(m => (m.quote + ' ' + m.why).toLowerCase().includes(s));
     }
     if (pinned === 'true') out = out.filter(m => m.pinned);
+    // Filter by rubric skill — this is what makes categories useful: a rep weak in
+    // discovery can pull up every great discovery moment the team has produced.
+    if (skill) out = out.filter(m => m.skill_category === String(skill).toLowerCase());
 
     // Per-call cap for the browse view: at most 2 REP moments per call, or 1 LEAD
     // moment if the call has no rep moment. Pinned moments always survive the cap.
@@ -1234,7 +1241,9 @@ router.get('/golden-moments/relook-status', async (req, res) => {
       `SELECT
          COUNT(*) FILTER (WHERE golden_moments IS NOT NULL AND golden_moments <> '[]' AND golden_moments <> '') AS with_golden,
          COUNT(*) FILTER (WHERE (golden_moments IS NOT NULL AND golden_moments <> '[]' AND golden_moments <> '' AND golden_moments::text NOT ILIKE '%"speaker"%')
-                             OR tough_moments IS NULL) AS need_relook
+                             OR (golden_moments IS NOT NULL AND golden_moments <> '[]' AND golden_moments <> '' AND golden_moments::text NOT ILIKE '%"category"%')
+                             OR tough_moments IS NULL
+                             OR list_summary IS NULL OR list_summary = '') AS need_relook
        FROM calls
        WHERE status='SCORED' AND transcript IS NOT NULL AND LENGTH(transcript) > 0
          AND rep_name <> 'Unknown Setter'`)).rows[0];
@@ -1252,7 +1261,7 @@ router.post('/golden-moments/relook-all', express.json(), async (req, res) => {
     const scope = req.body?.scope === 'all' ? 'all' : 'missing';
     const cond = scope === 'all'
       ? `1=1`
-      : `((golden_moments IS NOT NULL AND golden_moments <> '[]' AND golden_moments <> '' AND golden_moments::text NOT ILIKE '%"speaker"%') OR tough_moments IS NULL)`;
+      : `((golden_moments IS NOT NULL AND golden_moments <> '[]' AND golden_moments <> '' AND golden_moments::text NOT ILIKE '%"speaker"%') OR (golden_moments IS NOT NULL AND golden_moments <> '[]' AND golden_moments <> '' AND golden_moments::text NOT ILIKE '%"category"%') OR tough_moments IS NULL OR list_summary IS NULL OR list_summary = '')`;
     const rows = (await q(
       `SELECT id FROM calls
        WHERE status='SCORED' AND transcript IS NOT NULL AND LENGTH(transcript) > 0
