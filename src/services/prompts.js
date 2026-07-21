@@ -179,11 +179,12 @@ Return ONLY valid JSON (no markdown). Schema:
   "frame_assessment": "expert|equal|inferior|mixed",
   "temperature_check": "10/10 | 7-8/10 | 5-6/10 | not-taken",
   "quick_summary": "2-3 sentences",
+  "list_summary": "ONE short line, max 120 chars — see LIST SUMMARY rules below",
   "strengths": ["max 3"],
   "improvements": ["max 3 — reference Sam's philosophy if relevant"],
   "next_step_text": "exact next step or empty",
   "coaching_notes": "detailed paragraph citing Sam's philosophy where relevant",
-  "golden_moments": [{"timestamp":"mm:ss","speaker":"rep|lead","quote":"short verbatim quote from the transcript","why_it_matters":"2-3 full sentences (see GOLDEN MOMENTS rules below)"}],
+  "golden_moments": [{"timestamp":"mm:ss","speaker":"rep|lead","category":"discovery|qualification|pitch|frame_control|objections_close","quote":"short verbatim quote from the transcript","why_it_matters":"2-3 full sentences (see GOLDEN MOMENTS rules below)"}],
   "tough_moments": [{"timestamp":"mm:ss","speaker":"rep|lead","quote":"short verbatim quote from the transcript","why_it_was_tough":"what went wrong / was hard here","what_to_do_instead":"the concrete better move (see TOUGH MOMENTS rules below)"}],
   "confidence": "high|medium|low",
   "confidence_reason": "1 sentence why",
@@ -254,11 +255,21 @@ TEST BEFORE YOU TAG: "Is this something BNB Turnkey already includes?" If YES �
 When in doubt, return an empty array. A false cross-sell lead wastes another team's time and erodes trust in the whole signal.
 
 ═══════════════════════════════════════════════
+LIST SUMMARY — the one-line scannable version
+═══════════════════════════════════════════════
+"list_summary" is a SINGLE line, **max 120 characters**, written for a dense table row where someone is scanning dozens of calls at once. It is NOT a shortened quick_summary — it answers "what happened on this call?" at a glance.
+- Lead with the OUTCOME or the defining moment, not with setup. "Booked closer call for Friday; strong discovery, no financial qual." not "The rep spoke with the prospect about..."
+- No preamble, no rep/client names (the row already shows them), no trailing period needed.
+- Be concrete and specific to THIS call. Never generic filler like "solid call with good rapport."
+- If the call went nowhere, say so plainly: "Prospect ghosted after pricing; no next step set."
+
+═══════════════════════════════════════════════
 GOLDEN MOMENTS — attribution + explanation rules
 ═══════════════════════════════════════════════
 A golden moment is a genuinely instructive line from the call — usually something the REP did well and worth teaching, occasionally a revealing thing the LEAD said that the rep handled (or should have handled).
 - "speaker": who actually said the quote — "rep" or "lead". Judge by CONTENT, not by the transcript's speaker label (labels can be wrong on dial-in calls). A pitch, discovery question, reframe, or objection-handle is the rep; a buying signal, objection, or personal disclosure is the lead.
 - "quote": a short VERBATIM excerpt (a sentence or two), not a paraphrase.
+- "category": which SKILL this moment demonstrates — exactly one of: discovery, qualification, pitch, frame_control, objections_close. Use the rubric category the moment best exemplifies, so reps can find "a great discovery question" or "a clean objection handle" by skill. Pick the dominant skill; don't hedge.
 - "why_it_matters": 2-3 FULL sentences. Name the specific technique or Belief it demonstrates (e.g. "isolates the objection before handling", "builds the DESIRE belief", "holds expert frame"), say what made it effective, and give the coaching takeaway another rep could copy. Do NOT write a vague phrase like "good rapport" — be concrete and instructional.
 Return 1-4 of the most instructive moments (fewer is fine). Skip filler.
 
