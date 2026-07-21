@@ -1365,6 +1365,154 @@ router.get('/activity/summary', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Deduction weights (Calibration) ─────────────────────────────
+// Sam's non-negotiable penalties, made editable — with a real preview, an audit
+// trail, and reversible history recompute.
+//
+// WHY RECOMPUTE IS SAFE: every scored call stores its RAW score plus the exact
+// list of rules that fired (pass_fail.deductions). So a new adjusted score is
+// pure arithmetic — raw minus the new weights — with NO AI call and no re-read
+// of the transcript. The raw score is never touched, so any change is reversible.
+const PHILOSOPHY_RULES = ['no_discovery', 'no_financial_qual', 'no_objection_handling', 'untailored_pitch'];
+
+// Recompute what every scored call's adjusted score WOULD be under `weights`.
+// Returns per-call deltas without writing anything.
+async function simulateWeights(weights) {
+  const rows = (await q(
+    `SELECT id, rep_name, overall_score, overall_score_adj, pass_fail
+     FROM calls WHERE status='SCORED' AND overall_score IS NOT NULL`)).rows;
+  const changed = [];
+  for (const c of rows) {
+    let pf = c.pass_fail;
+    try { if (typeof pf === 'string') pf = JSON.parse(pf); } catch { pf = null; }
+    const ded = (pf && Array.isArray(pf.deductions)) ? pf.deductions : [];
+    let total = 0;
+    for (const d of ded) {
+      const rule = d.rule;
+      if (PHILOSOPHY_RULES.includes(rule)) total += Math.abs(Number(weights[rule]) ?? 0);
+      else total += Math.abs(Number(d.points) || 0);   // talk-mechanics: unchanged
+    }
+    const raw = Number(c.overall_score);
+    if (!isFinite(raw)) continue;
+    const next = Math.max(0, Math.min(10, Math.round((raw - total) * 10) / 10));
+    const prev = Number(c.overall_score_adj);
+    if (!isFinite(prev) || next !== prev) {
+      changed.push({ id: c.id, rep_name: c.rep_name, from: isFinite(prev) ? prev : null, to: next });
+    }
+  }
+  return { total_scored: rows.length, changed };
+}
+
+router.get('/deduction-weights', async (req, res) => {
+  try {
+    const { DEDUCT_DEFAULTS, DEDUCT_LABELS } = require('../workers/qcWorker');
+    const saved = (await q('SELECT rule, points, updated_at, updated_by FROM deduction_weights')).rows;
+    const byRule = Object.fromEntries(saved.map(r => [r.rule, r]));
+    const weights = PHILOSOPHY_RULES.map(rule => ({
+      rule,
+      label: DEDUCT_LABELS[rule] || rule,
+      points: byRule[rule] ? Math.abs(Number(byRule[rule].points)) : DEDUCT_DEFAULTS[rule],
+      default_points: DEDUCT_DEFAULTS[rule],
+      is_custom: !!byRule[rule],
+      updated_at: byRule[rule]?.updated_at || null,
+      updated_by: byRule[rule]?.updated_by || null,
+    }));
+    const history = (await q(
+      `SELECT rule, old_points, new_points, changed_by, changed_at, note, recomputed_calls
+       FROM deduction_weight_history ORDER BY id DESC LIMIT 25`)).rows;
+    res.json({ weights, history });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PREVIEW — shows the blast radius before anything is written. Nothing is saved.
+router.post('/deduction-weights/preview', express.json(), async (req, res) => {
+  try {
+    const { DEDUCT_DEFAULTS } = require('../workers/qcWorker');
+    const current = (await q('SELECT rule, points FROM deduction_weights')).rows;
+    const base = { ...DEDUCT_DEFAULTS };
+    current.forEach(r => { if (r.rule in base) base[r.rule] = Math.abs(Number(r.points)); });
+    const proposed = { ...base };
+    for (const [rule, pts] of Object.entries(req.body?.weights || {})) {
+      if (PHILOSOPHY_RULES.includes(rule) && isFinite(Number(pts))) proposed[rule] = Math.abs(Number(pts));
+    }
+    const sim = await simulateWeights(proposed);
+
+    // Per-rep average impact — the number that actually matters to a human.
+    const scored = (await q(
+      `SELECT id, rep_name, overall_score_adj FROM calls
+       WHERE status='SCORED' AND rep_name <> 'Unknown Setter' ${EXCL_TAGGED}`)).rows;
+    const newById = Object.fromEntries(sim.changed.map(c => [c.id, c.to]));
+    const agg = {};
+    for (const c of scored) {
+      const before = Number(c.overall_score_adj);
+      const after = newById[c.id] != null ? newById[c.id] : before;
+      if (!isFinite(before)) continue;
+      (agg[c.rep_name] = agg[c.rep_name] || { before: [], after: [] });
+      agg[c.rep_name].before.push(before);
+      agg[c.rep_name].after.push(after);
+    }
+    const avg = a => a.length ? Math.round((a.reduce((s, x) => s + x, 0) / a.length) * 10) / 10 : null;
+    const rep_impact = Object.entries(agg).map(([rep_name, v]) => ({
+      rep_name, avg_before: avg(v.before), avg_after: avg(v.after),
+      delta: Math.round(((avg(v.after) - avg(v.before)) || 0) * 10) / 10,
+    })).sort((a, b) => a.delta - b.delta);
+
+    res.json({ current: base, proposed, calls_affected: sim.changed.length,
+      total_scored: sim.total_scored, rep_impact, sample: sim.changed.slice(0, 15) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// APPLY — persists weights + audit. Historical recompute is OPT-IN (default off):
+// changing a weight affects future scoring only unless recompute_history is true,
+// because silently moving every rep's average would break the trust model.
+router.post('/deduction-weights', express.json(), async (req, res) => {
+  try {
+    const { DEDUCT_DEFAULTS, loadDeductWeights } = require('../workers/qcWorker');
+    const body = req.body || {};
+    const by = String(body.changed_by || 'Unknown').slice(0, 80);
+    const note = String(body.note || '').slice(0, 300);
+    const recompute = body.recompute_history === true;
+
+    const current = (await q('SELECT rule, points FROM deduction_weights')).rows;
+    const base = { ...DEDUCT_DEFAULTS };
+    current.forEach(r => { if (r.rule in base) base[r.rule] = Math.abs(Number(r.points)); });
+
+    const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const applied = {};
+    for (const [rule, pts] of Object.entries(body.weights || {})) {
+      if (!PHILOSOPHY_RULES.includes(rule) || !isFinite(Number(pts))) continue;
+      const val = Math.abs(Number(pts));
+      if (val === base[rule]) continue;                       // no-op, don't log noise
+      applied[rule] = { from: base[rule], to: val };
+      await q(
+        `INSERT INTO deduction_weights (rule, points, label, updated_at, updated_by)
+         VALUES (?,?,?,?,?)
+         ON CONFLICT (rule) DO UPDATE SET points=EXCLUDED.points,
+           updated_at=EXCLUDED.updated_at, updated_by=EXCLUDED.updated_by`,
+        [rule, val, require('../workers/qcWorker').DEDUCT_LABELS[rule] || rule, ts, by]);
+    }
+    if (!Object.keys(applied).length) return res.json({ ok: true, changed: {}, message: 'No changes' });
+
+    const weights = { ...base };
+    Object.entries(applied).forEach(([r, v]) => { weights[r] = v.to; });
+
+    let recomputed = 0;
+    if (recompute) {
+      const sim = await simulateWeights(weights);
+      for (const c of sim.changed) {
+        await q('UPDATE calls SET overall_score_adj=? WHERE id=?', [c.to, c.id]);
+        recomputed++;
+      }
+    }
+    for (const [rule, v] of Object.entries(applied)) {
+      await q(`INSERT INTO deduction_weight_history (rule, old_points, new_points, changed_by, changed_at, note, recomputed_calls)
+               VALUES (?,?,?,?,?,?,?)`, [rule, v.from, v.to, by, ts, note, recompute ? recomputed : 0]);
+    }
+    const live = await loadDeductWeights();   // refresh the worker cache immediately
+    res.json({ ok: true, changed: applied, recompute_history: recompute, recomputed_calls: recomputed, live_weights: live });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/tags/suggestions', async (req, res) => {
   try {
     const r = await q(
