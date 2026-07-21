@@ -84,8 +84,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 /* Decorative emoji/glyph icons shouldn't be announced by screen readers */
 .nav-ico{speak:none}
 /* ── Call Detail two-pane (Design Lab, Jul 22): sticky score rail + tabbed pane ── */
-.cd-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:20px;align-items:start}
-.cd-rail{position:sticky;top:16px;display:flex;flex-direction:column;gap:14px}
+.cd-grid{display:grid;grid-template-columns:380px minmax(0,1fr);gap:20px;align-items:stretch}
+.cd-rail{background:#10141d;border:1px solid var(--border);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+@media(max-width:1200px){.cd-grid{grid-template-columns:320px minmax(0,1fr)}}
 @media(max-width:1000px){.cd-grid{grid-template-columns:1fr}.cd-rail{position:static}}
 /* ── P3 loading/error states (Design Lab, Jul 20) ── */
 @keyframes sksh{0%{background-position:-300px 0}100%{background-position:300px 0}}
@@ -998,9 +999,9 @@ function CalibrationBox({call}){
   }
 
   const delta=existing?(Number(existing.override_score)-Number(existing.original_score)):null;
-  return<div className="card" style={{padding:18,borderColor:"#3730a3",background:"#12122a"}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-      <div className="section-head" style={{marginBottom:0,color:"#a5b4fc"}}>Sam's Calibration Score</div>
+  return<div className="card" style={{padding:14,borderColor:"#3730a3",background:"#12122a"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+      <div className="section-head" style={{marginBottom:0,color:"#a5b4fc"}}>Sam's Calibration</div>
       {!open&&<button className="btn" onClick={()=>{setOpen(true);setScore(existing?String(existing.override_score):"");setReason(existing?.reason||"");}} style={{fontSize:11,padding:"4px 10px"}}>{existing?"Update":"Add my score"}</button>}
     </div>
     {existing&&!open&&<div style={{marginTop:10,fontSize:13,color:"var(--t2)"}}>
@@ -1010,7 +1011,7 @@ function CalibrationBox({call}){
       {delta!==null&&isFinite(delta)&&delta!==0&&<span style={{color:delta>0?"#34d399":"#f87171",marginLeft:8,fontSize:12}}>({delta>0?"+":""}{delta} vs bot)</span>}
       {existing.reason&&<div style={{fontSize:12,color:"var(--t2)",marginTop:4,fontStyle:"italic"}}>"{existing.reason}"</div>}
     </div>}
-    {!existing&&!open&&<div style={{marginTop:8,fontSize:12,color:"var(--t3)"}}>Score this call yourself to calibrate the bot. Your scores build the tuning data.</div>}
+    {!existing&&!open&&<div style={{marginTop:6,fontSize:11,color:"var(--t3)"}}>Bot scored <b style={{color:"var(--t2)"}}>{botScore}</b> · you confirm or override.</div>}
     {open&&<div style={{marginTop:12}}>
       <div style={{display:"flex",gap:6,marginBottom:10}}>
         {[["overall","Overall only"],["detailed","Detailed (by category)"]].map(([m,l])=>
