@@ -198,6 +198,22 @@ async function migrate() {
     // Tough moments — coaching counterpart to golden_moments (quote + why + fix).
     // Populated at score time and by the "re-look at moments" re-extract pass.
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS tough_moments text`,
+
+    // ── Rep lifecycle ──────────────────────────────────────────────────
+    // Soft-delete audit stamp. History is retained automatically because calls
+    // reference rep_name (not a FK), so deactivating never orphans past calls.
+    `ALTER TABLE rep_roster ADD COLUMN IF NOT EXISTS deactivated_at text`,
+
+    // ── Coaching 1-on-1 log ────────────────────────────────────────────
+    // HUMAN-authored coaching notes for the Coach Console. Deliberately isolated
+    // from scoring: these never feed the habit engine or a rep's average. If they
+    // did, a rep's own notes could move their numbers — breaking the
+    // "bot suggests, human confirms" invariant and making the system gameable.
+    `CREATE TABLE IF NOT EXISTS one_on_ones (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      rep_id integer, rep_name text, date text, author text,
+      focus_tag text, note text, next_checkin text, created_at text)`,
+    `CREATE INDEX IF NOT EXISTS idx_one_on_ones_rep ON one_on_ones(rep_id)`,
   ];
   for (const sql of stmts) await q(sql);
 
