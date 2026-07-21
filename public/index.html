@@ -440,14 +440,17 @@ function GoldenMomentsPage(){
   const[q,setQ]=useState("");             // debounced
   const[onlyPinned,setOnlyPinned]=useState(false);
   const[minScore,setMinScore]=useState("");
+  const[skill,setSkill]=useState("");   // B2 bot skill_category filter — "Learn from the Team"
   const[busy,setBusy]=useState(null);
   const[page,setPage]=useState(1);
   const PAGE_SIZE=18;
-  React.useEffect(()=>{setPage(1);},[rep,q,onlyPinned,minScore]);
+  React.useEffect(()=>{setPage(1);},[rep,q,onlyPinned,minScore,skill]);
 
   React.useEffect(()=>{const t=setTimeout(()=>setQ(search),350);return()=>clearTimeout(t);},[search]);
-  const qs=`?${rep?`rep=${encodeURIComponent(rep)}&`:""}${q?`search=${encodeURIComponent(q)}&`:""}${onlyPinned?"pinned=true&":""}${minScore?`minScore=${minScore}&`:""}`;
-  const{data,reload}=useApi(`/golden-moments${qs}`,[rep,q,onlyPinned,minScore]);
+  const qs=`?${rep?`rep=${encodeURIComponent(rep)}&`:""}${q?`search=${encodeURIComponent(q)}&`:""}${onlyPinned?"pinned=true&":""}${minScore?`minScore=${minScore}&`:""}${skill?`skill=${skill}&`:""}`;
+  const{data,reload}=useApi(`/golden-moments${qs}`,[rep,q,onlyPinned,minScore,skill]);
+  const SKILLS=[["discovery","Discovery"],["qualification","Qualification"],["pitch","Pitch"],["frame_control","Frame Control"],["objections_close","Objections & Close"]];
+  const SKILL_LABEL=Object.fromEntries(SKILLS);
 
   async function pin(m,category){
     setBusy(m.call_id+"-"+m.moment_index);
@@ -473,9 +476,11 @@ function GoldenMomentsPage(){
     try{
       let guard=0;
       while(guard++<300){
-        const r=await postApi("/golden-moments/relook-all",{limit:8,scope:"missing"});
+        const res=await fetch(`${API}/golden-moments/relook-all`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({limit:8,scope:"missing"})});
+        if(!res.ok)throw new Error(`Server returned ${res.status}`);
+        const r=await res.json();
         setRelook(s=>({running:true,done:(s?.done||0)+(r.processed||0),remaining:r.remaining}));
-        if(!r.processed||r.remaining<=0)break;
+        if(!r.processed||(r.remaining!=null&&r.remaining<=0))break;
       }
     }catch(e){ setRelook(s=>({...(s||{}),running:false,error:e.message})); return; }
     setRelook(s=>({...(s||{}),running:false}));
@@ -495,6 +500,7 @@ function GoldenMomentsPage(){
           {m.speaker==="lead"?"◂ LEAD":"▸ REP"}</span>}
         {m.pinned&&<span style={{fontSize:10,fontWeight:800,color:"#fbbf24",letterSpacing:.5}}>
           ★ PINNED{m.category?` · ${m.category.toUpperCase()}`:""}</span>}
+        {m.skill_category&&<span title="Bot-assigned skill — what this moment demonstrates" style={{fontSize:9,fontWeight:800,letterSpacing:.4,padding:"2px 8px",borderRadius:20,background:"#1e1b4b",color:"#a5b4fc",border:"1px solid #3730a3"}}>{(SKILL_LABEL[m.skill_category]||m.skill_category).toUpperCase()}</span>}
       </div>
 
       {/* The quote — the thing that teaches */}
@@ -570,6 +576,15 @@ function GoldenMomentsPage(){
       </select>
       <button className="btn" onClick={()=>setOnlyPinned(p=>!p)} style={{fontSize:12,
         background:onlyPinned?"#1a1505":"",borderColor:onlyPinned?"#a16207":"",color:onlyPinned?"#fbbf24":""}}>★ Pinned only</button>
+    </div>
+
+    {/* Learn from the Team — filter the library by the skill each moment demonstrates (B2 skill_category) */}
+    <div style={{marginTop:2}}>
+      <div style={{fontSize:10,fontWeight:800,letterSpacing:.6,textTransform:"uppercase",color:"#5b6472",marginBottom:8}}>Learn from the team — filter by skill</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        <button className="btn" onClick={()=>setSkill("")} style={{fontSize:11,padding:"4px 11px",background:skill?"":"#1e1b4b",borderColor:skill?"":"#3730a3",color:skill?"":"#a5b4fc"}}>All skills</button>
+        {SKILLS.map(([k,label])=><button key={k} className="btn" onClick={()=>setSkill(s=>s===k?"":k)} style={{fontSize:11,padding:"4px 11px",background:skill===k?"#1e1b4b":"",borderColor:skill===k?"#3730a3":"",color:skill===k?"#a5b4fc":""}}>{label}</button>)}
+      </div>
     </div>
 
     {/* Who's contributing */}
