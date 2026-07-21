@@ -367,8 +367,20 @@ async function processCall(row) {
 }
 
 async function processQueue(max = 3) {
-  const batch = await q('SELECT * FROM calls WHERE status IN (?,?,?) AND retry_count < ? ORDER BY CASE status WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END, received_at ASC LIMIT ?',
-    ['NEW','REQC','WAIT_RETRY_FULL', MAX_RETRY, 'REQC','NEW', max]);
+  // IN-FLIGHT GUARD: skip anything picked up in the last STALE_MIN minutes.
+  // Full transcripts (post-truncation-fix) can take 2-3 MINUTES to score, which is
+  // longer than the 2-minute cron interval. Without this, the next tick re-grabs a
+  // call that's still running, increments retry_count again, and once it passes
+  // MAX_RETRY the call becomes PERMANENTLY invisible to the queue — with no error
+  // logged, because it isn't failing, it's being skipped. 6 min is comfortably above
+  // the observed ~3 min worst case.
+  const STALE_MIN = Number(process.env.QUEUE_INFLIGHT_MIN || 6);
+  const cutoff = new Date(Date.now() - STALE_MIN * 60000).toISOString().replace('T', ' ').slice(0, 19);
+  const batch = await q(
+    `SELECT * FROM calls WHERE status IN (?,?,?) AND retry_count < ?
+       AND (last_tried_at IS NULL OR last_tried_at < ?)
+     ORDER BY CASE status WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END, received_at ASC LIMIT ?`,
+    ['NEW','REQC','WAIT_RETRY_FULL', MAX_RETRY, cutoff, 'REQC','NEW', max]);
   if (!batch.rows.length) return { processed: 0, total: 0, reason: 'QUEUE_EMPTY', results: [] };
   console.log(`[QC] Found ${batch.rows.length} calls`);
   const ts = now();
