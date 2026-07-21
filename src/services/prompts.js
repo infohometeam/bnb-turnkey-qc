@@ -5,21 +5,18 @@
 
 // MAX = the transcript size (chars) below which we send the WHOLE transcript to the AI.
 //
-// ⚠️ HISTORY: this was 50,000 — which silently truncated every long CLOSER call to
-// ~12,056 chars (head 3K + keyword-picked middle 4K + tail 5K). Real impact measured
-// Jul 2026: 27 of 218 scored calls were cut, the model seeing only 12–17% of the
-// conversation. A 76-minute call (101,441 chars) had 12% of it scored. Every affected
-// call was a closer call — which is exactly why the closers noticed things being missed.
+// ⚠️ HISTORY: this was 50,000 — which silently truncated long calls to ~12,056 chars
+// (head 3K + keyword-picked middle 4K + tail 5K). Measured Jul 2026: 66 of 219 scored
+// calls were cut, the model seeing as little as 12% of the conversation. A 76-minute
+// call (101,441 chars) was scored on 12% of itself. Affected EVERY rep, not just closers.
 //
-// Claude Haiku 4.5 has a 200,000-token context (~800K chars). Our largest ever
-// transcript is 101,441 chars ≈ 25K tokens — leaving ~175K tokens of headroom. The
-// truncation was never necessary. MAX is now set so every realistic call goes WHOLE:
-// 400,000 chars ≈ 100K tokens, still only half the context, with ample room for the
-// rubric prompt and the response.
+// Claude Haiku 4.5 has a 200,000-token context (~800K chars). Our largest transcript
+// ever is 101,441 chars ≈ 25K tokens — ~175K tokens of headroom. The cap was never
+// necessary. MAX now set so every realistic call goes WHOLE: 400,000 chars ≈ 100K
+// tokens, still only half the context, leaving ample room for the rubric and response.
 //
-// Cost of sending a full long transcript instead of a slice: ~$0.022 more per call
-// at Haiku rates. That is the correct trade — a smarter model cannot read text that
-// was never sent to it.
+// Cost of sending a full transcript instead of a slice: ~$0.022 more per long call.
+// A smarter model cannot read text that was never sent to it.
 const HEAD = 3000, MID = 4000, TAIL = 5000, MAX = 400000;
 
 const KEYWORDS = [
@@ -66,7 +63,9 @@ function findDensest(text, size) {
 function needsTwoPass(chars, durSec) { return chars > MAX || (durSec && durSec > 18000); }
 
 function buildMiddleSummaryPrompt(fullText) {
-  const mid = fullText.slice(HEAD, Math.min(fullText.length - TAIL, HEAD + 20000));
+  // No internal cap: this only runs for transcripts above MAX (400K chars), and the
+  // whole point is that nothing gets silently dropped. Summarise the ENTIRE middle.
+  const mid = fullText.slice(HEAD, Math.max(HEAD, fullText.length - TAIL));
   return `You are summarizing the MIDDLE section of a BNB Turnkey sales call. This was too long to include in full.
 Summarize in 300-500 words, focusing on: discovery questions asked, how the three-phase process was presented, objections raised, specific markets/properties/numbers discussed, cost segregation/tax/returns discussion, tone and engagement.
 Return ONLY a summary paragraph.
