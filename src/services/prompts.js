@@ -4,11 +4,23 @@
 // ═══════════════════════════════════════════════════════════════
 
 // MAX = the transcript size (chars) below which we send the WHOLE transcript to the AI.
-// Claude Haiku's context window is ~200K tokens (~600K+ chars), so a typical call —
-// even a 45-min closer call (~50K chars) — fits whole with room to spare. We only
-// fall back to slicing for genuinely massive outliers, so the AI sees the full call
-// and never misses mid-call details (discovery history, objections, qualification).
-const HEAD = 3000, MID = 4000, TAIL = 5000, MAX = 50000;
+//
+// ⚠️ HISTORY: this was 50,000 — which silently truncated every long CLOSER call to
+// ~12,056 chars (head 3K + keyword-picked middle 4K + tail 5K). Real impact measured
+// Jul 2026: 27 of 218 scored calls were cut, the model seeing only 12–17% of the
+// conversation. A 76-minute call (101,441 chars) had 12% of it scored. Every affected
+// call was a closer call — which is exactly why the closers noticed things being missed.
+//
+// Claude Haiku 4.5 has a 200,000-token context (~800K chars). Our largest ever
+// transcript is 101,441 chars ≈ 25K tokens — leaving ~175K tokens of headroom. The
+// truncation was never necessary. MAX is now set so every realistic call goes WHOLE:
+// 400,000 chars ≈ 100K tokens, still only half the context, with ample room for the
+// rubric prompt and the response.
+//
+// Cost of sending a full long transcript instead of a slice: ~$0.022 more per call
+// at Haiku rates. That is the correct trade — a smarter model cannot read text that
+// was never sent to it.
+const HEAD = 3000, MID = 4000, TAIL = 5000, MAX = 400000;
 
 const KEYWORDS = [
   'portfolio','investment','investor','goals','timeline','budget','accredited',
@@ -48,9 +60,10 @@ function findDensest(text, size) {
   return text.slice(bestStart, bestStart + size);
 }
 
-// Two-pass (summarize the middle) only for genuinely huge transcripts that exceed the
-// full-send threshold above. Kept well above MAX so normal long calls go through whole.
-function needsTwoPass(chars, durSec) { return chars > 70000 || (durSec && durSec > 4200); }
+// Two-pass (summarize the middle) only for transcripts genuinely too large to send
+// whole. Kept ABOVE MAX so normal calls — including 60–90 minute closer calls — always
+// go through in full. Previously 70,000 chars, which fired on ordinary closer calls.
+function needsTwoPass(chars, durSec) { return chars > MAX || (durSec && durSec > 18000); }
 
 function buildMiddleSummaryPrompt(fullText) {
   const mid = fullText.slice(HEAD, Math.min(fullText.length - TAIL, HEAD + 20000));
