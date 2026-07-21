@@ -73,7 +73,7 @@ async function callClaude(prompt, opts = {}) {
       },
       body: JSON.stringify({
         model,
-        max_tokens: opts.maxTokens || 2000,
+        max_tokens: opts.maxTokens || 8000,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.2,
       }),
@@ -94,6 +94,17 @@ async function callClaude(prompt, opts = {}) {
     const data = JSON.parse(body);
     const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
     if (!text) throw new Error('CLAUDE_EMPTY_RESPONSE');
+
+    // Detect OUTPUT truncation explicitly. When the model hits the ceiling the API
+    // says so via stop_reason — without this check a cut-off response surfaces as a
+    // confusing JSON_PARSE_ERROR instead of the real cause. Fail loudly, name the fix.
+    if (data.stop_reason === 'max_tokens') {
+      throw new Error(
+        `CLAUDE_OUTPUT_TRUNCATED: response hit the max_tokens ceiling (` +
+        `${opts.maxTokens || 8000} tokens, ${usageOut(data)} generated). ` +
+        `The reply was cut off mid-JSON. Raise maxTokens for this call — ` +
+        `Haiku 4.5 supports up to 64,000 output tokens.`);
+    }
 
     const usage = data.usage || {};
     return {
@@ -135,6 +146,7 @@ function estimateCost(usage) {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function usageOut(data) { return (data && data.usage && data.usage.output_tokens) || '?'; }
 
 
 // ─── Conversation mode (multi-turn) — for the live Trainer prospect ──
