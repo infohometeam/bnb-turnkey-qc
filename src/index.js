@@ -77,6 +77,12 @@ cron.schedule('30 8 * * *', async () => {
 async function start() {
   try {
     await migrate();
+    // Load any custom deduction weights before scoring begins.
+    try {
+      const { loadDeductWeights } = require('./workers/qcWorker');
+      const w = await loadDeductWeights();
+      console.log('[Deduct] weights:', JSON.stringify(w));
+    } catch (e) { console.error('[Deduct] load failed, using defaults:', e.message); }
     app.listen(PORT, () => {
       console.log('');
       console.log('  ╔═════════════════════════════════════════════════╗');
