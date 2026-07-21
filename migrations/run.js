@@ -203,6 +203,20 @@ async function migrate() {
     // Calls list. Distinct from quick_summary (2-3 sentences, shown on detail).
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS list_summary text`,
 
+    // ── Configurable deduction weights (Calibration tab) ───────────────
+    // Sam's non-negotiable penalties, made editable. Weights are cached in the
+    // worker and refreshed on write. Every change is audited, and because each
+    // call stores its raw score + which rules fired, historical adjusted scores
+    // can be recomputed deterministically (no AI) and reversed.
+    `CREATE TABLE IF NOT EXISTS deduction_weights (
+      rule text PRIMARY KEY, points real, label text,
+      updated_at text, updated_by text)`,
+    `CREATE TABLE IF NOT EXISTS deduction_weight_history (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      rule text, old_points real, new_points real,
+      changed_by text, changed_at text, note text,
+      recomputed_calls integer DEFAULT 0)`,
+
     // ── Rep lifecycle ──────────────────────────────────────────────────
     // Soft-delete audit stamp. History is retained automatically because calls
     // reference rep_name (not a FK), so deactivating never orphans past calls.
