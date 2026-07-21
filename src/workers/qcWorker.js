@@ -279,7 +279,12 @@ async function processCall(row) {
   // improvements, a detailed coaching paragraph, golden moments with quotes).
   // The 2000-token default truncated the JSON mid-response on long, rich calls —
   // which surfaced as RETRYABLE_PARSE and eventually stuck the call at MAX_RETRY.
-  const { result, usage } = await callAIJson(prompt, { maxTokens: 4000 });
+  // 16,000 = 4-8x headroom over the largest realistic scorecard, and still only a
+  // quarter of Haiku 4.5's 64,000-token output limit. max_tokens is a CEILING, not a
+  // reservation — we're billed for tokens actually generated, so raising it costs
+  // nothing unless the response genuinely needs the room. Now that full transcripts
+  // are sent, longer analyses are expected and must not be cut off mid-JSON.
+  const { result, usage } = await callAIJson(prompt, { maxTokens: 16000 });
   if (!result || result.overall_score === undefined) throw new Error('INVALID_RESPONSE: ' + JSON.stringify(result).slice(0,300));
 
   const scoringCost = estimateCost(usage);
@@ -491,7 +496,7 @@ async function reExtractMoments(callId) {
     transcriptQualityWarning: hygiene.warning,
   });
 
-  const { result, usage } = await callAIJson(prompt);
+  const { result, usage } = await callAIJson(prompt, { maxTokens: 16000 });
   const golden = Array.isArray(result?.golden_moments) ? result.golden_moments : [];
   const tough = Array.isArray(result?.tough_moments) ? result.tough_moments : [];
   // Backfill list_summary in the SAME pass — one AI call covers moments + summary
