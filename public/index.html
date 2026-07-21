@@ -333,26 +333,55 @@ function Dashboard(){const[p,sP]=usePersisted("dash.period","week");const[f,sF]=
 function CallsList({onSelect}){const[sf,sSf]=usePersisted("calls.status","ALL");const[rf,sRf]=useState("ALL");const[p,sP]=useState("");const[f,sF]=useState('');const[t,sT]=useState('');const[pg,sPg]=useState(0);const[sq,sSq]=useState('');const[searching,setSearching]=useState(false);const[searchResults,setSearchResults]=useState(null);const PER=50;const dq=buildDQ(p,f,t);const sQ=sf!=="ALL"?`&status=${sf}`:"";const rQ=rf!=="ALL"?`&rep=${rf}`:"";const{data,reload}=useApi(`/calls?limit=${PER}&offset=${pg*PER}${sQ}${rQ}${dq}&hideVm=true`,[sf,rf,p,f,t,pg]);const{data:allCalls}=useApi("/calls?limit=1&hideVm=true");const{data:reps}=useApi("/reps");const[sel,setSel]=useState(new Set());const[del,setDel]=useState(false);
   const isFiltered=sf!=="ALL"||rf!=="ALL"||!!p||!!f||!!t;
   const clearFilters=()=>{sSf("ALL");sRf("ALL");sP("");sF("");sT("");sPg(0);};
+  const[dens,setDens]=usePersisted("calls.density","comfortable");
+  const[sortK,setSortK]=usePersisted("calls.sortk","received_at");
+  const[sortD,setSortD]=usePersisted("calls.sortd",-1);
+  const toggleSort=k=>{if(sortK===k)setSortD(d=>-d);else{setSortK(k);setSortD(k==="rep_name"?1:-1);}};
+  const sortRows=rows=>[...rows].sort((a,b)=>{const va=a[sortK],vb=b[sortK];if(typeof va==="number"||typeof vb==="number")return((va||0)-(vb||0))*sortD;return String(va||"").localeCompare(String(vb||""))*sortD;});
+  const RG="24px 46px minmax(0,1fr) 96px 58px 56px 84px 18px";
+  const th=(k,label,align)=><span onClick={()=>toggleSort(k)} style={{fontFamily:"var(--m)",fontSize:9,fontWeight:700,letterSpacing:.5,textTransform:"uppercase",color:sortK===k?"var(--t2)":"var(--t3)",cursor:"pointer",userSelect:"none",textAlign:align||"left"}}>{label}{sortK===k?(sortD>0?" ▲":" ▼"):""}</span>;
   async function doSearch(){if(!sq.trim())return setSearchResults(null);setSearching(true);const r=await fetch(`${API}/search-calls?q=${encodeURIComponent(sq.trim())}${rQ}`).then(r=>r.json());setSearchResults(r);setSearching(false);}
   function clearSearch(){sSq('');setSearchResults(null);}
   async function bulkDel(){if(!sel.size||!(await qcConfirm({title:"Delete calls?",message:`Permanently delete ${sel.size} selected call${sel.size!==1?"s":""}? This cannot be undone.`,confirmLabel:"Delete",danger:true})))return;setDel(true);await postApi('/calls/bulk-delete',{ids:[...sel]});setSel(new Set());reload();setDel(false)}
   async function bulkRescore(){if(!sel.size)return;const est=(sel.size*0.006).toFixed(3);if(!(await qcConfirm({title:"Re-score calls?",message:`Re-score ${sel.size} call${sel.size!==1?"s":""}.\n\nEstimated cost: $${est}. Current scores are archived before re-scoring.`,confirmLabel:"Re-score",danger:false})))return;const r=await fetch(`${API}/calls/rescore-selected`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[...sel]})}).then(r=>r.json());alert(`✓ ${r.queued} calls queued for re-score. They'll process on the next worker cycles.`);setSel(new Set());reload();}
   if(!data)return<Skel/>;const displayCalls=searchResults?searchResults.calls:data.calls;const displayTotal=searchResults?searchResults.total:data.total;const tp=Math.ceil(displayTotal/PER);
   return<div className="flex-col gap-20"><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Calls</h2><p style={{fontSize:12,color:"var(--t3)",marginTop:4}}>{searchResults?`${displayTotal} results for "${searchResults.query}"`:isFiltered&&allCalls?.total!=null?<span><b style={{color:"var(--t1)"}}>{displayTotal}</b> of {allCalls.total} calls <span style={{color:"var(--warn)"}}>· filtered</span></span>:`${displayTotal} calls`}</p></div><div className="flex-col gap-8"><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="text" value={sq} onChange={e=>sSq(e.target.value)} onKeyDown={e=>e.key==='Enter'&&doSearch()} placeholder="Search transcripts..." style={{minWidth:200,background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,padding:"6px 12px",color:"var(--t1)",fontSize:11}}/><button className="btn btn-primary btn-sm" onClick={doSearch} disabled={searching}>{searching?"...":"🔍"}</button>{searchResults&&<button className="btn btn-sm" onClick={clearSearch}>✕ Clear</button>}</div><DateFilter period={p} setPeriod={sP} from={f} setFrom={sF} to={t} setTo={sT}/><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><select value={sf} onChange={e=>{sSf(e.target.value);sPg(0)}}><option value="ALL">All Status</option>{["SCORED","NEW","REQC","ERROR","WAIT_RETRY_FULL","WAIT_TRANSCRIPT"].map(s=><option key={s}>{s}</option>)}</select><select value={rf} onChange={e=>{sRf(e.target.value);sPg(0)}}><option value="ALL">All Reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>{isFiltered&&<button className="btn btn-sm" onClick={clearFilters} style={{background:"var(--warn-bg)",color:"var(--warn)",border:"1px solid var(--warn)"}} aria-label="Clear all filters"><Icon name="x" size={12} style={{marginRight:4,verticalAlign:"-2px"}}/>Clear filters</button>}<button className="btn btn-sm" onClick={()=>{reload();setSel(new Set());clearSearch()}}>↻</button>{sel.size>0&&<button className="btn btn-sm" style={{background:"#1e1b4b",color:"#a5b4fc",border:"1px solid #4338ca"}} onClick={bulkRescore}>↻ Re-score {sel.size}</button>}{sel.size>0&&<button className="btn btn-red btn-sm" onClick={bulkDel} disabled={del}>🗑 {sel.size}</button>}</div></div></div>
-    <div className="card" style={{overflow:"hidden"}}><div style={{maxHeight:"calc(100vh - 280px)",minHeight:380,overflowY:"auto"}}>{displayCalls.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:14,padding:"16px 20px",cursor:"pointer",borderBottom:"1px solid var(--bg)",background:sel.has(c.id)?"#2a3140":c.flagged?"rgba(245,158,11,.03)":"transparent"}} onClick={()=>onSelect(c)}><input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1",width:15,height:15}}/><ScoreRing value={c.overall_score_adj} size={40} sw={2.5}/><div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:14.5,fontWeight:700,color:"var(--t1)",display:"flex",alignItems:"center",gap:7}}>
-          <span style={{fontFamily:"var(--m)",fontSize:11,color:"#818cf8"}}>#{c.id}</span>
-          <span>{c.rep_name} → {c.client_name||"?"}</span>
-          {c.flagged&&<span style={{color:"#f59e0b",fontSize:10}}>⚠</span>}
+    <div className="card" style={{overflow:"hidden"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"9px 16px",borderBottom:"1px solid var(--bg)"}}>
+        <span style={{fontFamily:"var(--m)",fontSize:10,color:"var(--t4)"}}>{displayCalls.length} shown{sel.size>0?` · ${sel.size} selected`:""}</span>
+        <div style={{display:"flex",gap:2,background:"var(--bg)",border:"1px solid var(--border)",borderRadius:8,padding:3,fontSize:10,fontFamily:"var(--m)"}} role="group" aria-label="Row density">
+          <span onClick={()=>setDens("comfortable")} style={{padding:"4px 9px",borderRadius:5,cursor:"pointer",background:dens==="comfortable"?"#6366f133":"transparent",color:dens==="comfortable"?"#a5b4fc":"var(--t3)",fontWeight:dens==="comfortable"?700:500}}>▬ Comfortable</span>
+          <span onClick={()=>setDens("compact")} style={{padding:"4px 9px",borderRadius:5,cursor:"pointer",background:dens==="compact"?"#6366f133":"transparent",color:dens==="compact"?"#a5b4fc":"var(--t3)",fontWeight:dens==="compact"?700:500}}>≡ Compact</span>
         </div>
-        {(c.stitch_status==="MERGED"||(c.tags||[]).some(t=>t.status!=="DISMISSED"))&&
-        <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",margin:"4px 0 3px"}}>
-          {c.stitch_status==="MERGED"&&<span title={`Stitched from calls ${c.stitched_from_ids||""} — a dropped call and its redial merged into one`} style={{fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:20,background:"#0f2e2b",border:"1px solid #2dd4bf",color:"#2dd4bf"}}>🔗 STITCHED</span>}
-          {(c.tags||[]).filter(t=>t.status!=="DISMISSED").map(t=><span key={t.tag_key} title={t.status==="SUGGESTED"?"Suggested — not yet confirmed, no effect on the average":t.excludes_from_average?"Not counted in this rep's average":"Counts normally"}
-            style={{fontSize:9,fontWeight:800,padding:"2px 8px",borderRadius:20,background:t.status==="SUGGESTED"?"transparent":t.color+"22",border:`1px ${t.status==="SUGGESTED"?"dashed":"solid"} ${t.color}`,color:t.color}}>
-            {t.excludes_from_average&&t.status==="CONFIRMED"?"⊘ ":""}{t.label}
-          </span>)}
-        </div>}<div style={{fontSize:12.5,color:"var(--t2)",lineHeight:1.55,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{c.quick_summary||c.source}</div></div><div style={{textAlign:"right",flexShrink:0}}><Badge status={c.status}/><div style={{fontSize:10,color:"#2a3040",marginTop:4}}>{fmtD(c.call_duration_sec)} · {fmt(c.received_at)}</div></div></div>)}{!displayCalls.length&&<div style={{padding:40,textAlign:"center",color:"#1e293b"}}>{searchResults?"No results found":"No calls"}</div>}</div></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:RG,gap:12,alignItems:"center",padding:"9px 18px",borderBottom:"1px solid var(--border)",background:"var(--bg)"}}>
+        <span></span>{th("overall_score_adj","Score","center")}{th("rep_name","Rep → Client")}{th("status","Status")}{th("agent_talk_pct","Talk","right")}{th("call_duration_sec","Dur","right")}{th("received_at","Date","right")}<span></span>
+      </div>
+      <div style={{maxHeight:"calc(100vh - 320px)",minHeight:380,overflowY:"auto"}}>{sortRows(displayCalls).map(c=><div key={c.id} onClick={()=>onSelect(c)} style={{display:"grid",gridTemplateColumns:RG,gap:12,alignItems:"center",padding:dens==="compact"?"8px 18px":"13px 18px",cursor:"pointer",borderBottom:"1px solid var(--bg)",background:sel.has(c.id)?"#2a3140":c.flagged?"rgba(245,158,11,.03)":"transparent"}}>
+        <input type="checkbox" checked={sel.has(c.id)} onChange={()=>{const s=new Set(sel);s.has(c.id)?s.delete(c.id):s.add(c.id);setSel(s)}} onClick={e=>e.stopPropagation()} style={{accentColor:"#6366f1",width:15,height:15}}/>
+        <span style={{fontFamily:"var(--m)",fontWeight:900,fontSize:13,borderRadius:7,padding:"4px 0",textAlign:"center",background:sClr(c.overall_score_adj)+"22",color:sClr(c.overall_score_adj)}}>{c.overall_score_adj??"—"}</span>
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:dens==="compact"?13:14,fontWeight:700,color:"var(--t1)",display:"flex",alignItems:"center",gap:7,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+            <span style={{fontFamily:"var(--m)",fontSize:11,color:"#818cf8",flexShrink:0}}>#{c.id}</span>
+            <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{c.rep_name} → {c.client_name||"?"}</span>
+            {c.flagged&&<span style={{color:"#f59e0b",fontSize:10,flexShrink:0}}>⚠</span>}
+          </div>
+          {(c.stitch_status==="MERGED"||(c.tags||[]).some(t=>t.status!=="DISMISSED"))&&
+          <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",margin:"4px 0 3px"}}>
+            {c.stitch_status==="MERGED"&&<span title={`Stitched from calls ${c.stitched_from_ids||""} — a dropped call and its redial merged into one`} style={{fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:20,background:"#0f2e2b",border:"1px solid #2dd4bf",color:"#2dd4bf"}}>🔗 STITCHED</span>}
+            {(c.tags||[]).filter(t=>t.status!=="DISMISSED").map(t=><span key={t.tag_key} title={t.status==="SUGGESTED"?"Suggested — not yet confirmed, no effect on the average":t.excludes_from_average?"Not counted in this rep's average":"Counts normally"}
+              style={{fontSize:9,fontWeight:800,padding:"2px 8px",borderRadius:20,background:t.status==="SUGGESTED"?"transparent":t.color+"22",border:`1px ${t.status==="SUGGESTED"?"dashed":"solid"} ${t.color}`,color:t.color}}>
+              {t.excludes_from_average&&t.status==="CONFIRMED"?"⊘ ":""}{t.label}
+            </span>)}
+          </div>}
+          {dens!=="compact"&&<div style={{fontSize:12.5,color:"var(--t2)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden",marginTop:2}}>{c.list_summary||c.quick_summary||c.source}</div>}
+        </div>
+        <span><Badge status={c.status}/></span>
+        <span style={{fontFamily:"var(--m)",fontSize:12,textAlign:"right",color:c.agent_talk_pct>70?"#ef4444":"var(--t3)"}}>{c.agent_talk_pct!=null?c.agent_talk_pct+"%":"—"}</span>
+        <span style={{fontFamily:"var(--m)",fontSize:12,textAlign:"right",color:"var(--t3)"}}>{fmtD(c.call_duration_sec)}</span>
+        <span style={{fontFamily:"var(--m)",fontSize:11,textAlign:"right",color:"var(--t4)"}}>{fmt(c.received_at)}</span>
+        <span style={{color:"#818cf8",textAlign:"center"}}>→</span>
+      </div>)}{!displayCalls.length&&<div style={{padding:40,textAlign:"center",color:"var(--t3)"}}>{searchResults?"No results found":"No calls match those filters"}</div>}</div></div>
     {tp>1&&<div style={{display:"flex",justifyContent:"center",gap:6,alignItems:"center"}}><button className="btn btn-sm" disabled={pg===0} onClick={()=>sPg(x=>x-1)}>← Prev</button><span style={{fontSize:11,color:"var(--t4)",fontFamily:"var(--m)"}}>{pg+1}/{tp}</span><button className="btn btn-sm" disabled={pg>=tp-1} onClick={()=>sPg(x=>x+1)}>Next →</button></div>}
   </div>}
 
