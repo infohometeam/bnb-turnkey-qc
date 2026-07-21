@@ -39,7 +39,7 @@ nav button:hover{background:rgba(255,255,255,.05);color:var(--t2);transform:tran
 nav button:hover .nav-ico{color:var(--t2)}
 nav button.active{font-weight:800;border-left-color:currentColor;box-shadow:0 0 16px -6px currentColor,inset 0 0 0 1px rgba(255,255,255,.05)}
 nav button.active .nav-ico{filter:drop-shadow(0 0 5px currentColor)}
-main{flex:1;overflow:auto;padding:28px 32px}.max-w{max-width:1100px;margin:0 auto}
+main{flex:1;overflow:auto;padding:28px 32px}.max-w{max-width:min(1600px,94vw);margin:0 auto}
 select,input[type=date]{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:6px 12px;color:var(--t1);font-size:11px;cursor:pointer}
 .period-toggle{display:flex;gap:2px;background:var(--card);border-radius:8px;padding:3px;border:1px solid var(--border)}
 .period-toggle button{padding:6px 14px;border-radius:6px;border:none;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--f);background:transparent;color:var(--t3)}
@@ -540,7 +540,7 @@ function GoldenMomentsPage(){
     </div>;
   }
 
-  return<div className="flex-col gap-16" style={{maxWidth:900}}>
+  return<div className="flex-col gap-16">
     <div style={{display:"flex",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
       <div style={{flex:1,minWidth:280}}>
         <h2 style={{fontSize:24,fontWeight:900,margin:0}}>Golden Moments</h2>
@@ -587,36 +587,49 @@ function GoldenMomentsPage(){
       </div>
     </div>
 
-    {/* Who's contributing */}
-    {data?.by_rep?.length>0&&!rep&&<div style={{marginTop:2}}>
-      <div style={{fontSize:10,fontWeight:800,letterSpacing:.6,textTransform:"uppercase",color:"#5b6472",marginBottom:8}}>Contributors — tap to filter</div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {data.by_rep.map(r=><button key={r.rep_name} className="btn" onClick={()=>setRep(r.rep_name)}
-          style={{fontSize:11,padding:"4px 10px"}}>{r.rep_name} <b style={{color:"#818cf8"}}>{r.n}</b></button>)}
+    {/* Two-column teaching wall: moments grid + sticky contributor rail */}
+    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 264px",gap:20,alignItems:"start"}}>
+      <div className="flex-col gap-12">
+      {(()=>{
+        if(!data)return<Skel/>;
+        if(moments.length===0)return<div className="card" style={{padding:40,textAlign:"center",color:"var(--t2)"}}>No moments match those filters.</div>;
+        const totalPages=Math.max(1,Math.ceil(moments.length/PAGE_SIZE));
+        const cur=Math.min(page,totalPages);
+        const start=(cur-1)*PAGE_SIZE;
+        const pageItems=moments.slice(start,start+PAGE_SIZE);
+        const hero=pageItems.find(m=>m.pinned)||null;
+        const rest=pageItems.filter(m=>m!==hero);
+        const Pager=()=><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+          <div style={{fontSize:11,color:"var(--t3)"}}>Showing <b style={{color:"var(--t2)"}}>{start+1}–{start+pageItems.length}</b> of <b style={{color:"var(--t2)"}}>{moments.length}</b></div>
+          {totalPages>1&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
+            <button className="btn" disabled={cur<=1} onClick={()=>setPage(cur-1)} style={{fontSize:11,padding:"4px 10px",opacity:cur<=1?.4:1}}>← Prev</button>
+            <span style={{fontSize:11,color:"var(--t3)",fontFamily:"var(--m)",minWidth:64,textAlign:"center"}}>Page {cur}/{totalPages}</span>
+            <button className="btn" disabled={cur>=totalPages} onClick={()=>setPage(cur+1)} style={{fontSize:11,padding:"4px 10px",opacity:cur>=totalPages?.4:1}}>Next →</button>
+          </div>}
+        </div>;
+        return<div className="flex-col gap-12">
+          <Pager/>
+          {hero&&<Moment m={hero}/>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:12,alignItems:"start"}}>
+            {rest.map(m=><Moment key={m.call_id+"-"+m.moment_index} m={m}/>)}
+          </div>
+          {totalPages>1&&<Pager/>}
+        </div>;
+      })()}
       </div>
-    </div>}
-
-    {(()=>{
-      if(!data)return<Skel/>;
-      if(moments.length===0)return<div className="card" style={{padding:40,textAlign:"center",color:"var(--t2)"}}>No moments match those filters.</div>;
-      const totalPages=Math.max(1,Math.ceil(moments.length/PAGE_SIZE));
-      const cur=Math.min(page,totalPages);
-      const start=(cur-1)*PAGE_SIZE;
-      const pageItems=moments.slice(start,start+PAGE_SIZE);
-      const Pager=()=><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
-        <div style={{fontSize:11,color:"var(--t3)"}}>Showing <b style={{color:"var(--t2)"}}>{start+1}–{start+pageItems.length}</b> of <b style={{color:"var(--t2)"}}>{moments.length}</b></div>
-        {totalPages>1&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
-          <button className="btn" disabled={cur<=1} onClick={()=>setPage(cur-1)} style={{fontSize:11,padding:"4px 10px",opacity:cur<=1?.4:1}}>← Prev</button>
-          <span style={{fontSize:11,color:"var(--t3)",fontFamily:"var(--m)",minWidth:64,textAlign:"center"}}>Page {cur}/{totalPages}</span>
-          <button className="btn" disabled={cur>=totalPages} onClick={()=>setPage(cur+1)} style={{fontSize:11,padding:"4px 10px",opacity:cur>=totalPages?.4:1}}>Next →</button>
-        </div>}
-      </div>;
-      return<div className="flex-col gap-12">
-        <Pager/>
-        {pageItems.map(m=><Moment key={m.call_id+"-"+m.moment_index} m={m}/>)}
-        {totalPages>1&&<Pager/>}
-      </div>;
-    })()}
+      <div className="card" style={{padding:16,position:"sticky",top:8}}>
+        <div style={{fontSize:10,fontWeight:800,letterSpacing:.6,textTransform:"uppercase",color:"#5b6472",marginBottom:12}}>Contributors · tap to filter</div>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          <button className="btn" onClick={()=>setRep("")} style={{fontSize:11,padding:"5px 10px",justifyContent:"flex-start",background:rep?"":"#1e1b4b",borderColor:rep?"":"#3730a3",color:rep?"":"#a5b4fc"}}>All reps</button>
+          {(data?.by_rep||[]).map(r=><button key={r.rep_name} className="btn" onClick={()=>setRep(r.rep_name===rep?"":r.rep_name)} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,padding:"6px 10px",background:rep===r.rep_name?"#1e1b4b":"",borderColor:rep===r.rep_name?"#3730a3":""}}>
+            <span style={{width:22,height:22,borderRadius:6,background:RC[r.rep_name],display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",flexShrink:0}}>{r.rep_name?.[0]}</span>
+            <span style={{flex:1,textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.rep_name}</span>
+            <b style={{color:"#818cf8",fontFamily:"var(--m)"}}>{r.n}</b>
+          </button>)}
+        </div>
+        {data?.pinned_count>0&&<div style={{marginTop:14,paddingTop:12,borderTop:"1px solid var(--border)",fontSize:11,color:"var(--t3)"}}><b style={{color:"#fbbf24"}}>{data.pinned_count}</b> pinned to the playbook</div>}
+      </div>
+    </div>
   </div>;
 }
 
