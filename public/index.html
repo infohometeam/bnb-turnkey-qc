@@ -84,7 +84,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 /* Decorative emoji/glyph icons shouldn't be announced by screen readers */
 .nav-ico{speak:none}
 /* ── Call Detail two-pane (Design Lab, Jul 22): sticky score rail + tabbed pane ── */
-.cd-grid{display:grid;grid-template-columns:380px minmax(0,1fr);gap:20px;align-items:stretch}
+.cd-grid{display:grid;grid-template-columns:clamp(340px,26%,470px) minmax(0,1fr);gap:20px;align-items:stretch}
 .cd-rail{background:#10141d;border:1px solid var(--border);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
 @media(max-width:1200px){.cd-grid{grid-template-columns:320px minmax(0,1fr)}}
 @media(max-width:1000px){.cd-grid{grid-template-columns:1fr}.cd-rail{position:static}}
