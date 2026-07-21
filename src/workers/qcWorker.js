@@ -24,12 +24,38 @@ function toNum(v) {
 // Deduction weights for Sam's non-negotiables. Tunable via env vars so they can be
 // softened/hardened without a code change (e.g. if closer scores floor too aggressively).
 // Defaults match the original hardcoded values.
-const DEDUCT = {
+// Deduction weights. Defaults come from env; the Calibration tab can override
+// them in the DB. Kept as a mutable module-level cache so adjustScore stays
+// SYNCHRONOUS (it's called from several paths) — refreshed on boot and on write.
+const DEDUCT_DEFAULTS = {
   no_discovery: Math.abs(Number(process.env.DEDUCT_NO_DISCOVERY ?? 3)),
   no_financial_qual: Math.abs(Number(process.env.DEDUCT_NO_FINANCIAL_QUAL ?? 2)),
   no_objection_handling: Math.abs(Number(process.env.DEDUCT_NO_OBJECTION ?? 2)),
   untailored_pitch: Math.abs(Number(process.env.DEDUCT_UNTAILORED_PITCH ?? 1)),
 };
+const DEDUCT_LABELS = {
+  no_discovery: 'Failed: No Discovery',
+  no_financial_qual: 'Failed: No Financial Qualification',
+  no_objection_handling: 'Failed: No Objection Handling',
+  untailored_pitch: 'Untailored Pitch',
+};
+const DEDUCT = { ...DEDUCT_DEFAULTS };
+
+// Refresh the cache from deduction_weights. Never throws — on any failure we keep
+// the current (or default) weights rather than scoring with zeros.
+async function loadDeductWeights() {
+  try {
+    const r = await q('SELECT rule, points FROM deduction_weights');
+    for (const row of r.rows) {
+      const n = Number(row.points);
+      if (row.rule in DEDUCT && isFinite(n)) DEDUCT[row.rule] = Math.abs(n);
+    }
+    return { ...DEDUCT };
+  } catch (e) {
+    console.error('[Deduct] weight load failed, keeping current:', e.message);
+    return { ...DEDUCT };
+  }
+}
 
 // opts.suppressTalkRatio — when the transcript has diarization artifacts (echo /
 // scrambled dial-in labels), the per-speaker word split is meaningless, so we do
@@ -485,4 +511,4 @@ async function reExtractMoments(callId) {
            list_summary: listSummary || null, usage };
 }
 
-module.exports = { processQueue, processCall, unpauseDailyRows, adjustScore, sweepStuckTranscripts, DEDUCT, saveTagSuggestions, OUTCOME_TAGS, CROSS_SELL_TAGS, reExtractMoments };
+module.exports = { processQueue, processCall, unpauseDailyRows, adjustScore, sweepStuckTranscripts, DEDUCT, DEDUCT_DEFAULTS, DEDUCT_LABELS, loadDeductWeights, saveTagSuggestions, OUTCOME_TAGS, CROSS_SELL_TAGS, reExtractMoments };
