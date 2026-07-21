@@ -307,8 +307,8 @@ async function processCall(row) {
     rubric_version: rubricVersion,
   };
 
-  await q('UPDATE calls SET overall_score=?,overall_score_adj=?,score_adjust_notes=?,category_scores=?,pass_fail=?,coaching_notes=?,quick_summary=?,strengths=?,improvements=?,next_step_text=?,golden_moments=?,tough_moments=?,flagged=?,status=?,error=?,processed_at=?,model_used=?,transcript_slice=?,rubric_version=?,call_duration_sec=COALESCE(?,call_duration_sec) WHERE id=?',
-    [result.overall_score, adj.adjusted, adjustNotes, JSON.stringify(result.category_scores||{}), JSON.stringify(enrichedPassFail), result.coaching_notes||'', result.quick_summary||'', JSON.stringify(result.strengths||[]), JSON.stringify(result.improvements||[]), result.next_step_text||'', JSON.stringify(result.golden_moments||[]), JSON.stringify(result.tough_moments||[]), flagged?1:0, 'SCORED', '', ts, usage.model||'unknown', slice, rubricVersion, durSec, row.id]);
+  await q('UPDATE calls SET overall_score=?,overall_score_adj=?,score_adjust_notes=?,category_scores=?,pass_fail=?,coaching_notes=?,quick_summary=?,list_summary=?,strengths=?,improvements=?,next_step_text=?,golden_moments=?,tough_moments=?,flagged=?,status=?,error=?,processed_at=?,model_used=?,transcript_slice=?,rubric_version=?,call_duration_sec=COALESCE(?,call_duration_sec) WHERE id=?',
+    [result.overall_score, adj.adjusted, adjustNotes, JSON.stringify(result.category_scores||{}), JSON.stringify(enrichedPassFail), result.coaching_notes||'', result.quick_summary||'', (result.list_summary||'').slice(0,160), JSON.stringify(result.strengths||[]), JSON.stringify(result.improvements||[]), result.next_step_text||'', JSON.stringify(result.golden_moments||[]), JSON.stringify(result.tough_moments||[]), flagged?1:0, 'SCORED', '', ts, usage.model||'unknown', slice, rubricVersion, durSec, row.id]);
 
   // Persist transcript-quality grade separately (isolated so it can never disturb
   // the scoring write above). Read by the call detail view + diagnostics endpoints.
@@ -468,11 +468,21 @@ async function reExtractMoments(callId) {
   const { result, usage } = await callAIJson(prompt);
   const golden = Array.isArray(result?.golden_moments) ? result.golden_moments : [];
   const tough = Array.isArray(result?.tough_moments) ? result.tough_moments : [];
+  // Backfill list_summary in the SAME pass — one AI call covers moments + summary
+  // rather than two separate passes over the whole history. Only overwrite when the
+  // model actually returned one, so a re-look can never blank an existing summary.
+  const listSummary = String(result?.list_summary || '').trim().slice(0, 160);
 
-  await q('UPDATE calls SET golden_moments=?, tough_moments=? WHERE id=?',
-    [JSON.stringify(golden), JSON.stringify(tough), callId]);
+  if (listSummary) {
+    await q('UPDATE calls SET golden_moments=?, tough_moments=?, list_summary=? WHERE id=?',
+      [JSON.stringify(golden), JSON.stringify(tough), listSummary, callId]);
+  } else {
+    await q('UPDATE calls SET golden_moments=?, tough_moments=? WHERE id=?',
+      [JSON.stringify(golden), JSON.stringify(tough), callId]);
+  }
 
-  return { ok: true, callId, golden_count: golden.length, tough_count: tough.length, usage };
+  return { ok: true, callId, golden_count: golden.length, tough_count: tough.length,
+           list_summary: listSummary || null, usage };
 }
 
 module.exports = { processQueue, processCall, unpauseDailyRows, adjustScore, sweepStuckTranscripts, DEDUCT, saveTagSuggestions, OUTCOME_TAGS, CROSS_SELL_TAGS, reExtractMoments };
