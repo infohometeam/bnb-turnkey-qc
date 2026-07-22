@@ -2391,77 +2391,48 @@ function ScenarioCreator({onClose,onCreated}){
     }catch(e){setErr("Failed to save.");}
     setBusy(false);
   }
-  const inp={width:"100%",padding:"8px 11px",background:"var(--bg)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12.5,marginTop:0};
-  const lbl={fontSize:9,color:"var(--t3)",fontWeight:700,letterSpacing:.5,textTransform:"uppercase",display:"block",marginBottom:4};
-  const grp={border:"1px solid var(--border)",borderRadius:12,padding:"16px 18px"};
-  const GN=({n,c})=><span style={{width:20,height:20,borderRadius:6,fontFamily:"var(--m)",fontWeight:800,fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",color:"#0b0f1a",background:c}}>{n}</span>;
-  const gh={display:"flex",alignItems:"center",gap:8,marginBottom:12};
-  const gt={fontSize:13,fontWeight:800};
-  return<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:"var(--z-modal)",display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 20px"}} onClick={onClose}>
-    <div className="card" style={{padding:0,maxWidth:820,width:"100%",maxHeight:"90vh",display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Create a Scenario">
-      {/* header */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 22px",borderBottom:"1px solid var(--border)"}}>
-        <div><div style={{fontSize:18,fontWeight:900}}>Create a Scenario</div><div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>The AI prospect embodies the persona &amp; hidden truth you define — reps are scored on the same rubric.</div></div>
-        <span onClick={onClose} style={{fontSize:18,color:"var(--t3)",cursor:"pointer"}} title="Close">✕</span>
+  const inp={width:"100%",padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13,marginTop:4};
+  const lbl={fontSize:10,color:"var(--t3)",fontWeight:700,letterSpacing:.5,marginTop:12,display:"block"};
+  return<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:100,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"40px 20px"}} onClick={onClose}>
+    <div className="card" style={{padding:28,maxWidth:640,width:"100%"}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <h2 style={{fontSize:20,fontWeight:900,margin:0}}>Create a Scenario</h2>
+        <span onClick={onClose} style={{fontSize:20,color:"var(--t3)",cursor:"pointer"}}>✕</span>
       </div>
-      {/* scrolling body */}
-      <div style={{padding:"20px 22px",display:"flex",flexDirection:"column",gap:14,overflowY:"auto"}}>
-        {/* 1 basics */}
-        <div style={grp}>
-          <div style={gh}><GN n="1" c="#818cf8"/><span style={gt}>Basics</span></div>
-          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1.4fr",gap:10}}>
-            <div><span style={lbl}>Scenario title *</span><input style={inp} value={f.title} onChange={e=>up("title",e.target.value)} placeholder="e.g. The Skeptical Retiree"/></div>
-            <div><span style={lbl}>Role</span><select style={inp} value={f.target_role} onChange={e=>up("target_role",e.target.value)}><option>Setter</option><option>Closer</option><option>Both</option></select></div>
-            <div><span style={lbl}>Difficulty tier</span><div style={{display:"flex",gap:4}}>{[1,2,3,4,5].map(n=>{const on=Number(f.difficulty_tier)===n;return<button key={n} onClick={()=>up("difficulty_tier",n)} className="btn" style={{flex:1,padding:"7px 0",fontSize:11,fontWeight:700,background:on?"#1e1b4b":"",borderColor:on?"#4338ca":"",color:on?"#c7d2fe":""}}>{n}</button>})}</div></div>
-          </div>
-        </div>
-        {/* 2 + 3 two-up */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-          <div style={grp}>
-            <div style={gh}><GN n="2" c="#34d399"/><span style={gt}>The prospect</span></div>
-            <div style={{display:"flex",flexDirection:"column",gap:9}}>
-              <div><span style={lbl}>Name</span><input style={inp} value={f.persona_name} onChange={e=>up("persona_name",e.target.value)} placeholder="e.g. Robert"/></div>
-              <div><span style={lbl}>Background</span><input style={inp} value={f.persona_bg} onChange={e=>up("persona_bg",e.target.value)} placeholder="Who they are, their situation"/></div>
-              <div><span style={lbl}>Communication style</span><input style={inp} value={f.persona_style} onChange={e=>up("persona_style",e.target.value)} placeholder="e.g. Blunt, asks a lot of questions"/></div>
-            </div>
-          </div>
-          <div style={grp}>
-            <div style={gh}><GN n="3" c="#fbbf24"/><span style={gt}>The situation</span></div>
-            <div style={{display:"flex",flexDirection:"column",gap:9}}>
-              <div><span style={lbl}>What's happening</span><textarea style={{...inp,minHeight:44,resize:"vertical"}} value={f.situation} onChange={e=>up("situation",e.target.value)} placeholder="The setup — where the call picks up"/></div>
-              <div><span style={lbl}>Stated interest — what they SAY</span><input style={inp} value={f.stated_interest} onChange={e=>up("stated_interest",e.target.value)} placeholder="e.g. Interested but noncommittal"/></div>
-            </div>
-          </div>
-        </div>
-        {/* 4 hidden truth (accent) */}
-        <div style={{...grp,borderColor:"#5c4a12",background:"linear-gradient(150deg,#1a1305,#161b26)"}}>
-          <div style={gh}><GN n="4" c="#f59e0b"/><span style={{...gt,color:"#fbbf24"}}>The hidden truth</span><span className="mono" style={{fontSize:9,color:"#a8956b"}}>— what the rep must uncover</span></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <div><span style={{...lbl,color:"#c9a35a"}}>The real truth</span><textarea style={{...inp,minHeight:44,resize:"vertical",borderColor:"#5c4a12"}} value={f.hidden_truth} onChange={e=>up("hidden_truth",e.target.value)} placeholder="What's actually going on beneath the surface"/></div>
-            <div><span style={{...lbl,color:"#c9a35a"}}>The real objection</span><input style={{...inp,borderColor:"#5c4a12"}} value={f.real_objection} onChange={e=>up("real_objection",e.target.value)} placeholder="The true barrier"/></div>
-          </div>
-        </div>
-        {/* 5 + 6 two-up */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-          <div style={grp}>
-            <div style={gh}><GN n="5" c="#f472b6"/><span style={gt}>Objections they'll raise</span></div>
-            <div style={{display:"flex",flexDirection:"column",gap:7}}>
-              <input style={inp} value={f.obj1} onChange={e=>up("obj1",e.target.value)} placeholder='1 · what they&apos;ll actually say'/>
-              <input style={inp} value={f.obj2} onChange={e=>up("obj2",e.target.value)} placeholder="2 · next objection"/>
-              <input style={inp} value={f.obj3} onChange={e=>up("obj3",e.target.value)} placeholder="3 · deeper objection"/>
-            </div>
-          </div>
-          <div style={grp}>
-            <div style={gh}><GN n="6" c="#22d3ee"/><span style={gt}>Scoring focus</span></div>
-            <div><span style={lbl}>What separates a good rep from a bad one here?</span><textarea style={{...inp,minHeight:74,resize:"vertical"}} value={f.focus} onChange={e=>up("focus",e.target.value)} placeholder="What should reps be rewarded / penalised for?"/></div>
-          </div>
-        </div>
-        {err&&<div style={{color:"#ef4444",fontSize:12}}>{err}</div>}
+      <p style={{fontSize:12,color:"var(--t3)",marginBottom:8}}>Build a custom practice scenario. The AI prospect will embody the persona and hidden truth you define, and reps get scored on the same rubric.</p>
+
+      <label style={lbl}>SCENARIO TITLE *</label>
+      <input style={inp} value={f.title} onChange={e=>up("title",e.target.value)} placeholder="e.g. The Skeptical Retiree"/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div><label style={lbl}>ROLE</label><select style={inp} value={f.target_role} onChange={e=>up("target_role",e.target.value)}><option>Setter</option><option>Closer</option><option>Both</option></select></div>
+        <div><label style={lbl}>DIFFICULTY TIER (1-5)</label><select style={inp} value={f.difficulty_tier} onChange={e=>up("difficulty_tier",e.target.value)}>{[1,2,3,4,5].map(n=><option key={n} value={n}>{n}</option>)}</select></div>
       </div>
-      {/* pinned footer */}
-      <div style={{display:"flex",justifyContent:"flex-end",gap:10,padding:"16px 22px",borderTop:"1px solid var(--border)",background:"#0e131c"}}>
+
+      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"var(--t2)"}}>The Prospect</b></div>
+      <label style={lbl}>NAME</label><input style={inp} value={f.persona_name} onChange={e=>up("persona_name",e.target.value)} placeholder="e.g. Robert"/>
+      <label style={lbl}>BACKGROUND</label><input style={inp} value={f.persona_bg} onChange={e=>up("persona_bg",e.target.value)} placeholder="Who they are, their situation"/>
+      <label style={lbl}>COMMUNICATION STYLE</label><input style={inp} value={f.persona_style} onChange={e=>up("persona_style",e.target.value)} placeholder="e.g. Blunt, asks a lot of questions"/>
+
+      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"var(--t2)"}}>The Situation</b></div>
+      <label style={lbl}>WHAT'S HAPPENING</label><textarea style={{...inp,minHeight:50}} value={f.situation} onChange={e=>up("situation",e.target.value)} placeholder="The setup — where the call picks up"/>
+      <label style={lbl}>STATED INTEREST (what they SAY)</label><input style={inp} value={f.stated_interest} onChange={e=>up("stated_interest",e.target.value)} placeholder="e.g. Seems interested but noncommittal"/>
+
+      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"var(--t2)"}}>The Hidden Truth</b> <span style={{fontSize:10,color:"var(--t3)"}}>(what the rep must uncover)</span></div>
+      <label style={lbl}>THE REAL TRUTH</label><textarea style={{...inp,minHeight:50}} value={f.hidden_truth} onChange={e=>up("hidden_truth",e.target.value)} placeholder="What's actually going on beneath the surface"/>
+      <label style={lbl}>THE REAL OBJECTION</label><input style={inp} value={f.real_objection} onChange={e=>up("real_objection",e.target.value)} placeholder="The true barrier"/>
+
+      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"var(--t2)"}}>Objections They'll Raise</b></div>
+      <input style={inp} value={f.obj1} onChange={e=>up("obj1",e.target.value)} placeholder="Objection 1 (what they'll actually say)"/>
+      <input style={{...inp,marginTop:8}} value={f.obj2} onChange={e=>up("obj2",e.target.value)} placeholder="Objection 2"/>
+      <input style={{...inp,marginTop:8}} value={f.obj3} onChange={e=>up("obj3",e.target.value)} placeholder="Objection 3"/>
+
+      <label style={lbl}>SCORING FOCUS / COACHING NOTES</label>
+      <textarea style={{...inp,minHeight:50}} value={f.focus} onChange={e=>up("focus",e.target.value)} placeholder="What separates a good rep from a bad one here? What should they be rewarded/penalized for?"/>
+
+      {err&&<div style={{color:"#ef4444",fontSize:12,marginTop:12}}>{err}</div>}
+      <div style={{display:"flex",gap:10,marginTop:20}}>
+        <button className="btn btn-primary" onClick={save} disabled={busy} style={{flex:1}}>{busy?"Saving…":"Create Scenario"}</button>
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy?"Saving…":"Create Scenario"}</button>
       </div>
     </div>
   </div>
@@ -2822,7 +2793,10 @@ function TrainPage() {
 }
 
 function PracticeHistoryPage(){
-  const[rep,setRep]=useState("");
+  const[rep,setRep]=usePersisted("plog.rep","");
+  const[scen,setScen]=usePersisted("plog.scen","ALL");
+  const[stat,setStat]=usePersisted("plog.stat","ALL");
+  const[sort,setSort]=usePersisted("plog.sort",{key:"created_at",dir:-1});
   const{data:reps}=useApi("/reps");
   const[sessions,setSessions]=useState(null);
   const[detail,setDetail]=useState(null);
@@ -2841,18 +2815,53 @@ function PracticeHistoryPage(){
     {detail.coaching_notes&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:10}}>Coaching</div><div style={{fontSize:13,color:"var(--t2)",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{detail.coaching_notes}</div></div>}
   </div>}
 
-  return<div className="flex-col gap-20" style={{maxWidth:820}}>
+  const all=sessions||[];
+  const scenOpts=[...new Set(all.map(s=>s.scenario_id).filter(Boolean))];
+  const scored=all.filter(s=>s.status==="scored"&&s.overall_score_adj!=null);
+  const avg=scored.length?Math.round(scored.reduce((a,s)=>a+Number(s.overall_score_adj),0)/scored.length*10)/10:null;
+  const chron=[...scored].sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)));
+  const trendPts=(()=>{const v=chron.map(s=>Number(s.overall_score_adj));if(v.length<2)return null;const mn=Math.min(...v),mx=Math.max(...v),rng=(mx-mn)||1;return v.map((x,i)=>((i/(v.length-1))*252+4).toFixed(0)+","+(50-((x-mn)/rng)*44).toFixed(0)).join(" ");})();
+  const filtered=all.filter(s=>(scen==="ALL"||s.scenario_id===scen)&&(stat==="ALL"||s.status===stat));
+  const sorted=[...filtered].sort((a,b)=>{const k=sort.key;let va=a[k],vb=b[k];if(k==="overall_score_adj"){va=Number(va)||0;vb=Number(vb)||0;return(va-vb)*sort.dir;}return String(va||"").localeCompare(String(vb||""))*sort.dir;});
+  const setSortKey=k=>setSort(s=>s.key===k?{key:k,dir:-s.dir}:{key:k,dir:1});
+  const TH=({k,l,align})=><span onClick={k?()=>setSortKey(k):undefined} className="mono" style={{fontSize:9,fontWeight:700,letterSpacing:.5,color:sort.key===k?"var(--t2)":"var(--t3)",textTransform:"uppercase",cursor:k?"pointer":"default",textAlign:align||"left"}}>{l}{sort.key===k?(sort.dir>0?" ▲":" ▼"):""}</span>;
+  const GC="56px 2fr 1.4fr 100px 96px 74px";
+
+  return<div className="flex-col gap-20">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
-      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Practice History</h2><p style={{fontSize:12,color:"var(--t3)",marginTop:4}}>Every practice session, scored on the same rubric as real calls. Click any to review.</p></div>
-      <select value={rep} onChange={e=>setRep(e.target.value)} style={{padding:"7px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="">All reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Practice Log</h2><p style={{fontSize:12,color:"var(--t3)",marginTop:4}}>Every practice session, scored on the same rubric as real calls. Click any to review.</p></div>
+      <button className="btn btn-green" onClick={()=>goTo("train")}>＋ Start a practice call →</button>
     </div>
     {!sessions&&<Skel/>}
-    {sessions&&sessions.length===0&&<div className="card" style={{padding:40,textAlign:"center",color:"var(--t3)"}}>No practice sessions yet. Head to the <b>Train</b> tab to start one.</div>}
-    {sessions&&sessions.map(s=><div key={s.id} onClick={()=>s.status==="scored"&&setDetail(s)} className="card" style={{padding:"16px 20px",cursor:s.status==="scored"?"pointer":"default",display:"flex",alignItems:"center",gap:16}}>
-      {s.status==="scored"?<ScoreRing value={s.overall_score_adj} size={40} sw={3}/>:<div style={{width:40,height:40,borderRadius:"50%",border:"2px dashed #374151",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#374151"}}>{s.status==="in_progress"?"…":"—"}</div>}
-      <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700,color:"var(--t2)"}}>{s.scenario_id}</div><div style={{fontSize:11,color:"#374151"}}>{s.rep_name} · {s.created_at}{s.status!=="scored"?` · ${s.status}`:""}</div></div>
-      {s.status==="scored"&&<span style={{fontSize:11,color:"var(--t3)"}}>Review →</span>}
-    </div>)}
+    {sessions&&<React.Fragment>
+    <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr",gap:12}}>
+      <div className="card" style={{padding:"16px 18px"}}>
+        <div className="lbl" style={{color:"var(--t3)",marginBottom:10}}>Practice score over time{rep?" · "+rep:" · team"}</div>
+        {trendPts?<svg viewBox="0 0 260 56" style={{width:"100%",height:52,overflow:"visible"}}><polyline points={trendPts} fill="none" stroke="#14b8a6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>:<div style={{fontSize:11,color:"var(--t4)",padding:"14px 0"}}>Not enough scored sessions yet.</div>}
+        {chron.length>1&&<div className="mono" style={{fontSize:10,color:"#34d399",marginTop:6}}>↗ {chron[0].overall_score_adj} → {chron[chron.length-1].overall_score_adj} over {chron.length} sessions</div>}
+      </div>
+      <div className="card" style={{padding:"16px 18px"}}><div className="lbl" style={{color:"var(--t3)"}}>Sessions</div><div className="stat-value" style={{fontSize:26,marginTop:6}}>{all.length}</div><div style={{fontSize:10,color:"var(--t4)"}}>{scored.length} scored</div></div>
+      <div className="card" style={{padding:"16px 18px"}}><div className="lbl" style={{color:"var(--t3)"}}>Avg practice score</div><div className="stat-value" style={{fontSize:26,marginTop:6,color:avg!=null?sClr(avg):"var(--t4)"}}>{avg??"—"}</div><div style={{fontSize:10,color:"var(--t4)"}}>on the live rubric</div></div>
+    </div>
+    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+      <select value={rep} onChange={e=>setRep(e.target.value)}><option value="">All reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
+      <select value={scen} onChange={e=>setScen(e.target.value)}><option value="ALL">All scenarios</option>{scenOpts.map(x=><option key={x} value={x}>{x}</option>)}</select>
+      <select value={stat} onChange={e=>setStat(e.target.value)}><option value="ALL">All statuses</option><option value="scored">Scored</option><option value="in_progress">In progress</option></select>
+    </div>
+    {sorted.length===0?<div className="card" style={{padding:40,textAlign:"center",color:"var(--t3)"}}>No practice sessions match. Head to the <b>Train</b> tab to start one.</div>:
+    <div className="card" style={{overflow:"hidden"}}>
+      <div style={{display:"grid",gridTemplateColumns:GC,gap:12,padding:"11px 16px",borderBottom:"1px solid var(--border)",background:"#151a24",alignItems:"center"}}><TH l="Score" align="center"/><TH k="scenario_id" l="Scenario"/><TH k="rep_name" l="Rep"/><TH k="status" l="Status" align="right"/><TH k="created_at" l="Date" align="right"/><span/></div>
+      {sorted.map((s,i)=>{const done=s.status==="scored";return<div key={s.id} onClick={()=>done&&setDetail(s)} style={{display:"grid",gridTemplateColumns:GC,gap:12,padding:"12px 16px",borderBottom:i<sorted.length-1?"1px solid var(--bg)":"none",alignItems:"center",cursor:done?"pointer":"default",background:i%2?"#131722":"transparent"}}>
+        {done?<div style={{justifySelf:"center"}}><ScoreRing value={s.overall_score_adj} size={38} sw={3}/></div>:<div style={{width:38,height:38,borderRadius:"50%",border:"2px dashed #3a4250",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"var(--t3)",justifySelf:"center"}}>{s.status==="in_progress"?"…":"—"}</div>}
+        <span style={{fontSize:13,fontWeight:700,color:"var(--t1)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.scenario_id}</span>
+        <span style={{fontSize:12,color:"var(--t2)"}}>{s.rep_name}</span>
+        <span className="badge" style={{justifySelf:"end",background:done?"#052e16":"#1a1305",color:done?"#6ee7b7":"#fbbf24",border:`1px solid ${done?"#166534":"#5c4a12"}`}}>{done?"SCORED":(s.status==="in_progress"?"IN PROGRESS":s.status.toUpperCase())}</span>
+        <span className="mono" style={{fontSize:11,color:"var(--t3)",textAlign:"right"}}>{fmt(s.created_at)}</span>
+        <span style={{fontSize:11,color:done?"#818cf8":"var(--t4)",textAlign:"right"}}>{done?"Review →":"—"}</span>
+      </div>})}
+    </div>}
+    <div style={{fontSize:11,color:"var(--t4)"}}>Showing <b style={{color:"var(--t2)"}}>{sorted.length}</b> of {all.length} sessions</div>
+    </React.Fragment>}
   </div>
 }
 
