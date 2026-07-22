@@ -2277,70 +2277,71 @@ function StitchPage(){
   function Pair({p,auto}){
     const key=p.first_id+"-"+p.second_id;
     const isDone=done.includes(key);
-    return<div className="card" style={{padding:16,opacity:isDone?.5:1,borderColor:auto?"#166534":"#92400e"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
-        <div style={{flex:1,minWidth:200}}>
-          <div style={{fontSize:14,fontWeight:700,color:"var(--t2)"}}>{p.rep_name} → {p.client_name}</div>
-          <div style={{fontSize:12,color:"var(--t3)",marginTop:2}}>Call #{p.first_id} (scored {p.first_score}) + Call #{p.second_id} (scored {p.second_score}) · {p.gap_min} min apart</div>
-          <div style={{fontSize:12,color:"var(--t2)",marginTop:6,fontStyle:"italic"}}>"{p.cue.reason}"</div>
-          <div style={{fontSize:11,color:"var(--t4)",marginTop:4}}>
-            {p.cue.call1_cut_off?"✓ call 1 cut off":"✗ call 1 cut off"} · {p.cue.call2_reconnects?"✓ call 2 reconnects":"✗ call 2 reconnects"} · confidence: {p.cue.confidence}
-          </div>
-        </div>
-        <div style={{flexShrink:0}}>
-          {isDone?<span style={{fontSize:12,color:"#34d399",fontWeight:700}}>✓ Merged</span>:
-            <button className="btn btn-primary" onClick={()=>merge(p)} disabled={busy===key} style={{fontSize:12}}>{busy===key?"Merging…":"Merge into one"}</button>}
-        </div>
+    const conf=p.cue?.confidence;
+    const confPct=typeof conf==="number"?(conf<=1?Math.round(conf*100):Math.round(conf)):null;
+    const total=(p.first_dur!=null&&p.second_dur!=null)?fmtD((p.first_dur||0)+(p.second_dur||0)):null;
+    return<div className="card" style={{padding:16,opacity:isDone?.55:1,borderColor:auto?"#166534":"#92400e"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:10}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--t1)"}}>{p.rep_name} → {p.client_name}</div>
+        <span className="mono" style={{fontSize:9,fontWeight:800,borderRadius:5,padding:"2px 8px",background:auto?"#052e16":"#2a1a00",color:auto?"#6ee7b7":"#fbbf24",border:"1px solid "+(auto?"#166534":"#92400e")}}>{confPct!=null?confPct+"% confidence":(conf||"").toString().toUpperCase()}</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:12,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:110,background:"var(--bg)",border:"1px solid var(--border)",borderRadius:9,padding:"9px 11px"}}><div className="mono" style={{fontSize:10,color:"var(--t3)"}}>#{p.first_id} · scored {p.first_score}</div><div style={{fontSize:11,color:"var(--t2)",marginTop:3}}>{p.first_dur!=null?fmtD(p.first_dur)+" · ":""}<span style={{color:p.cue?.call1_cut_off?"#f87171":"var(--t3)"}}>{p.cue?.call1_cut_off?"cut off":"—"}</span></div></div>
+        <span style={{color:"#2dd4bf",fontSize:16}}>＋</span>
+        <div style={{flex:1,minWidth:110,background:"var(--bg)",border:"1px solid var(--border)",borderRadius:9,padding:"9px 11px"}}><div className="mono" style={{fontSize:10,color:"var(--t3)"}}>#{p.second_id} · scored {p.second_score}</div><div style={{fontSize:11,color:"var(--t2)",marginTop:3}}>{p.second_dur!=null?fmtD(p.second_dur)+" · ":""}<span style={{color:p.cue?.call2_reconnects?"#34d399":"var(--t3)"}}>{p.cue?.call2_reconnects?"reconnect":"—"}</span></div></div>
+        <span style={{color:"#2dd4bf",fontSize:16}}>→</span>
+        <div style={{flex:1,minWidth:110,background:"#0f2e2b",border:"1px solid #2dd4bf",borderRadius:9,padding:"9px 11px"}}><div className="mono" style={{fontSize:10,color:"#5eead4"}}>one call</div><div style={{fontSize:11,color:"var(--t1)",marginTop:3}}>{total?total+" · ":""}re-scored</div></div>
+      </div>
+      {p.cue?.reason&&<div style={{fontSize:12,color:"var(--t2)",fontStyle:"italic",marginBottom:10}}>"{p.cue.reason}"</div>}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:12,fontSize:10,fontFamily:"var(--m)"}}><span style={{color:p.cue?.call1_cut_off?"#34d399":"#f87171"}}>{p.cue?.call1_cut_off?"✓":"✗"} call 1 cut off</span><span style={{color:p.cue?.call2_reconnects?"#34d399":"#f87171"}}>{p.cue?.call2_reconnects?"✓":"✗"} call 2 reconnects</span><span style={{color:"var(--t4)"}}>{p.gap_min} min apart</span></div>
+        {isDone?<span style={{fontSize:12,color:"#34d399",fontWeight:700}}>✓ Merged</span>:
+          <button className="btn btn-sm" onClick={()=>merge(p)} disabled={busy===key} style={{fontSize:12,fontWeight:800,background:auto?"#166534":"",borderColor:auto?"#166534":"",color:auto?"#dcfce7":""}}>{busy===key?"Merging…":auto?"Merge into one":"Review & merge"}</button>}
       </div>
     </div>;
   }
 
-  return<div className="flex-col gap-20" style={{maxWidth:860}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+  return<div className="flex-col gap-20">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
       <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Call Stitching</h2>
-        <div style={{fontSize:13,color:"var(--t3)",marginTop:2}}>Finds cut-off calls that were redialed and merges them into one score.</div></div>
-      <button className="btn btn-primary" onClick={scan} disabled={scanning}>{scanning?"Scanning…":"⟳ Scan for cut-off calls"}</button>
+        <div style={{fontSize:12,color:"var(--t3)",marginTop:2,maxWidth:560}}>Calls that dropped and were redialed, merged into one score. <b style={{color:"var(--t2)"}}>Detection is manual</b> — nothing merges on its own.</div></div>
+      <button className="btn" onClick={scan} disabled={scanning} style={{background:"#0f2e2b",borderColor:"#2dd4bf",color:"#5eead4",fontWeight:800}}>{scanning?"Scanning…":"⟳ Scan for cut-off calls"}</button>
     </div>
 
-    {/* Manual merge — escape hatch for pairs auto-detect misses */}
-    <div className="card" style={{padding:16}}>
-      <div className="section-head" style={{marginBottom:6}}>Manually merge two calls</div>
-      <div style={{fontSize:12,color:"var(--t3)",marginBottom:10}}>Know two calls are really one cut-off conversation but the scan didn't catch them? Enter both call IDs (find them on each call's detail page). The earlier call becomes the survivor.</div>
-      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        <input value={mA} onChange={e=>setMA(e.target.value)} placeholder="Call ID" style={{width:110,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13}}/>
-        <span style={{color:"var(--t3)"}}>+</span>
-        <input value={mB} onChange={e=>setMB(e.target.value)} placeholder="Call ID" style={{width:110,padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13}}/>
-        <button className="btn btn-primary" onClick={manualMerge} disabled={mBusy} style={{fontSize:12}}>{mBusy?"Merging…":"Merge"}</button>
+    <div style={{display:"flex",alignItems:"center",gap:9,padding:"11px 15px",background:"#0d1420",border:"1px solid #1e3a5f",borderRadius:10}}><span style={{fontSize:14}}>🔒</span><span style={{fontSize:12,color:"var(--t2)"}}><b style={{color:"#7dd3fc"}}>Detection is manual.</b> The bot only looks when you Scan, and only merges when you click Merge — there is no background job doing this on its own.</span></div>
+
+    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 320px",gap:16,alignItems:"start"}}>
+      <div className="flex-col gap-12">
+        {!data&&!scanning&&<div className="card" style={{padding:40,textAlign:"center",color:"var(--t3)"}}>Click <b style={{color:"var(--t2)"}}>Scan</b> to look for calls that dropped and were redialed within 60 minutes — same rep, same client, with the transcript showing a cut-off and a reconnect.</div>}
+        {scanning&&<Skel/>}
+        {data&&(()=>{const auto=data.auto||[],sugg=data.suggested||[];return<React.Fragment>
+          {auto.length>0&&<div>
+            <div style={{fontSize:11,fontWeight:800,color:"#4ade80",letterSpacing:.5,marginBottom:10}}>HIGH CONFIDENCE · CLEAR CUT-OFF ({auto.length})</div>
+            <div className="flex-col gap-12">{auto.map(p=><Pair key={p.first_id+"-"+p.second_id} p={p} auto/>)}</div>
+          </div>}
+          {sugg.length>0&&<div>
+            <div style={{fontSize:11,fontWeight:800,color:"#f59e0b",letterSpacing:.5,margin:"16px 0 10px"}}>REVIEW · POSSIBLE PAIRS ({sugg.length})</div>
+            <div className="flex-col gap-12">{sugg.map(p=><Pair key={p.first_id+"-"+p.second_id} p={p}/>)}</div>
+          </div>}
+          {auto.length===0&&sugg.length===0&&<div className="card" style={{padding:40,textAlign:"center",color:"var(--t3)"}}>No cut-off pairs found. Checked {data.checked||0} candidate{data.checked!==1?"s":""}.</div>}
+        </React.Fragment>;})()}
       </div>
-      {mMsg&&<div style={{marginTop:10,fontSize:12,color:mMsg.err?"#f87171":"#34d399"}}>{mMsg.text}</div>}
+
+      <div className="flex-col gap-14">
+        <div className="card" style={{padding:16,borderColor:"#3730a3"}}>
+          <div className="section-head" style={{marginBottom:6,color:"#a5b4fc"}}>Manual merge</div>
+          <div style={{fontSize:11,color:"var(--t3)",lineHeight:1.5,marginBottom:10}}>Scan missed a pair? Enter both call IDs (find them on each call's detail page). The earlier call becomes the survivor.</div>
+          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+            <input value={mA} onChange={e=>setMA(e.target.value)} placeholder="Call ID" style={{width:88,padding:"8px 11px",background:"var(--bg)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13}}/>
+            <span style={{color:"var(--t3)"}}>+</span>
+            <input value={mB} onChange={e=>setMB(e.target.value)} placeholder="Call ID" style={{width:88,padding:"8px 11px",background:"var(--bg)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13}}/>
+          </div>
+          <button className="btn btn-primary" onClick={manualMerge} disabled={mBusy} style={{width:"100%",marginTop:10,fontSize:12}}>{mBusy?"Merging…":"Merge"}</button>
+          {mMsg&&<div style={{marginTop:10,fontSize:12,color:mMsg.err?"#f87171":"#34d399"}}>{mMsg.text}</div>}
+        </div>
+        <StitchLog/>
+      </div>
     </div>
-
-    {/* Honest status — no auto-stitch is running */}
-    <div className="card" style={{padding:14,background:"#0d1420",borderColor:"#1e3a5f",fontSize:12,color:"var(--t2)",lineHeight:1.6}}>
-      <b style={{color:"#7dd3fc"}}>Detection is manual.</b> Nothing is stitched automatically — the bot only looks when you click <b>Scan</b>, and only merges when you click <b>Merge</b>. There is no background job doing this on its own.
-    </div>
-
-    {!data&&!scanning&&<div className="card" style={{padding:40,textAlign:"center",color:"var(--t3)"}}>
-      Click <b style={{color:"var(--t2)"}}>Scan</b> to look for calls that dropped and were redialed within 60 minutes. Same rep, same client, with the transcript showing a cut-off and a reconnect.
-    </div>}
-
-    <StitchLog/>
-
-    {data&&<>
-      {data.auto.length>0&&<div>
-        <div style={{fontSize:12,fontWeight:700,color:"#4ade80",letterSpacing:.5,marginBottom:10}}>HIGH CONFIDENCE — CLEAR CUT-OFF PAIRS ({data.auto.length})</div>
-        <div className="flex-col gap-12">{data.auto.map(p=><Pair key={p.first_id+"-"+p.second_id} p={p} auto/>)}</div>
-      </div>}
-
-      {data.suggested.length>0&&<div>
-        <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",letterSpacing:.5,marginBottom:10,marginTop:8}}>WORTH A LOOK — POSSIBLE PAIRS ({data.suggested.length})</div>
-        <div className="flex-col gap-12">{data.suggested.map(p=><Pair key={p.first_id+"-"+p.second_id} p={p}/>)}</div>
-      </div>}
-
-      {data.auto.length===0&&data.suggested.length===0&&<div className="card" style={{padding:40,textAlign:"center",color:"var(--t3)"}}>
-        No cut-off pairs found. Checked {data.checked} candidate{data.checked!==1?"s":""}.
-      </div>}
-    </>}
   </div>;
 }
 
