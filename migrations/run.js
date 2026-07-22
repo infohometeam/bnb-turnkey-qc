@@ -285,6 +285,37 @@ async function migrate() {
     ['SURGE_TAX_LEAD',       'Surge Tax Lead',        'C_ROUTING', false, 'Tax burden is the driver — route to Surge Tax.', '#eab308', 83],
     ['HOME_TEAM_MGMT_LEAD',  'Home Team Mgmt Lead',   'C_ROUTING', false, 'Already owns STRs but self-manages or has a bad manager — route to Home Team management.', '#ec4899', 84],
     ['REALTY_LEAD',          'Realty Lead',           'C_ROUTING', false, 'Wants to buy in a Home Team Realty market (Phoenix AZ, Pinellas FL, Gulf Coast).', '#f97316', 85],
+
+    // ── D: Positive outcome tags (Francis, Jul 23) — a real "win" state, self-
+    // contained from the transcript (no HubSpot dependency, matching the pivot in
+    // CALL_TAGGING_spec.md). Never excludes from average — these are the calls we
+    // WANT counted; the exclusion flag exists for non-performance outcomes, not wins.
+    ['SET',        'Setter — Booked Closer Call', 'D_OUTCOME_POSITIVE', false,
+      'Setter successfully booked a qualified closer call with a confirmed date/time. A strong outcome.', '#22c55e', 90],
+    ['CLOSED_WON', 'Closer — Closed Won',          'D_OUTCOME_POSITIVE', false,
+      'Closer secured explicit commitment to proceed (agreement/payment/paperwork discussed) in this call. The win.', '#16a34a', 91],
+
+    // ── E: Missed-opportunity judgment tags (Francis, Jul 23) — NOT yet AI-suggested;
+    // these keys exist so the schema/UI is ready, but the prompt work that populates
+    // them is deliberately held until Sam confirms the behavioral definitions (see
+    // the spec). Never excludes from average — the call stays scored on execution;
+    // this is a coaching flag layered on top, same principle as nurture-aware scoring.
+    ['COULD_HAVE_BEEN_SET',          'Could Have Been a Set',           'E_MISSED_OPPORTUNITY', false,
+      'Setter call: the lead showed real buying signals but no closer call was booked. A likely missed set.', '#fb923c', 100],
+    ['COULD_HAVE_BEEN_ONE_CALL_CLOSE','Could Have Been a One-Call Close','E_MISSED_OPPORTUNITY', false,
+      'Closer call: the lead was ready to commit but the call ended without securing it. A likely missed close.', '#fb923c', 101],
+
+    // ── F: Wrong business unit (Francis, Jul 23) — the ENTIRE call was not a BNB
+    // Turnkey conversation at all (e.g. a Rise Legacy legal matter that landed on a
+    // Turnkey rep). Reused tag_group 'A_NOT_CLOSEABLE' deliberately: it's the most
+    // "not closeable as a Turnkey deal" state there is, and it inherits the existing
+    // mutual-exclusivity behavior in /calls/:id/tag (line ~964) — a call can't be
+    // BOTH "not a Turnkey call at all" and "Disqualified as a Turnkey lead", since
+    // the latter presupposes it was a Turnkey conversation. excludes_from_average=true
+    // is the whole point: the call stays attributed to the rep, just leaves their
+    // Turnkey scoring — same mechanism DISQUALIFIED etc. already use.
+    ['BNB_LEGACY', 'BNB Legacy (Not a Turnkey Call)', 'A_NOT_CLOSEABLE', true,
+      'The entire call was about Rise Legacy (the internal law/legal-services company), not BNB Turnkey. Not a Turnkey conversation at all — excluded from Turnkey scoring for this rep.', '#78716c', 15],
   ];
   for (const [key,label,grp,excl,desc,color,ord] of tagSeed) {
     await q(`INSERT INTO call_tags (key,label,tag_group,excludes_from_average,description,color,sort_order,active)
