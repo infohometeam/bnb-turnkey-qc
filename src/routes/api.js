@@ -941,7 +941,12 @@ router.get('/tags', async (req, res) => {
 
 // Includes inactive (soft-deleted) tags — for a management UI that lets an admin
 // see and reactivate a tag they'd previously turned off, not just active ones.
-router.get('/tags/all', requireAdmin, async (req, res) => {
+// NOT admin-gated: this is a READ, same as the rest of the app's philosophy —
+// no login wall on browsing. Only the create/edit endpoints below (which actually
+// change data) require the admin login. (Corrected Jul 24 — this endpoint was
+// originally gated by mistake, which broke Manage Tags for a logged-in admin too,
+// since the frontend's read hook never attaches an auth header to any GET call.)
+router.get('/tags/all', async (req, res) => {
   try {
     const r = await q('SELECT * FROM call_tags ORDER BY active DESC, sort_order, label');
     res.json({ tags: r.rows });
