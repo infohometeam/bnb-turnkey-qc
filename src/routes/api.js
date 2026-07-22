@@ -939,6 +939,85 @@ router.get('/tags', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Includes inactive (soft-deleted) tags — for a management UI that lets an admin
+// see and reactivate a tag they'd previously turned off, not just active ones.
+router.get('/tags/all', requireAdmin, async (req, res) => {
+  try {
+    const r = await q('SELECT * FROM call_tags ORDER BY active DESC, sort_order, label');
+    res.json({ tags: r.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Turns a human label into a SCREAMING_SNAKE_CASE key matching the existing
+// convention (DISQUALIFIED, BNB_LEGACY, ...) so an admin can type a plain name
+// rather than think in tag-key syntax. An explicit `key` in the request always wins.
+function slugifyKey(label) {
+  return String(label || '').toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60);
+}
+
+// Create a new tag type. Admin-only — this is genuinely consequential: a tag
+// with excludes_from_average=true changes what counts toward a rep's score the
+// moment it's confirmed on a call, so creation requires that field to be an
+// explicit boolean, never a silent default.
+router.post('/tags', requireAdmin, express.json(), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const label = String(b.label || '').trim();
+    if (!label) return res.status(400).json({ error: 'label is required' });
+    const key = (b.key ? String(b.key).toUpperCase().replace(/[^A-Z0-9_]/g, '') : slugifyKey(label));
+    if (!key) return res.status(400).json({ error: 'Could not derive a valid key from that label — provide one explicitly (e.g. REFERRED_BY_PARTNER).' });
+    if (typeof b.excludes_from_average !== 'boolean') {
+      return res.status(400).json({ error: 'excludes_from_average must be explicitly true or false — this decides whether the tag removes a call from a rep\'s average.' });
+    }
+    const tagGroup = String(b.tag_group || 'CUSTOM').trim().slice(0, 60);
+    const existing = (await q('SELECT key, active FROM call_tags WHERE key=?', [key])).rows[0];
+    if (existing) {
+      return res.status(409).json({ error: `Tag "${key}" already exists (${existing.active ? 'active' : 'inactive — reactivate it with PATCH instead of creating a duplicate'}).`, existing_key: key });
+    }
+    const maxSort = (await q('SELECT COALESCE(MAX(sort_order),100) AS m FROM call_tags')).rows[0].m;
+    await q(
+      `INSERT INTO call_tags (key, label, tag_group, excludes_from_average, description, color, sort_order, active, is_primary_outcome)
+       VALUES (?,?,?,?,?,?,?,true,?)`,
+      [key, label, tagGroup, b.excludes_from_average, String(b.description || ''), b.color || '#64748b',
+       Number.isFinite(b.sort_order) ? b.sort_order : Number(maxSort) + 1, b.is_primary_outcome === true]);
+    const created = (await q('SELECT * FROM call_tags WHERE key=?', [key])).rows[0];
+    res.json({ ok: true, tag: created });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Edit an existing tag. The key itself is immutable — it's referenced by every
+// past assignment of this tag, and changing it would silently orphan history.
+// Deactivating is done here too (active:false) rather than a separate DELETE
+// route — tags are never hard-deleted, same reasoning as rep deactivation:
+// call_tag_assignments references the key by string, so removing the row would
+// break every historical call that carries it.
+router.patch('/tags/:key', requireAdmin, express.json(), async (req, res) => {
+  try {
+    const key = String(req.params.key || '').toUpperCase();
+    const existing = (await q('SELECT * FROM call_tags WHERE key=?', [key])).rows[0];
+    if (!existing) return res.status(404).json({ error: `Tag "${key}" not found` });
+    const b = req.body || {};
+    const next = {
+      label: b.label != null ? String(b.label) : existing.label,
+      tag_group: b.tag_group != null ? String(b.tag_group).slice(0, 60) : existing.tag_group,
+      excludes_from_average: typeof b.excludes_from_average === 'boolean' ? b.excludes_from_average : existing.excludes_from_average,
+      description: b.description != null ? String(b.description) : existing.description,
+      color: b.color || existing.color,
+      sort_order: Number.isFinite(b.sort_order) ? b.sort_order : existing.sort_order,
+      active: typeof b.active === 'boolean' ? b.active : existing.active,
+      is_primary_outcome: typeof b.is_primary_outcome === 'boolean' ? b.is_primary_outcome : existing.is_primary_outcome,
+    };
+    await q(
+      `UPDATE call_tags SET label=?, tag_group=?, excludes_from_average=?, description=?, color=?, sort_order=?, active=?, is_primary_outcome=? WHERE key=?`,
+      [next.label, next.tag_group, next.excludes_from_average, next.description, next.color, next.sort_order, next.active, next.is_primary_outcome, key]);
+    const updated = (await q('SELECT * FROM call_tags WHERE key=?', [key])).rows[0];
+    res.json({ ok: true, tag: updated });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/calls/:id/tags', async (req, res) => {
   try {
     const r = await q(
@@ -967,14 +1046,16 @@ router.post('/calls/:id/tag', requireAdmin, express.json(), async (req, res) => 
     }
     const ts = new Date().toISOString().replace('T',' ').slice(0,19);
     const who = by || 'Sam';
-    // These groups are mutually exclusive "what kind of call was this" answers — a
-    // call can't be both Disqualified AND Hard No, can't be both Closed Won AND
-    // Hard No, and can't be a real Turnkey attempt AND "not a Turnkey call at all".
-    if (['A_NOT_CLOSEABLE', 'B_REAL_ATTEMPT', 'D_OUTCOME_POSITIVE', 'F_MANUAL_EXCLUSION'].includes(t.tag_group)) {
+    // Primary-outcome tags are mutually exclusive "what kind of call was this"
+    // answers — a call can't be both Disqualified AND Hard No. Driven by the
+    // is_primary_outcome flag on call_tags (not hardcoded group names), so a
+    // future custom tag can opt into this via the create/edit endpoint below
+    // without ever needing a code change here again.
+    if (t.is_primary_outcome) {
       await q(
         `DELETE FROM call_tag_assignments
          WHERE call_id=? AND tag_key <> ?
-           AND tag_key IN (SELECT key FROM call_tags WHERE tag_group IN ('A_NOT_CLOSEABLE','B_REAL_ATTEMPT','D_OUTCOME_POSITIVE','F_MANUAL_EXCLUSION'))`,
+           AND tag_key IN (SELECT key FROM call_tags WHERE is_primary_outcome=true)`,
         [callId, tag]);
     }
     await q(
