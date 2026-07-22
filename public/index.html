@@ -2045,77 +2045,130 @@ function MyProgressPage({initialRep}){
 }
 function CalibrationPage(){
   const{data}=useApi("/calibration");
-  const{data:dw}=useApi("/deduction-weights");
+  const{data:dw,reload:reloadDw}=useApi("/deduction-weights");
+  const[edits,setEdits]=useState({});
+  const[saving,setSaving]=useState(false);
+  const[saved,setSaved]=useState(false);
   if(!data)return<Skel/>;
   const ovr=data.overrides||[];
   const avg=data.avg_delta;
-  // Per-rep and per-role rollups of the gap
+  const deltas=ovr.map(o=>o.delta).filter(d=>isFinite(d));
+  const within1=deltas.length?Math.round(deltas.filter(d=>Math.abs(d)<=1).length/deltas.length*100):0;
+  const agreeColor=within1>=75?"#34d399":within1>=50?"#fbbf24":"#ef4444";
+  const agreeLabel=within1>=75?"Well calibrated":within1>=50?"Some drift":"Diverging";
+  // Gap distribution buckets −2/−1/0/+1/+2
+  const buckets=[-2,-1,0,1,2].map(b=>({b,n:deltas.filter(d=>{const r=Math.round(d);return b===-2?r<=-2:b===2?r>=2:r===b;}).length}));
+  const maxB=Math.max(...buckets.map(x=>x.n),1);
+  const bColor=b=>b===0?"#34d399":Math.abs(b)===1?"#f59e0b":"#ef4444";
   const byRole={};
   ovr.forEach(o=>{if(!isFinite(o.delta))return;const k=o.role||"?";(byRole[k]=byRole[k]||[]).push(o.delta);});
   const roleAvg=Object.entries(byRole).map(([role,ds])=>({role,n:ds.length,avg:Math.round(ds.reduce((a,b)=>a+b,0)/ds.length*10)/10}));
+  // Donut geometry
+  const R=56,C=2*Math.PI*R,off=C*(1-within1/100);
+  const wVal=w=>edits[w.rule]!=null?edits[w.rule]:w.points;
+  const dirty=Object.keys(edits).some(k=>{const w=(dw?.weights||[]).find(x=>x.rule===k);return w&&edits[k]!==w.points;});
+  const bump=(rule,cur,d)=>setEdits(e=>({...e,[rule]:Math.max(0,Math.min(10,(e[rule]!=null?e[rule]:cur)+d))}));
+  async function saveWeights(){
+    setSaving(true);setSaved(false);
+    try{
+      const payload=Object.keys(edits).map(rule=>({rule,points:edits[rule]}));
+      const r=await postApi("/deduction-weights",{weights:payload});
+      if(r&&r.ok!==false){setSaved(true);setEdits({});reloadDw&&reloadDw();setTimeout(()=>setSaved(false),2500);}
+      else alert(r?.error||"Save failed — the write endpoint may not be live yet.");
+    }catch(e){alert("Save failed — POST /deduction-weights may not be live yet.");}
+    setSaving(false);
+  }
 
-  return<div className="flex-col gap-20" style={{maxWidth:900}}>
+  return<div className="flex-col gap-20">
     <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Calibration</h2>
-      <div style={{fontSize:13,color:"var(--t3)",marginTop:2}}>How Sam's scores compare to the bot's. This is the data that tunes the rubric.</div></div>
+      <div style={{fontSize:13,color:"var(--t3)",marginTop:2}}>How Sam's scores compare to the bot's — the data that tunes the rubric.</div></div>
 
     {ovr.length===0?<div className="card" style={{padding:40,textAlign:"center"}}>
       <div style={{fontSize:14,color:"var(--t2)"}}>No calibration scores yet.</div>
-      <div style={{fontSize:12,color:"var(--t3)",marginTop:6}}>Open any scored call and use <b style={{color:"#a5b4fc"}}>Sam's Calibration Score</b> to add one. They'll show up here.</div>
+      <div style={{fontSize:12,color:"var(--t3)",marginTop:6}}>Open any scored call and use <b style={{color:"#a5b4fc"}}>Sam's Calibration</b> to add one. They'll show up here.</div>
     </div>:<>
-      {/* Summary stats */}
-      <div className="grid grid-stats">
-        <div className="card stat-card"><div className="stat-label">Calibrated calls</div><div style={{fontSize:26,fontWeight:900,color:"#818cf8"}}>{data.count}</div></div>
-        <div className="card stat-card"><div className="stat-label">Avg gap (Sam − bot)</div><div style={{fontSize:26,fontWeight:900,color:avg>0?"#34d399":avg<0?"#f87171":"var(--t2)"}}>{avg>0?"+":""}{avg}</div></div>
-        <div className="card stat-card"><div className="stat-label">Agreement</div><div style={{fontSize:26,fontWeight:900,color:"var(--t2)"}}>{Math.abs(avg)<=1?"Close":Math.abs(avg)<=2?"Some drift":"Diverging"}</div></div>
-      </div>
-
-      {/* Interpretation hint */}
-      <div className="card" style={{padding:16,background:avg>1?"#161200":avg<-1?"#1a0a0a":"#0d1420",borderColor:avg>1?"#92400e":avg<-1?"#991b1b":"#1e3a5f"}}>
-        <div style={{fontSize:13,color:"var(--t2)",lineHeight:1.6}}>
-          {Math.abs(avg)<=1&&<>The bot is scoring close to Sam on average — the rubric is well calibrated. No changes needed yet.</>}
-          {avg>1&&<>Sam scores <b>{avg} higher</b> than the bot on average — the rubric or deductions may be <b>too harsh</b>. Check the Deduction Tuning page to soften where you consistently disagree.</>}
-          {avg<-1&&<>Sam scores <b>{Math.abs(avg)} lower</b> than the bot on average — the bot may be <b>too generous</b>. The rubric could use tightening.</>}
+      {/* Agreement gauge + interpretation + distribution */}
+      <div style={{display:"grid",gridTemplateColumns:"minmax(240px,1fr) 2fr",gap:16}}>
+        <div className="card" style={{padding:24,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"linear-gradient(150deg,#0f1830,#141b26)",borderColor:"#1e3a5f"}}>
+          <div style={{fontFamily:"var(--m)",fontSize:10,fontWeight:800,letterSpacing:1,color:"#93c5fd",marginBottom:14,textTransform:"uppercase"}}>Bot ↔ Sam agreement</div>
+          <div style={{position:"relative",width:130,height:130}}>
+            <svg viewBox="0 0 130 130" style={{width:130,height:130,transform:"rotate(-90deg)"}}><circle cx="65" cy="65" r={R} fill="none" stroke="#232936" strokeWidth="12"/><circle cx="65" cy="65" r={R} fill="none" stroke={agreeColor} strokeWidth="12" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={off}/></svg>
+            <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><div style={{fontFamily:"var(--m)",fontWeight:900,fontSize:30,letterSpacing:-1,color:agreeColor}}>{within1}%</div><div style={{fontFamily:"var(--m)",fontSize:9,color:"var(--t3)"}}>within ±1</div></div>
+          </div>
+          <div style={{fontSize:13,fontWeight:800,color:agreeColor,marginTop:14}}>{agreeLabel}</div>
+          <div style={{fontFamily:"var(--m)",fontSize:11,color:"var(--t3)",marginTop:2}}>avg gap {avg>0?"+":""}{avg} · {data.count} calls</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div className="card" style={{padding:"16px 18px",background:avg>1?"#161200":avg<-1?"#1a0a0a":"#0d1420",borderColor:avg>1?"#92400e":avg<-1?"#991b1b":"#1e3a5f"}}>
+            <div style={{fontFamily:"var(--m)",fontSize:10,fontWeight:800,letterSpacing:.5,color:avg>1?"#fbbf24":avg<-1?"#f87171":"#7dd3fc",marginBottom:6,textTransform:"uppercase"}}>What this means</div>
+            <div style={{fontSize:13,color:"var(--t2)",lineHeight:1.6}}>
+              {Math.abs(avg)<=1&&<>The bot scores close to Sam on average ({avg>0?"+":""}{avg}). The rubric is well calibrated — no changes needed yet. Reps' scores can be trusted as-is.</>}
+              {avg>1&&<>Sam scores <b>{avg} higher</b> than the bot on average — the rubric or deductions may be <b>too harsh</b>. Soften the weights below where you consistently disagree.</>}
+              {avg<-1&&<>Sam scores <b>{Math.abs(avg)} lower</b> than the bot on average — the bot may be <b>too generous</b>. Tighten the rubric or raise weights below.</>}
+            </div>
+          </div>
+          <div className="card" style={{padding:"16px 18px"}}>
+            <div style={{fontFamily:"var(--m)",fontSize:10,fontWeight:800,letterSpacing:.5,color:"var(--t3)",marginBottom:12,textTransform:"uppercase"}}>Gap distribution · Sam − bot</div>
+            <div style={{display:"flex",alignItems:"flex-end",gap:8,height:74}}>
+              {buckets.map(x=><div key={x.b} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,height:"100%",justifyContent:"flex-end"}}><span style={{fontFamily:"var(--m)",fontSize:10,color:"var(--t3)"}}>{x.n||""}</span><div style={{width:"100%",height:(x.n/maxB*100)+"%",minHeight:x.n?4:2,background:x.n?bColor(x.b):"#232936",borderRadius:3}}/><span style={{fontFamily:"var(--m)",fontSize:8,color:x.b===0?"#34d399":"var(--t4)"}}>{x.b>0?"+":""}{x.b}</span></div>)}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Per-role gap */}
-      {roleAvg.length>0&&<div className="card" style={{padding:18}}>
-        <div className="section-head" style={{marginBottom:10}}>Gap by role</div>
-        {roleAvg.map(r=><div key={r.role} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",fontSize:13}}>
-          <span style={{color:"var(--t2)"}}>{r.role} <span style={{color:"var(--t3)",fontSize:11}}>({r.n} call{r.n!==1?"s":""})</span></span>
-          <span style={{fontFamily:"var(--m)",fontWeight:700,color:r.avg>0?"#34d399":r.avg<0?"#f87171":"var(--t2)"}}>{r.avg>0?"+":""}{r.avg}</span>
-        </div>)}
-      </div>}
-
-      {/* Per-call list */}
-      <div className="card" style={{overflow:"hidden"}}>
-        <div style={{padding:"12px 18px",borderBottom:"1px solid var(--card)",fontSize:12,fontWeight:700,color:"var(--t2)",letterSpacing:.5}}>EVERY CALIBRATION ({ovr.length})</div>
-        {ovr.map((o,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:"1px solid var(--bg)"}}>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{o.rep_name||"?"} → {o.client_name||"?"} <span style={{fontSize:11,fontWeight:400,color:"var(--t3)"}}>· {o.role}</span></div>
-            {o.reason&&<div style={{fontSize:11,color:"var(--t3)",fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>"{o.reason}"</div>}
+      {/* Gap by role + per-call list side by side */}
+      <div style={{display:"grid",gridTemplateColumns:"minmax(260px,1fr) 2fr",gap:16,alignItems:"start"}}>
+        {roleAvg.length>0&&<div className="card" style={{padding:18}}>
+          <div className="section-head" style={{marginBottom:10}}>Gap by role</div>
+          {roleAvg.map(r=><div key={r.role} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",fontSize:13,borderTop:"1px solid var(--border)"}}>
+            <span style={{color:"var(--t2)"}}>{r.role} <span style={{color:"var(--t3)",fontSize:11}}>({r.n} call{r.n!==1?"s":""})</span></span>
+            <span style={{fontFamily:"var(--m)",fontWeight:700,color:Math.abs(r.avg)<=1?"#34d399":r.avg>0?"#fbbf24":"#f87171"}}>{r.avg>0?"+":""}{r.avg}</span>
+          </div>)}
+        </div>}
+        <div className="card" style={{overflow:"hidden"}}>
+          <div style={{padding:"12px 18px",borderBottom:"1px solid var(--border)",fontSize:12,fontWeight:700,color:"var(--t2)",letterSpacing:.5,fontFamily:"var(--m)"}}>EVERY CALIBRATION ({ovr.length})</div>
+          <div style={{maxHeight:340,overflowY:"auto"}}>
+          {ovr.map((o,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:"1px solid var(--bg)"}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{o.rep_name||"?"} → {o.client_name||"?"} <span style={{fontSize:11,fontWeight:400,color:"var(--t3)"}}>· {o.role}</span></div>
+              {o.reason&&<div style={{fontSize:11,color:"var(--t3)",fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>"{o.reason}"</div>}
+            </div>
+            <div style={{textAlign:"right",flexShrink:0,fontFamily:"var(--m)",fontSize:12}}>
+              <span style={{color:"#818cf8",fontWeight:800}}>{o.override_score}</span>
+              <span style={{color:"var(--t3)"}}> vs </span>
+              <span style={{color:"var(--t2)"}}>{o.original_score}</span>
+              {isFinite(o.delta)&&o.delta!==0&&<span style={{marginLeft:8,color:Math.abs(o.delta)<=1?"#34d399":o.delta>0?"#fbbf24":"#f87171"}}>{o.delta>0?"+":""}{o.delta}</span>}
+            </div>
+          </div>)}
           </div>
-          <div style={{textAlign:"right",flexShrink:0,fontFamily:"var(--m)",fontSize:12}}>
-            <span style={{color:"#818cf8",fontWeight:800}}>{o.override_score}</span>
-            <span style={{color:"var(--t3)"}}> vs </span>
-            <span style={{color:"var(--t2)"}}>{o.original_score}</span>
-            {isFinite(o.delta)&&o.delta!==0&&<span style={{marginLeft:8,color:o.delta>0?"#34d399":"#f87171"}}>{o.delta>0?"+":""}{o.delta}</span>}
-          </div>
-        </div>)}
+        </div>
       </div>
     </>}
 
-    {/* Deduction weights — the tuning lever */}
+    {/* Deduction weights — editable steppers with preview-before-apply */}
     {dw&&dw.weights&&<div className="card" style={{padding:18}}>
-      <div className="section-head" style={{marginBottom:6}}>Deduction Weights</div>
-      <div style={{fontSize:12,color:"var(--t3)",marginBottom:12}}>How many points each non-negotiable subtracts. If calibration shows the bot is too harsh, lower these. {dw.note}</div>
-      {dw.weights.map(w=><div key={w.rule} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderTop:"1px solid var(--card)"}}>
-        <div style={{flex:1}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap",marginBottom:6}}>
+        <div><div className="section-head" style={{marginBottom:4}}>Deduction Weights <span style={{fontSize:11,fontWeight:500,color:"var(--t4)"}}>· the tuning lever</span></div>
+        <div style={{fontSize:12,color:"var(--t3)",maxWidth:620}}>Points each non-negotiable subtracts. If calibration shows the bot is too harsh, lower these. {dw.note}</div></div>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+          {saved&&<span style={{fontSize:12,color:"#34d399",fontWeight:700}}>✓ Saved</span>}
+          {dirty&&<button className="btn btn-sm" onClick={()=>setEdits({})} style={{fontSize:11}}>Reset</button>}
+          <button className="btn btn-primary btn-sm" onClick={saveWeights} disabled={!dirty||saving} style={{fontSize:11,opacity:!dirty?.5:1}}>{saving?"Applying…":"Apply changes"}</button>
+        </div>
+      </div>
+      {dw.weights.map(w=>{const cur=wVal(w),changed=edits[w.rule]!=null&&edits[w.rule]!==w.points;return<div key={w.rule} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:"1px solid var(--border)"}}>
+        <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{w.label} <span style={{fontSize:10,color:w.severity==="critical"?"#f87171":"#fbbf24"}}>· {w.severity}</span></div>
           <div style={{fontSize:10,color:"var(--t4)",fontFamily:"var(--m)"}}>{w.env}</div>
         </div>
-        <div style={{fontFamily:"var(--m)",fontWeight:800,fontSize:18,color:"#f87171"}}>−{w.points}</div>
-      </div>)}
+        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+          {changed&&<span style={{fontFamily:"var(--m)",fontSize:11,color:"var(--t4)",textDecoration:"line-through"}}>−{w.points}</span>}
+          <button className="btn btn-sm" onClick={()=>bump(w.rule,w.points,-1)} disabled={cur<=0} style={{width:28,height:28,padding:0,fontSize:16,lineHeight:1}}>−</button>
+          <span style={{fontFamily:"var(--m)",fontWeight:800,fontSize:18,color:changed?"#fbbf24":"#f87171",width:38,textAlign:"center"}}>−{cur}</span>
+          <button className="btn btn-sm" onClick={()=>bump(w.rule,w.points,1)} disabled={cur>=10} style={{width:28,height:28,padding:0,fontSize:16,lineHeight:1}}>+</button>
+        </div>
+      </div>;})}
+      {dirty&&<div style={{marginTop:12,padding:"10px 14px",background:"#161200",border:"1px solid #92400e",borderRadius:8,fontSize:12,color:"#fcd34d"}}>Preview — nothing changes until you click <b>Apply changes</b>. New scores use these weights going forward; past scores are unaffected.</div>}
     </div>}
   </div>;
 }
