@@ -8,8 +8,8 @@ const express = require('express');
 const router = express.Router();
 const { requireAdmin } = require('../services/auth');
 const { q } = require('../../migrations/run');
-const { callConversation } = require('../services/ai');
-const { buildProspectPrompt } = require('../services/prospect');
+const { callConversation, callAIJson } = require('../services/ai');
+const { buildProspectPrompt, buildBeliefTouchPrompt, mergeBeliefsCovered } = require('../services/prospect');
 const { scorePracticeSession } = require('../workers/practiceScoring');
 
 function now() { return new Date().toISOString().replace('T', ' ').slice(0, 19); }
@@ -106,13 +106,27 @@ router.post('/:id/message', express.json(), async (req, res) => {
     const convo = msgs.map(m => ({ role: m.role === 'rep' ? 'user' : 'assistant', content: m.text }));
     const systemPrompt = buildProspectPrompt(scenario, safeObj(session.difficulty_overrides_json));
 
-    const { text: reply } = await callConversation(systemPrompt, convo, { maxTokens: 400 });
+    // Live belief-tracker rail: classify what THIS rep turn touched, in PARALLEL
+    // with generating the prospect's reply — same round-trip time as before this
+    // feature existed, not sequential. Best-effort: a classification failure never
+    // blocks or breaks the conversation, it just leaves the rail unchanged this turn.
+    const beliefsSoFar = safeArr(session.beliefs_covered_json);
+    const [{ text: reply }, newlyTouched] = await Promise.all([
+      callConversation(systemPrompt, convo, { maxTokens: 400 }),
+      callAIJson(buildBeliefTouchPrompt(text), { maxTokens: 60 })
+        .then(({ result }) => (result && Array.isArray(result.beliefs)) ? result.beliefs : [])
+        .catch(e => { console.error('[Practice] belief classify failed, continuing:', e.message); return []; }),
+    ]);
+    const beliefsCovered = mergeBeliefsCovered(beliefsSoFar, newlyTouched);
+
     msgs.push({ role: 'prospect', text: reply, ts: clock(session.started_at) });
 
-    await q('UPDATE practice_sessions SET messages_json=? WHERE id=?', [JSON.stringify(msgs), session.id]);
+    await q('UPDATE practice_sessions SET messages_json=?, beliefs_covered_json=? WHERE id=?',
+      [JSON.stringify(msgs), JSON.stringify(beliefsCovered), session.id]);
 
     const hitCap = elapsedMin >= MAX_MINUTES;
-    res.json({ ok: true, prospect: reply, turn: repTurns + 1, ended: hitCap, reason: hitCap ? 'time_cap' : null });
+    res.json({ ok: true, prospect: reply, turn: repTurns + 1, ended: hitCap, reason: hitCap ? 'time_cap' : null,
+      beliefs_covered: beliefsCovered, beliefs_touched_this_turn: newlyTouched });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -186,7 +200,7 @@ function clock(startedAt) {
 }
 function parseSession(s) {
   if (!s) return s;
-  for (const k of ['category_scores', 'pass_fail', 'strengths', 'improvements', 'golden_moments', 'messages_json']) {
+  for (const k of ['category_scores', 'pass_fail', 'strengths', 'improvements', 'golden_moments', 'messages_json', 'beliefs_covered_json']) {
     try { s[k] = JSON.parse(s[k]); } catch { /* leave as-is */ }
   }
   return s;
