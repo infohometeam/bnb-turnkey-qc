@@ -3063,6 +3063,7 @@ function RubricViewer(){
         <div style={{display:"flex",gap:6}}>{["Closer","Setter"].map(r=><button key={r} onClick={()=>setRole(r)} className="btn" style={{padding:"5px 14px",fontSize:12,background:role===r?"#1e1b4b":"",borderColor:role===r?"#4338ca":"",color:role===r?"#c7d2fe":""}}>{r}</button>)}</div>
       </div>
       <p style={{fontSize:12,color:"var(--t3)",marginTop:-8,marginBottom:18}}>This is exactly what the bot scores every {role.toLowerCase()} call against. Weights sum to 100. Read the Resources tab for the full how-to behind each.</p>
+      {items.length>0&&(()=>{const pal=["#818cf8","#34d399","#fbbf24","#f472b6","#22d3ee","#a855f7","#fb923c"];const tot=items.reduce((s,it)=>s+(Number(it.weight)||0),0)||100;return<div style={{marginBottom:18}}><div className="lbl" style={{marginBottom:8}}>How the points split · {role}</div><div style={{display:"flex",height:26,borderRadius:7,overflow:"hidden",fontSize:10,fontWeight:800,color:"#0b0f1a"}}>{items.map((it,i)=><div key={it.category} title={`${CL[it.category]||it.category} ${it.weight}%`} style={{width:`${(Number(it.weight)||0)/tot*100}%`,background:pal[i%pal.length],display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",whiteSpace:"nowrap"}}>{(CL[it.category]||it.category).slice(0,4)} {it.weight}</div>)}</div></div>;})()}
       {items.map(it=><div key={it.category} style={{padding:"16px 18px",background:"var(--bg)",borderRadius:12,border:"1px solid #2a3140",marginBottom:10}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <span style={{fontSize:15,fontWeight:800,color:"var(--t2)"}}>{CL[it.category]||it.category}</span>
@@ -3086,7 +3087,7 @@ function RubricViewer(){
 
 function RubricPage(){
   const[data,setData]=useState(null);const[loading,setLoading]=useState(true);
-  const[scope,setScope]=useState('all');const[days,setDays]=useState(30);
+  const[scope,setScope]=useState('all');const[days,setDays]=useState(30);const[rtab,setRtab]=usePersisted("rubric.tab","rubric");
   const[estimate,setEstimate]=useState(null);const[running,setRunning]=useState(false);
   async function loadData(){setLoading(true);const r=await fetch(`${API}/rubric-comparison`).then(r=>r.json()).catch(()=>null);setData(r);setLoading(false);}
   async function loadEstimate(){const qs=scope==='recent'?`?scope=recent&days=${days}`:'?scope=all';const r=await fetch(`${API}/rescore-estimate${qs}`).then(r=>r.json()).catch(()=>null);setEstimate(r);}
@@ -3105,12 +3106,13 @@ function RubricPage(){
     }catch(e){alert('Error: '+e.message)}
     setRunning(false);
   }
-  if(loading)return<div style={{padding:60,textAlign:"center",color:"#374151"}}>Loading rubric data...</div>;
+  if(loading)return<Skel/>;
   const current=data?.current||[];const comparisons=data?.perCallComparisons||[];
-  return<div className="flex-col gap-20">
-    <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Rubric & Re-scoring</h2><p style={{fontSize:12,color:"#374151",marginTop:4}}>Re-score calls with the current rubric, compare versions, and view score history</p></div>
-    <RubricViewer/>
-    
+  return<div className="flex-col gap-16">
+    <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Rubric</h2><p style={{fontSize:12,color:"var(--t3)",marginTop:4}}>The exact criteria every call is scored against — and the admin tools to re-score and compare versions.</p></div>
+    <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}} role="tablist">{[["rubric","📋 The Rubric"],["rescore","↻ Re-score & Compare"]].map(([k,l])=><button key={k} role="tab" aria-selected={rtab===k} onClick={()=>setRtab(k)} style={{padding:"9px 16px",background:"transparent",border:"none",borderBottom:rtab===k?"2px solid #a855f7":"2px solid transparent",color:rtab===k?"#d8b4fe":"var(--t3)",fontWeight:rtab===k?800:600,fontSize:13,cursor:"pointer",marginBottom:-1}}>{l}</button>)}</div>
+    {rtab==="rubric"&&<RubricViewer/>}
+    {rtab==="rescore"&&<React.Fragment>
     <div className="card" style={{padding:24}}>
       <div className="section-head" style={{marginBottom:14}}>Re-score Calls</div>
       <div style={{background:"var(--bg)",padding:14,borderRadius:8,border:"1px solid #2a3140",marginBottom:14}}>
@@ -3163,6 +3165,7 @@ function RubricPage(){
         </div>
       </div>})}</div>
     </div>}
+    </React.Fragment>}
   </div>
 }
 
