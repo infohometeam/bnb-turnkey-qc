@@ -316,6 +316,16 @@ async function migrate() {
     // Turnkey scoring — same mechanism DISQUALIFIED etc. already use.
     ['BNB_LEGACY', 'BNB Legacy (Not a Turnkey Call)', 'A_NOT_CLOSEABLE', true,
       'The entire call was about Rise Legacy (the internal law/legal-services company), not BNB Turnkey. Not a Turnkey conversation at all — excluded from Turnkey scoring for this rep.', '#78716c', 15],
+
+    // ── F: Generic manual exclusion (Francis, Jul 23) — the escape hatch. Not every
+    // reason a call shouldn't count fits a predefined category (wrong number that
+    // slipped through, internal test call, a compliance flag, a duplicate, etc.).
+    // This tag exists specifically so a human never has to force-fit an edge case
+    // into DISQUALIFIED or BNB_LEGACY just to get a call out of an average. The
+    // reason field is REQUIRED for this one — enforced in /calls/:id/tag — because
+    // unlike DISQUALIFIED etc., this tag has no inherent meaning without it.
+    ['EXCLUDED_OTHER', 'Excluded — Other Reason', 'F_MANUAL_EXCLUSION', true,
+      'Manually excluded from this rep\'s average for a reason not covered by another tag. A written reason is required.', '#57534e', 999],
   ];
   for (const [key,label,grp,excl,desc,color,ord] of tagSeed) {
     await q(`INSERT INTO call_tags (key,label,tag_group,excludes_from_average,description,color,sort_order,active)
