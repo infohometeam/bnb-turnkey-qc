@@ -20,6 +20,7 @@ app.use(express.json({ limit: '5mb' }));
 
 app.use('/api', apiRoutes);
 app.use('/api/practice', require('./routes/practiceRoutes'));
+app.use('/api/auth', require('./routes/authRoutes'));
 
 app.get('/health', (req, res) => {
   res.json({
