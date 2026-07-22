@@ -162,9 +162,6 @@ async function migrate() {
     // future custom tag (created via the admin UI) can opt into this without a
     // code change — see /tags POST/PATCH.
     `ALTER TABLE call_tags ADD COLUMN IF NOT EXISTS is_primary_outcome boolean DEFAULT false`,
-    `UPDATE call_tags SET is_primary_outcome=true
-       WHERE tag_group IN ('A_NOT_CLOSEABLE','B_REAL_ATTEMPT','D_OUTCOME_POSITIVE','F_MANUAL_EXCLUSION')
-         AND is_primary_outcome IS DISTINCT FROM true`,
     // A call can carry one Group A/B tag + any number of Group C (routing) tags.
     // Only status='CONFIRMED' has any effect on averages — SUGGESTED changes nothing.
     `CREATE TABLE IF NOT EXISTS call_tag_assignments (
@@ -328,6 +325,15 @@ async function migrate() {
     ['BNB_LEGACY', 'BNB Legacy (Not a Turnkey Call)', 'A_NOT_CLOSEABLE', true,
       'The entire call was about Rise Legacy (the internal law/legal-services company), not BNB Turnkey. Not a Turnkey conversation at all — excluded from Turnkey scoring for this rep.', '#78716c', 15],
 
+    // ── Partnership Call (Francis/Steven, Jul 24) — same category as BNB_LEGACY:
+    // the entire call wasn't a Turnkey sales conversation at all, this time because
+    // the lead was proposing a business partnership between companies rather than
+    // investing as a client. Anchor case: call #2228 (Steven -> Brandon Roper),
+    // scored 0 under the sales rubric despite Steven doing nothing wrong -- it was
+    // never a sales call to begin with.
+    ['PARTNERSHIP_CALL', 'Partnership Call (Not a Sales Call)', 'A_NOT_CLOSEABLE', true,
+      'The lead was proposing a business partnership or collaboration between companies, not seeking to invest as a Turnkey client. Not a standard sales conversation — excluded from Turnkey scoring for this rep.', '#6b7280', 16],
+
     // ── F: Generic manual exclusion (Francis, Jul 23) — the escape hatch. Not every
     // reason a call shouldn't count fits a predefined category (wrong number that
     // slipped through, internal test call, a compliance flag, a duplicate, etc.).
@@ -346,6 +352,15 @@ async function migrate() {
                color=EXCLUDED.color, sort_order=EXCLUDED.sort_order`,
       [key,label,grp,excl,desc,color,ord]);
   }
+
+  // Runs AFTER seeding (not before) so it correctly catches every tag just
+  // inserted above, including ones added to tagSeed after this line was written —
+  // ordering this before the seed loop would silently leave a fresh-DB deploy's
+  // new A_NOT_CLOSEABLE/etc. tags at is_primary_outcome=false. Idempotent and safe
+  // to re-run: only touches rows that don't already have the correct value.
+  await q(`UPDATE call_tags SET is_primary_outcome=true
+             WHERE tag_group IN ('A_NOT_CLOSEABLE','B_REAL_ATTEMPT','D_OUTCOME_POSITIVE','F_MANUAL_EXCLUSION')
+               AND is_primary_outcome IS DISTINCT FROM true`);
 
   console.log('[DB] Migration complete ✓ (Postgres)');
 }
