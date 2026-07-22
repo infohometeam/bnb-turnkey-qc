@@ -133,6 +133,21 @@ router.get('/calls/:id', async (req, res) => {
 // Conversation-mechanics metrics derived from the transcript. Rep/lead split uses
 // the same content-based logic as the golden-moment speaker inference. Returns null
 // on degraded (scrambled) transcripts, where per-speaker counts can't be trusted.
+// ── Coach-vs-Convince deterministic signals ─────────────────────────
+// Sam: "we'd like to coach the lead into STRs rather than convince them."
+// This is a heuristic proxy, not a verdict — it classifies each rep QUESTION by
+// its opening words (open/curious vs. closed/leading) and counts directive
+// ("you should", "trust me") language. A lead can say yes after a great
+// question OR a hard push; telling those apart needs real judgment, which is
+// why this stays a MIRROR (like the rest of Call Mechanics) and the AI-judged
+// verdict is a separate, later layer — not replaced by this proxy.
+const OPEN_Q = /\b(what|how|why|tell me|walk me through|help me understand|what'?s|what made|what'?s important|what matters|what would|how do you|how did you|how does|how does that)\b/i;
+const CLOSED_Q = /\b(don'?t you|doesn'?t it|isn'?t it|wouldn'?t you|won'?t you|aren'?t you|right\?|correct\?|would you agree|do you agree|you agree)\b/i;
+const DIRECTIVE_RE = /\b(you should|you need to|you have to|you must|trust me|i'?m telling you|believe me|i promise you|guarantees?|let me convince you|you'?ll want to|you really should)\b/gi;
+// What the lead is comparing STRs against — the trigger for "should get pros/cons."
+// Detection only: whether the rep responded well is a judgment call for the AI layer.
+const ALT_INVESTMENT_RE = /\b(stock market|the market|other market|another market|real estate elsewhere|another rental|other rental|crypto(?:currency)?|401\(?k\)?|mutual fund|index fund|other investment|different market|competitor|another company|other program|another program|other company|day ?trad(?:e|ing|er)|algo(?:rithmic)? trad(?:e|ing|er)|ai trad(?:e|ing|er)s?|forex|reit|precious metals?|gold|bonds?|annuit(?:y|ies)|other business|another business)\b/gi;
+
 function computeCallMechanics(transcript, repName, durationSec, quality) {
   if (!transcript || quality === 'degraded') return null;
   const repFirst = (repName || '').split(/\s+/)[0].toLowerCase();
@@ -150,15 +165,31 @@ function computeCallMechanics(transcript, repName, durationSec, quality) {
   }
   if (turns.length < 4) return null;
   let repWords = 0, leadWords = 0, repQ = 0, leadQ = 0, longestRep = 0, switches = 0, prev = null;
+  let openQ = 0, closedQ = 0, otherQ = 0, directive = 0, altInvestment = 0;
   for (const t of turns) {
     const w = wc(t.text), qm = (t.text.match(/\?/g) || []).length;
-    if (t.rep) { repWords += w; repQ += qm; if (w > longestRep) longestRep = w; }
-    else { leadWords += w; leadQ += qm; }
+    if (t.rep) {
+      repWords += w; repQ += qm; if (w > longestRep) longestRep = w;
+      directive += (t.text.match(DIRECTIVE_RE) || []).length;
+      // Classify each question by the ~8 words leading up to it.
+      let from = 0;
+      for (const idx of [...t.text.matchAll(/\?/g)].map(m2 => m2.index)) {
+        const window = t.text.slice(from, idx + 1).split(/\s+/).slice(-9).join(' ');
+        if (CLOSED_Q.test(window)) closedQ++;
+        else if (OPEN_Q.test(window)) openQ++;
+        else otherQ++;
+        from = idx + 1;
+      }
+    } else {
+      leadWords += w; leadQ += qm;
+      altInvestment += (t.text.match(ALT_INVESTMENT_RE) || []).length;
+    }
     if (prev !== null && prev !== t.rep) switches++;
     prev = t.rep;
   }
   const total = repWords + leadWords;
   const dmin = durationSec ? durationSec / 60 : null;
+  const categorizedQ = openQ + closedQ;
   return {
     rep_talk_pct: total ? Math.round((repWords / total) * 100) : null,
     rep_words: repWords, lead_words: leadWords,
@@ -167,6 +198,15 @@ function computeCallMechanics(transcript, repName, durationSec, quality) {
     longest_rep_monologue_words: longestRep,
     exchanges: switches,
     duration_min: dmin ? Math.round(dmin) : null,
+    // Coach-vs-Convince deterministic proxy (see comment above the regexes).
+    open_questions: openQ, closed_questions: closedQ, uncategorized_questions: otherQ,
+    directive_phrases: directive,
+    // % of categorized rep questions that were open/curious rather than closed/leading.
+    // Null when there's not enough signal to categorize — never fabricate a number.
+    guidance_style_pct: categorizedQ ? Math.round((openQ / categorizedQ) * 100) : null,
+    // Trigger count only — did the lead bring up an alternative? Whether the rep
+    // handled it with real pros/cons is a judgment call, not something regex can grade.
+    alt_investment_mentions: altInvestment,
   };
 }
 
