@@ -116,15 +116,36 @@ th .sort-caret{opacity:.9;margin-left:4px;font-size:9px}
 <script type="text/babel">
 const {useState,useEffect,useCallback} = React;
 const API="/api";
+// ── Admin auth (Design Lab, Jul 24) — single shared admin token, 24h, stateless ──
+const AUTH_KEY="qc:adminToken";
+function authGet(){try{const s=JSON.parse(localStorage.getItem(AUTH_KEY)||"null");if(s&&s.token&&(!s.expires_at||new Date(s.expires_at)>new Date()))return s;localStorage.removeItem(AUTH_KEY);return null;}catch(e){return null;}}
+function authSet(s){try{localStorage.setItem(AUTH_KEY,JSON.stringify(s));}catch(e){}window.dispatchEvent(new Event("qc-auth"));}
+function authClear(){try{localStorage.removeItem(AUTH_KEY);}catch(e){}window.dispatchEvent(new Event("qc-auth"));}
+function authHeaders(extra){const s=authGet();const h=Object.assign({},extra||{});if(s)h["Authorization"]="Bearer "+s.token;return h;}
+// A mutating call that comes back 401 means the token is gone/expired — drop it so the UI relocks.
+async function mutate(p,method,b){const res=await fetch(API+p,{method,headers:authHeaders(b!==undefined?{"Content-Type":"application/json"}:undefined),body:b!==undefined?JSON.stringify(b):undefined});if(res.status===401){authClear();window.dispatchEvent(new Event("qc-auth-401"));}let data=null;try{data=await res.json();}catch(e){}return data;}
 // Fire-and-forget activity beacon. A stable per-browser id lets the server collapse
 // a session's clicks into one Slack ping. No-op server-side unless the activity
 // channel is configured. Never blocks or surfaces errors to the user.
 function qcVisitorId(){try{let v=localStorage.getItem("qc_visitor");if(!v){v=Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem("qc_visitor",v);}return v;}catch(e){return "anon";}}
 function pingActivity(page){try{fetch(`${API}/activity/visit`,{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,body:JSON.stringify({page,visitorId:qcVisitorId()})}).catch(()=>{});}catch(e){}}
 function useApi(p,deps=[]){const[d,setD]=useState(null);const[l,setL]=useState(true);const[err,setErr]=useState(null);const reload=useCallback(()=>{setL(true);setErr(null);fetch(API+p).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(x=>{setD(x);setErr(null)}).catch(e=>{console.error("useApi",p,e);setErr(e)}).finally(()=>setL(false))},[p]);useEffect(()=>{reload()},[reload,...deps]);return{data:d,loading:l,error:err,reload}}
-async function postApi(p,b){return fetch(API+p,{method:"POST",headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined}).then(r=>r.json())}
-async function patchApi(p,b){return fetch(API+p,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(r=>r.json())}
-async function deleteApi(p){return fetch(API+p,{method:"DELETE"}).then(r=>r.json())}
+async function postApi(p,b){return mutate(p,"POST",b!==undefined?b:undefined)}
+async function patchApi(p,b){return mutate(p,"PATCH",b)}
+async function deleteApi(p){return mutate(p,"DELETE")}
+// ── useAuth: reads token, verifies on mount via /auth/status, exposes isAdmin ──
+function useAuth(){
+  const[state,setState]=useState(()=>({admin:!!authGet(),checking:!!authGet()}));
+  const sync=useCallback(()=>setState(s=>({admin:!!authGet(),checking:false})),[]);
+  useEffect(()=>{
+    const s=authGet();
+    if(s){fetch(API+"/auth/status",{headers:authHeaders()}).then(r=>r.json()).then(j=>{if(!j||!j.admin)authClear();}).catch(()=>{}).finally(sync);}
+    else setState({admin:false,checking:false});
+    const on=()=>sync();window.addEventListener("qc-auth",on);window.addEventListener("qc-auth-401",on);
+    return()=>{window.removeEventListener("qc-auth",on);window.removeEventListener("qc-auth-401",on);};
+  },[sync]);
+  return state;
+}
 // ── P3 shared async-state UI ──
 function Skel({rows=5,pad=40}){return<div className="card" style={{padding:pad}} aria-busy="true"><span className="sr-only">Loading…</span><div className="flex-col" style={{gap:12}}><div className="sk" style={{height:18,width:"38%",marginBottom:6}}/>{Array.from({length:rows}).map((_,i)=><div key={i} className="sk" style={{height:12,width:[92,78,85,66,73,80][i%6]+"%"}}/>)}</div></div>}
 function SkelStats({n=5}){return<div className="grid grid-stats" aria-busy="true"><span className="sr-only">Loading…</span>{Array.from({length:n}).map((_,i)=><div key={i} className="card" style={{padding:"18px 20px"}}><div className="sk" style={{height:10,width:"55%",marginBottom:14}}/><div className="sk" style={{height:26,width:"40%"}}/></div>)}</div>}
@@ -465,7 +486,7 @@ function CallComments({callId}){
     await fetch(`${API}/calls/${callId}/comments`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({author,author_role:rep?.role||"",body:body.trim(),comment_type:type})});
     setBody("");setBusy(false);load();
   }
-  async function del(id){if(!(await qcConfirm({title:"Delete comment?",message:"This comment will be removed permanently.",confirmLabel:"Delete",danger:true})))return;await fetch(`${API}/comments/${id}`,{method:"DELETE"});load();}
+  async function del(id){if(!(await qcConfirm({title:"Delete comment?",message:"This comment will be removed permanently.",confirmLabel:"Delete",danger:true})))return;await deleteApi(`/comments/${id}`);load();}
   const typeColors={note:"#64748b",praise:"#22c55e",coaching:"#f59e0b",question:"#60a5fa"};
   return<div className="card" style={{padding:24}}>
     <div className="section-head">Team Notes {comments.length>0&&<span style={{color:"#4338ca"}}>· {comments.length}</span>}</div>
@@ -479,7 +500,7 @@ function CallComments({callId}){
             {cm.author_role&&<span style={{fontSize:10,color:"#374151"}}>{cm.author_role}</span>}
             <span className="badge" style={{background:(typeColors[cm.comment_type]||"#64748b")+"22",color:typeColors[cm.comment_type]||"#64748b",border:`1px solid ${typeColors[cm.comment_type]||"#64748b"}44`,fontSize:8}}>{cm.comment_type}</span>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:"#374151"}}>{cm.created_at}</span><span onClick={()=>del(cm.id)} style={{fontSize:11,color:"#374151",cursor:"pointer"}}>✕</span></div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:"#374151"}}>{cm.created_at}</span><AdminOnly><span onClick={()=>del(cm.id)} style={{fontSize:11,color:"#374151",cursor:"pointer"}}>✕</span></AdminOnly></div>
         </div>
         <div style={{fontSize:13,color:"var(--t2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{cm.body}</div>
       </div>)}
@@ -538,7 +559,8 @@ function GoldenMomentsPage(){
     try{
       let guard=0;
       while(guard++<300){
-        const res=await fetch(`${API}/golden-moments/relook-all`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({limit:8,scope:"missing"})});
+        const res=await fetch(`${API}/golden-moments/relook-all`,{method:"POST",headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify({limit:8,scope:"missing"})});
+        if(res.status===401){authClear();window.dispatchEvent(new Event("qc-auth-401"));throw new Error("Admin login required");}
         if(!res.ok)throw new Error(`Server returned ${res.status}`);
         const r=await res.json();
         setRelook(s=>({running:true,done:(s?.done||0)+(r.processed||0),remaining:r.remaining}));
@@ -612,10 +634,10 @@ function GoldenMomentsPage(){
         </div>
       </div>
       <div style={{textAlign:"right"}}>
-        <button className="btn" onClick={runRelook} disabled={relook?.running}
+        <AdminOnly><button className="btn" onClick={runRelook} disabled={relook?.running}
           style={{fontSize:12,padding:"7px 12px",whiteSpace:"nowrap"}}
           title="Re-read transcripts to add Rep/Lead tags and tough moments to older calls. Does not re-score.">
-          {relook?.running?`Re-looking… ${relook.done} done`:"↻ Re-look at moments"}</button>
+          {relook?.running?`Re-looking… ${relook.done} done`:"↻ Re-look at moments"}</button></AdminOnly>
         {relook?.running&&relook.remaining!=null&&<div style={{fontSize:10,color:"var(--t3)",marginTop:4}}>{relook.remaining} calls left</div>}
         {!relook?.running&&relook&&!relook.error&&<div style={{fontSize:10,color:"#34d399",marginTop:4}}>✓ Done — {relook.done} calls re-looked</div>}
         {relook?.error&&<div style={{fontSize:10,color:"#f87171",marginTop:4}}>{relook.error}</div>}
@@ -773,8 +795,8 @@ function ReferralsPage(){
          <span style={{display:"flex",gap:6,justifyContent:"flex-end",alignItems:"center"}}>
            {r.aloware_contact_id&&<a href={`https://talk.aloware.io/contacts/${r.aloware_contact_id}`} target="_blank" rel="noopener" className="btn btn-sm" style={{fontSize:11,textDecoration:"none",padding:"4px 8px"}} title="Open lead in Aloware">👤</a>}
            {view==="suggested"?<>
-             <button className="btn btn-green btn-sm" onClick={()=>confirm(r)} disabled={busy===r.call_id+r.tag_key} style={{fontSize:10,padding:"4px 9px"}}>✓</button>
-             <button className="btn btn-sm" onClick={()=>dismiss(r)} disabled={busy===r.call_id+r.tag_key} style={{fontSize:10,padding:"4px 9px"}}>✕</button>
+             <AdminOnly><button className="btn btn-green btn-sm" onClick={()=>confirm(r)} disabled={busy===r.call_id+r.tag_key} style={{fontSize:10,padding:"4px 9px"}}>✓</button>
+             <button className="btn btn-sm" onClick={()=>dismiss(r)} disabled={busy===r.call_id+r.tag_key} style={{fontSize:10,padding:"4px 9px"}}>✕</button></AdminOnly>
            </>:<button className="btn btn-sm" onClick={()=>goTo("calls",r.call_id)} style={{fontSize:10,padding:"4px 9px"}}>Open →</button>}
          </span>
        </div>)}
@@ -826,7 +848,7 @@ function OutcomesPage(){
         <span style={{justifySelf:"start",padding:"2px 9px",borderRadius:20,fontSize:10,fontWeight:800,fontFamily:"var(--m)",background:s.color+"22",border:`1px dashed ${s.color}`,color:s.color}}>{s.label}{s.excludes_from_average&&" ⊘"}</span>
         <span style={{fontSize:11,color:"var(--t2)",fontStyle:"italic",lineHeight:1.4,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{s.reason?`"${s.reason}"`:"—"}</span>
         <span className="slab" style={{fontSize:13,color:sClr(s.overall_score_adj),textAlign:"center"}}>{s.overall_score_adj??"—"}</span>
-        <span style={{display:"flex",gap:6,justifyContent:"flex-end"}}><button className="btn btn-green btn-sm" onClick={()=>confirm(s)} disabled={busy===s.id} style={{fontSize:10,padding:"4px 9px"}}>{busy===s.id?"…":"✓ Confirm"}</button><button className="btn btn-sm" onClick={()=>dismiss(s)} disabled={busy===s.id} style={{fontSize:10,padding:"4px 9px"}}>✕</button></span>
+        <span style={{display:"flex",gap:6,justifyContent:"flex-end"}}><AdminOnly><button className="btn btn-green btn-sm" onClick={()=>confirm(s)} disabled={busy===s.id} style={{fontSize:10,padding:"4px 9px"}}>{busy===s.id?"…":"✓ Confirm"}</button><button className="btn btn-sm" onClick={()=>dismiss(s)} disabled={busy===s.id} style={{fontSize:10,padding:"4px 9px"}}>✕</button></AdminOnly></span>
       </div>)}
     </div>;
   }
@@ -835,7 +857,7 @@ function OutcomesPage(){
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
       <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Call Outcomes</h2>
         <div style={{fontSize:12,color:"var(--t3)",marginTop:2,maxWidth:640,lineHeight:1.5}}>Cross-sell & outcome tags the bot suggested. <b style={{color:"var(--t2)"}}>You confirm</b> what's real — the bot never tags on its own. Confirming removes a call from the average (still attributed) or feeds Referrals.</div></div>
-      <button className="btn btn-primary" onClick={backfill} disabled={scanning}>{scanning?"Scanning…":"⟳ Scan old calls"}</button>
+      <AdminOnly><button className="btn btn-primary" onClick={backfill} disabled={scanning}>{scanning?"Scanning…":"⟳ Scan old calls"}</button></AdminOnly>
     </div>
 
     {scanMsg&&<div className="card" style={{padding:14,fontSize:12,color:"var(--t2)"}}>{scanMsg}</div>}
@@ -907,10 +929,10 @@ function TagBox({call}){
       background:sug?"transparent":t.color+"22",border:`1px ${sug?"dashed":"solid"} ${t.color}`,color:t.color,marginRight:6,marginBottom:6}}>
       {sug&&<span style={{fontSize:9,opacity:.8}}>suggested</span>}
       {t.label}
-      {sug?<>
-        <span onClick={()=>confirmSuggested(t.tag_key,t.reason)} title="Confirm — this WILL change the average" style={{cursor:"pointer",color:"#34d399",fontWeight:900}}>✓</span>
-        <span onClick={()=>dismiss(t.tag_key)} title="Dismiss — call stays scored" style={{cursor:"pointer",color:"#f87171",fontWeight:900}}>✕</span>
-      </>:<span onClick={()=>remove(t.tag_key)} title="Remove tag" style={{cursor:"pointer",opacity:.6}}>✕</span>}
+      {sug?<React.Fragment>
+        <AdminOnly><span onClick={()=>confirmSuggested(t.tag_key,t.reason)} title="Confirm — this WILL change the average" style={{cursor:"pointer",color:"#34d399",fontWeight:900}}>✓</span>
+        <span onClick={()=>dismiss(t.tag_key)} title="Dismiss — call stays scored" style={{cursor:"pointer",color:"#f87171",fontWeight:900}}>✕</span></AdminOnly>
+      </React.Fragment>:<AdminOnly><span onClick={()=>remove(t.tag_key)} title="Remove tag" style={{cursor:"pointer",opacity:.6}}>✕</span></AdminOnly>}
     </div>;
   }
 
@@ -1175,7 +1197,7 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
           <div style={{fontSize:11,color:"var(--t4)",fontFamily:"var(--m)",marginTop:2}}>{c.source||"—"} · {fmtF(c.received_at)} · {fmtD(c.call_duration_sec)}{c.role?` · ${c.role}`:""}</div>
         </div>
       </div>
-      <div style={{display:"flex",gap:6,alignItems:"center",position:"relative"}}><Badge status={c.status}/><div style={{position:"relative"}}><button className="btn" onClick={()=>setExps(v=>!v)}>⤓ Export</button>{exps&&<div style={{position:"absolute",top:"100%",right:0,marginTop:4,background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,padding:4,zIndex:20,minWidth:180,boxShadow:"0 6px 20px rgba(0,0,0,.4)"}}><div onClick={()=>exportCall(false)} style={{padding:"8px 12px",fontSize:12,color:"var(--t2)",cursor:"pointer",borderRadius:6}}>Scorecard only</div><div onClick={()=>exportCall(true)} style={{padding:"8px 12px",fontSize:12,color:"var(--t2)",cursor:"pointer",borderRadius:6}}>Scorecard + transcript</div></div>}</div><button className="btn" onClick={()=>setEd(true)}>✏ Edit</button><button className="btn btn-green" onClick={reqc} disabled={rs}>{rs?"...":"↻ Re-score"}</button><button className="btn btn-red btn-sm" onClick={del}>🗑</button></div>
+      <div style={{display:"flex",gap:6,alignItems:"center",position:"relative"}}><Badge status={c.status}/><div style={{position:"relative"}}><button className="btn" onClick={()=>setExps(v=>!v)}>⤓ Export</button>{exps&&<div style={{position:"absolute",top:"100%",right:0,marginTop:4,background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,padding:4,zIndex:20,minWidth:180,boxShadow:"0 6px 20px rgba(0,0,0,.4)"}}><div onClick={()=>exportCall(false)} style={{padding:"8px 12px",fontSize:12,color:"var(--t2)",cursor:"pointer",borderRadius:6}}>Scorecard only</div><div onClick={()=>exportCall(true)} style={{padding:"8px 12px",fontSize:12,color:"var(--t2)",cursor:"pointer",borderRadius:6}}>Scorecard + transcript</div></div>}</div><AdminOnly><button className="btn" onClick={()=>setEd(true)}>✏ Edit</button><button className="btn btn-green" onClick={reqc} disabled={rs}>{rs?"...":"↻ Re-score"}</button><button className="btn btn-red btn-sm" onClick={del}>🗑</button></AdminOnly></div>
     </div>
     <div className="cd-grid">
     <aside className="cd-rail">
@@ -1239,7 +1261,7 @@ function CallDetail({call:initial,onBack}){const[rs,setRs]=useState(false);const
     {at==="moments"&&(goldenM.length>0||toughM.length>0||c.status==="SCORED")&&<div className="card" style={{padding:20}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12,flexWrap:"wrap"}}>
         <span className="section-head" style={{marginBottom:0}}>🏆 Moments</span>
-        <button className="btn" onClick={relookMoments} disabled={relooking} style={{fontSize:11,padding:"5px 10px"}} title="Re-read the transcript to refresh Rep/Lead tags and tough moments. Does not re-score.">{relooking?"Re-looking…":"↻ Re-look"}</button>
+        <AdminOnly><button className="btn" onClick={relookMoments} disabled={relooking} style={{fontSize:11,padding:"5px 10px"}} title="Re-read the transcript to refresh Rep/Lead tags and tough moments. Does not re-score.">{relooking?"Re-looking…":"↻ Re-look"}</button></AdminOnly>
       </div>
       {goldNeedsRelook&&<div style={{fontSize:11,color:"#f59e0b",marginBottom:10}}>These moments predate Rep/Lead tagging — hit Re-look to refresh them.</div>}
       <div style={{fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:"uppercase",color:"#fbbf24",marginBottom:8}}>Golden moments ({goldenM.length})</div>
@@ -1312,8 +1334,8 @@ function RecordsPage(){
     {/* Rescue action bar */}
     {sel.length>0&&<div className="card" style={{padding:"12px 18px",display:"flex",alignItems:"center",gap:12,background:"#0f1729",borderColor:"#4338ca"}}>
       <div style={{flex:1,fontSize:13,color:"var(--t2)"}}><b>{sel.length}</b> selected — pull back into the scoring queue?</div>
-      <button className="btn" onClick={()=>rescue(false)} disabled={busy} title="Send back through classification (safe — may re-skip if genuinely non-sales)">{busy?"…":"↩ Re-classify & Score"}</button>
-      <button className="btn btn-primary" onClick={()=>rescue(true)} disabled={busy} title="Force full scoring, skip classification (use when you know it's a real sales call)">{busy?"…":"⚡ Force Score"}</button>
+      <AdminOnly><button className="btn" onClick={()=>rescue(false)} disabled={busy} title="Send back through classification (safe — may re-skip if genuinely non-sales)">{busy?"…":"↩ Re-classify & Score"}</button>
+      <button className="btn btn-primary" onClick={()=>rescue(true)} disabled={busy} title="Force full scoring, skip classification (use when you know it's a real sales call)">{busy?"…":"⚡ Force Score"}</button></AdminOnly>
       <button className="btn" onClick={()=>setSel([])} disabled={busy}>Clear</button>
     </div>}
     {/* Records list */}
@@ -1449,7 +1471,7 @@ function SystemOpsPage({initialTab}){
         <div style={{width:10,height:10,borderRadius:"50%",background:sc[2],boxShadow:"0 0 10px "+sc[2]+"88"}}/>
         <div><div style={{fontSize:15,fontWeight:900,color:sc[3]}}>{sc[4]}</div><div className="mono" style={{fontSize:10,color:"var(--t3)"}}>{score!=null?score+"% · ":""}{h?.engine?.toUpperCase()||"—"}{h?.dbLatencyMs!=null?` · DB ${h.dbLatencyMs}ms`:""}{h?.lastScoredAt?` · last score ${fmt(h.lastScoredAt)}`:""}</div></div>
       </div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><SysOpsActions reload={reloadQ}/></div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><AdminOnly><SysOpsActions reload={reloadQ}/></AdminOnly></div>
     </div>
     <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}} role="tablist">{TABS.map(([k,l])=><button key={k} role="tab" aria-selected={tab===k} onClick={()=>setTab(k)} style={{padding:"9px 16px",background:"transparent",border:"none",borderBottom:tab===k?"2px solid #818cf8":"2px solid transparent",color:tab===k?"#a5b4fc":"var(--t3)",fontWeight:tab===k?800:600,fontSize:13,cursor:"pointer",marginBottom:-1}}>{l}</button>)}</div>
     {tab==="pipeline"&&<QueuePage embedded/>}
@@ -1868,7 +1890,7 @@ function TeamPage(){
         <div style={{fontSize:13,color:"var(--t3)",marginTop:2}}>{active.length} active reps · vitals from the selected window. Click a rep for their full profile.</div></div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         <div className="mono" style={{display:"flex",gap:2,background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,padding:3,fontSize:11}}>{[["week","7d"],["month","30d"],["all","All"]].map(([k,l])=><span key={k} onClick={()=>setPeriod(k)} style={{padding:"5px 10px",borderRadius:6,cursor:"pointer",background:period===k?"#6366f133":"transparent",color:period===k?"#a5b4fc":"var(--t3)",fontWeight:period===k?700:400}}>{l}</span>)}</div>
-        <button className="btn btn-primary" onClick={()=>{setEditing(null);setPrefill(null);setShowForm(true);}}>+ Add Rep</button>
+        <AdminOnly><button className="btn btn-primary" onClick={()=>{setEditing(null);setPrefill(null);setShowForm(true);}}>+ Add Rep</button></AdminOnly>
       </div>
     </div>
 
@@ -2112,6 +2134,7 @@ function MyProgressPage({initialRep}){
   </div>;
 }
 function CalibrationPage(){
+  const isAdmin=useIsAdmin();
   const{data}=useApi("/calibration");
   const{data:dw,reload:reloadDw}=useApi("/deduction-weights");
   const[edits,setEdits]=useState({});
@@ -2214,7 +2237,7 @@ function CalibrationPage(){
     </>}
 
     {/* Deduction weights — editable steppers with preview-before-apply */}
-    {dw&&dw.weights&&<div className="card" style={{padding:18}}>
+    {isAdmin&&dw&&dw.weights&&<div className="card" style={{padding:18}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap",marginBottom:6}}>
         <div><div className="section-head" style={{marginBottom:4}}>Deduction Weights <span style={{fontSize:11,fontWeight:500,color:"var(--t4)"}}>· the tuning lever</span></div>
         <div style={{fontSize:12,color:"var(--t3)",maxWidth:620}}>Points each non-negotiable subtracts. If calibration shows the bot is too harsh, lower these. {dw.note}</div></div>
@@ -2327,7 +2350,7 @@ function StitchPage(){
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
         <div style={{display:"flex",gap:12,fontSize:10,fontFamily:"var(--m)"}}><span style={{color:p.cue?.call1_cut_off?"#34d399":"#f87171"}}>{p.cue?.call1_cut_off?"✓":"✗"} call 1 cut off</span><span style={{color:p.cue?.call2_reconnects?"#34d399":"#f87171"}}>{p.cue?.call2_reconnects?"✓":"✗"} call 2 reconnects</span><span style={{color:"var(--t4)"}}>{p.gap_min} min apart</span></div>
         {isDone?<span style={{fontSize:12,color:"#34d399",fontWeight:700}}>✓ Merged</span>:
-          <button className="btn btn-sm" onClick={()=>merge(p)} disabled={busy===key} style={{fontSize:12,fontWeight:800,background:auto?"#166534":"",borderColor:auto?"#166534":"",color:auto?"#dcfce7":""}}>{busy===key?"Merging…":auto?"Merge into one":"Review & merge"}</button>}
+          <AdminOnly><button className="btn btn-sm" onClick={()=>merge(p)} disabled={busy===key} style={{fontSize:12,fontWeight:800,background:auto?"#166534":"",borderColor:auto?"#166534":"",color:auto?"#dcfce7":""}}>{busy===key?"Merging…":auto?"Merge into one":"Review & merge"}</button></AdminOnly>}
       </div>
     </div>;
   }
@@ -2336,7 +2359,7 @@ function StitchPage(){
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
       <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Call Stitching</h2>
         <div style={{fontSize:12,color:"var(--t3)",marginTop:2,maxWidth:560}}>Calls that dropped and were redialed, merged into one score. <b style={{color:"var(--t2)"}}>Detection is manual</b> — nothing merges on its own.</div></div>
-      <button className="btn" onClick={scan} disabled={scanning} style={{background:"#0f2e2b",borderColor:"#2dd4bf",color:"#5eead4",fontWeight:800}}>{scanning?"Scanning…":"⟳ Scan for cut-off calls"}</button>
+      <AdminOnly><button className="btn" onClick={scan} disabled={scanning} style={{background:"#0f2e2b",borderColor:"#2dd4bf",color:"#5eead4",fontWeight:800}}>{scanning?"Scanning…":"⟳ Scan for cut-off calls"}</button></AdminOnly>
     </div>
 
     <div style={{display:"flex",alignItems:"center",gap:9,padding:"11px 15px",background:"#0d1420",border:"1px solid #1e3a5f",borderRadius:10}}><span style={{fontSize:14}}>🔒</span><span style={{fontSize:12,color:"var(--t2)"}}><b style={{color:"#7dd3fc"}}>Detection is manual.</b> The bot only looks when you Scan, and only merges when you click Merge — there is no background job doing this on its own.</span></div>
@@ -2528,7 +2551,7 @@ function ScenarioCreator({onClose,onCreated}){
       scoring_focus:{notes:f.focus},author:"Sam"
     };
     try{
-      const r=await fetch(`${API}/practice/scenarios`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json());
+      const r=await fetch(`${API}/practice/scenarios`,{method:"POST",headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify(body)}).then(r=>r.json());
       if(r.ok){onCreated&&onCreated();onClose();}else setErr(r.error||"Failed to save.");
     }catch(e){setErr("Failed to save.");}
     setBusy(false);
@@ -2808,7 +2831,7 @@ function TrainPage() {
           {/* RIGHT — scenario + preview + start */}
           <div className="flex-col gap-12" style={{position:"sticky",top:16}}>
             <div className="card" style={{ padding: "16px 18px" }}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div className="lbl" style={{marginBottom:0}}>Scenario</div><button className="btn" onClick={()=>setShowCreator(true)} style={{fontSize:11,padding:"4px 9px"}}>+ New</button></div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div className="lbl" style={{marginBottom:0}}>Scenario</div><AdminOnly><button className="btn" onClick={()=>setShowCreator(true)} style={{fontSize:11,padding:"4px 9px"}}>+ New</button></AdminOnly></div>
               <div className="flex-col gap-6" style={{maxHeight:200,overflowY:"auto"}}>
                 {scenariosForRole.map(s => (
                   <div key={s.id} onClick={() => setScenarioId(s.id)} style={{ padding: "9px 12px", borderRadius: 9, cursor: "pointer", background: scenarioId === s.id ? "#1e1b4b" : "var(--bg)", border: `1px solid ${scenarioId === s.id ? "#4338ca" : "var(--border)"}`, display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
@@ -3227,7 +3250,108 @@ const IP={
  system:[["circle",{cx:11,cy:11,r:2.5}],["path",{d:"M11 2v3M11 17v3M2 11h3M17 11h3M4.8 4.8l2 2M15.2 15.2l2 2M17.2 4.8l-2 2M6.8 15.2l-2 2"}]]
 };
 function Icon({name,size=18,color="currentColor",stroke=1.7,style}){const p=IP[name];if(!p)return null;return React.createElement("svg",{width:size,height:size,viewBox:"0 0 22 22",fill:"none",stroke:color,strokeWidth:stroke,strokeLinecap:"round",strokeLinejoin:"round","aria-hidden":"true",style},p.map((el,i)=>React.createElement(el[0],{key:i,...el[1]})));}
-const NAV=[{id:"dashboard",icon:"dashboard",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"analytics",label:"Analytics",color:"#34d399"},{id:"coaching",icon:"target",label:"Coaching",color:"#f59e0b"},{id:"console",icon:"compass",label:"Coach Console",color:"#fb923c"},{id:"progress",icon:"trend",label:"My Progress",color:"#4ade80"},{id:"train",icon:"dumbbell",label:"Train",color:"#22c55e"},{id:"history",icon:"bars",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"phone",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"ruler",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"book",label:"Resources",color:"#f59e0b"},{id:"records",icon:"clipboard",label:"Non-Sales",color:"var(--t2)"},{id:"queue",icon:"list",label:"Queue",color:"#a78bfa"},{id:"health",icon:"heart",label:"Health",color:"#f472b6"},{id:"team",icon:"users",label:"Team",color:"#818cf8"},{id:"outcomes",icon:"tag",label:"Outcomes",color:"#f59e0b"},{id:"referrals",icon:"shuffle",label:"Referrals",color:"#14b8a6"},{id:"moments",icon:"trophy",label:"Golden Moments",color:"#fbbf24"},{id:"stitch",icon:"link",label:"Stitching",color:"#2dd4bf"},{id:"calibration",icon:"target",label:"Calibration",color:"#a5b4fc"},{id:"export",icon:"download",label:"Reports",color:"#22d3ee"},{id:"about",icon:"info",label:"About",color:"var(--t3)"}];
+function deriveKey(label){return String(label||"").trim().toUpperCase().replace(/[^A-Z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,48);}
+function ManageTagsPage(){
+  const admin=useIsAdmin();
+  const{data,loading,error,reload}=useApi("/tags/all");
+  const[editing,setEditing]=useState(null); // key being edited, or "__new__"
+  const[form,setForm]=useState(null);
+  const[busy,setBusy]=useState(false);const[msg,setMsg]=useState("");
+  const tags=(data&&(data.tags||data))||[];
+  const groups=Array.from(new Set(tags.map(t=>t.tag_group).filter(Boolean))).sort();
+  function startNew(){setEditing("__new__");setMsg("");setForm({label:"",key:"",tag_group:"",excludes_from_average:false,description:"",color:"#818cf8",sort_order:100,is_primary_outcome:false});}
+  function startEdit(t){setEditing(t.key);setMsg("");setForm({label:t.label||"",key:t.key,tag_group:t.tag_group||"",excludes_from_average:!!t.excludes_from_average,description:t.description||"",color:t.color||"#818cf8",sort_order:t.sort_order??100,is_primary_outcome:!!t.is_primary_outcome,active:t.active!==false});}
+  function cancel(){setEditing(null);setForm(null);setMsg("");}
+  const set=(k,v)=>setForm(f=>Object.assign({},f,{[k]:v}));
+  async function save(){
+    if(!form.label.trim()){setMsg("Label is required.");return;}
+    setBusy(true);setMsg("");
+    let r;
+    if(editing==="__new__"){
+      const body={label:form.label.trim(),tag_group:form.tag_group||undefined,excludes_from_average:!!form.excludes_from_average,description:form.description||undefined,color:form.color||undefined,sort_order:Number(form.sort_order)||undefined,is_primary_outcome:!!form.is_primary_outcome};
+      if(form.key.trim())body.key=form.key.trim();
+      r=await postApi("/tags",body);
+    }else{
+      r=await patchApi("/tags/"+encodeURIComponent(editing),{label:form.label.trim(),tag_group:form.tag_group||null,excludes_from_average:!!form.excludes_from_average,description:form.description||null,color:form.color||null,sort_order:Number(form.sort_order)||0,is_primary_outcome:!!form.is_primary_outcome,active:form.active!==false});
+    }
+    setBusy(false);
+    if(r&&(r.ok||r.key||r.tag)){cancel();reload();}
+    else setMsg((r&&r.error)||"Save failed — check the fields and that you're still logged in.");
+  }
+  async function retire(t){if(!(await qcConfirm({title:"Retire tag?",message:`"${t.label}" will be hidden from pickers. Past assignments are kept and nothing is deleted. You can reactivate it later.`,confirmLabel:"Retire",danger:true})))return;const r=await patchApi("/tags/"+encodeURIComponent(t.key),{active:false});if(r&&(r.ok||r.key))reload();}
+  async function reactivate(t){const r=await patchApi("/tags/"+encodeURIComponent(t.key),{active:true});if(r&&(r.ok||r.key))reload();}
+
+  if(!admin)return<div className="flex-col gap-20">
+    <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Manage Tags</h2><p style={{fontSize:13,color:"var(--t3)",marginTop:4}}>Create and edit the tag taxonomy used across calls and outcomes.</p></div>
+    <div className="card" style={{padding:"48px 40px",textAlign:"center",maxWidth:460,margin:"0 auto"}}>
+      <Icon name="gear" size={34} color="var(--focus)" style={{marginBottom:12}}/>
+      <div style={{fontSize:16,fontWeight:800,color:"var(--t1)",marginBottom:6}}>Admin login required</div>
+      <div style={{fontSize:12.5,color:"var(--t3)",lineHeight:1.6,marginBottom:20}}>Tag creation and editing changes how calls are scored and averaged, so it's behind the admin login.</div>
+      <button className="btn btn-primary" onClick={openAdminLogin}>Log in as admin</button>
+    </div>
+  </div>;
+
+  const active=tags.filter(t=>t.active!==false),inactive=tags.filter(t=>t.active===false);
+  const Row=(t)=><div key={t.key} className="card" style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:14,opacity:t.active===false?.55:1}}>
+    <span style={{width:10,height:10,borderRadius:3,background:t.color||"var(--t3)",flexShrink:0}}/>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span style={{fontSize:13,fontWeight:700,color:"var(--t1)"}}>{t.label}</span>
+        {t.excludes_from_average&&<span className="badge" style={{background:"var(--warn-bg)",color:"var(--warn)",border:"1px solid var(--warn)"}}>EXCLUDES FROM AVG</span>}
+        {t.is_primary_outcome&&<span className="badge" style={{background:"#14224a",color:"#60a5fa",border:"1px solid #1e3a5f"}}>PRIMARY OUTCOME</span>}
+      </div>
+      <div style={{fontSize:10.5,color:"var(--t4)",fontFamily:"var(--m)",marginTop:2}}>{t.key}{t.tag_group?" · "+t.tag_group:""}</div>
+    </div>
+    <button className="btn btn-sm" onClick={()=>startEdit(t)}>Edit</button>
+    {t.active===false?<button className="btn btn-sm btn-green" onClick={()=>reactivate(t)}>Reactivate</button>:<button className="btn btn-sm" style={{color:"var(--neg)",borderColor:"var(--neg)"}} onClick={()=>retire(t)}>Retire</button>}
+  </div>;
+
+  return<div className="flex-col gap-20">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Manage Tags</h2><p style={{fontSize:13,color:"var(--t3)",marginTop:4}}>Grow the tag taxonomy without a backend deploy. Keys are permanent once created — everything else is editable.</p></div>
+      {!editing&&<button className="btn btn-primary" onClick={startNew}><Icon name="tag" size={14} style={{marginRight:6,verticalAlign:"-2px"}}/>New tag</button>}
+    </div>
+
+    {editing&&<div className="card" style={{padding:22,maxWidth:640}}>
+      <div style={{fontSize:15,fontWeight:800,marginBottom:16}}>{editing==="__new__"?"New tag":"Edit "+editing}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        <label style={{display:"block"}}><div className="lbl" style={{color:"var(--t3)",marginBottom:5}}>Label</div><input value={form.label} onChange={e=>set("label",e.target.value)} placeholder="Referred by Realtor" style={fieldStyle}/></label>
+        <label style={{display:"block"}}><div className="lbl" style={{color:"var(--t3)",marginBottom:5}}>Key {editing==="__new__"?<span style={{textTransform:"none",fontWeight:400,color:"var(--t4)"}}>· auto if blank</span>:<span style={{textTransform:"none",fontWeight:400,color:"var(--t4)"}}>· permanent</span>}</div>{editing==="__new__"?<input value={form.key} onChange={e=>set("key",e.target.value.toUpperCase())} placeholder={deriveKey(form.label)||"AUTO_DERIVED"} style={fieldStyle}/>:<div style={Object.assign({},fieldStyle,{color:"var(--t3)",fontFamily:"var(--m)",background:"var(--bg)"})}>{form.key}</div>}</label>
+        <label style={{display:"block"}}><div className="lbl" style={{color:"var(--t3)",marginBottom:5}}>Group</div><input value={form.tag_group} onChange={e=>set("tag_group",e.target.value)} list="tag-groups" placeholder="e.g. A_NOT_CLOSEABLE" style={fieldStyle}/><datalist id="tag-groups">{groups.map(g=><option key={g} value={g}/>)}</datalist></label>
+        <div style={{display:"flex",gap:12}}>
+          <label style={{display:"block",flex:1}}><div className="lbl" style={{color:"var(--t3)",marginBottom:5}}>Sort</div><input type="number" value={form.sort_order} onChange={e=>set("sort_order",e.target.value)} style={fieldStyle}/></label>
+          <label style={{display:"block"}}><div className="lbl" style={{color:"var(--t3)",marginBottom:5}}>Color</div><input type="color" value={form.color} onChange={e=>set("color",e.target.value)} style={{width:44,height:38,border:"1px solid var(--border)",borderRadius:8,background:"var(--card)",cursor:"pointer"}}/></label>
+        </div>
+      </div>
+      <label style={{display:"block",marginTop:14}}><div className="lbl" style={{color:"var(--t3)",marginBottom:5}}>Description</div><textarea value={form.description} onChange={e=>set("description",e.target.value)} rows={2} placeholder="What this tag means and when to apply it." style={Object.assign({},fieldStyle,{resize:"vertical"})}/></label>
+      <div style={{marginTop:16,padding:"12px 14px",background:"var(--warn-bg)",border:"1px solid var(--warn)",borderRadius:10}}>
+        <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}>
+          <input type="checkbox" checked={form.excludes_from_average} onChange={e=>set("excludes_from_average",e.target.checked)} style={{width:16,height:16,marginTop:2,flexShrink:0}}/>
+          <span><span style={{fontSize:13,fontWeight:700,color:"var(--warn)"}}>Excludes from average</span><span style={{display:"block",fontSize:11.5,color:"var(--t2)",lineHeight:1.55,marginTop:3}}>The moment this tag is confirmed on a call, that call is <b>removed from the rep's score average</b>. Use it for calls that shouldn't count against a rep (wrong business unit, not a real lead). Leave off for tags that are just signals.</span></span>
+        </label>
+      </div>
+      <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",marginTop:12,padding:"0 2px"}}>
+        <input type="checkbox" checked={form.is_primary_outcome} onChange={e=>set("is_primary_outcome",e.target.checked)} style={{width:16,height:16,marginTop:2,flexShrink:0}}/>
+        <span><span style={{fontSize:13,fontWeight:700,color:"var(--t1)"}}>Primary outcome</span><span style={{display:"block",fontSize:11.5,color:"var(--t3)",lineHeight:1.55,marginTop:3}}>This is the call's one outcome (like Closed Won or Hard No), not an additive signal — confirming it clears any other primary-outcome tag on the call. Leave off for stackable signals.</span></span>
+      </label>
+      {editing!=="__new__"&&<label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",marginTop:12,padding:"0 2px"}}><input type="checkbox" checked={form.active!==false} onChange={e=>set("active",e.target.checked)} style={{width:16,height:16}}/><span style={{fontSize:12.5,color:"var(--t2)"}}>Active (uncheck to retire — nothing is deleted)</span></label>}
+      {msg&&<div style={{fontSize:12,color:"var(--neg)",marginTop:12}} role="alert">{msg}</div>}
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:18}}>
+        <button className="btn" onClick={cancel}>Cancel</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy||!form.label.trim()}>{busy?"…":editing==="__new__"?"Create tag":"Save changes"}</button>
+      </div>
+    </div>}
+
+    {error&&!data?<PageError onRetry={reload}/>:loading&&!data?<Skel/>:<React.Fragment>
+      <div className="flex-col gap-8">{active.map(Row)}</div>
+      {inactive.length>0&&<React.Fragment>
+        <div className="section-head" style={{marginTop:8}}>Retired · {inactive.length}</div>
+        <div className="flex-col gap-8">{inactive.map(Row)}</div>
+      </React.Fragment>}
+    </React.Fragment>}
+  </div>;
+}
+const fieldStyle={width:"100%",padding:"8px 11px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,color:"var(--t1)",fontSize:13,fontFamily:"var(--f)"};
+const NAV=[{id:"dashboard",icon:"dashboard",label:"Dashboard",color:"#818cf8"},{id:"analytics",icon:"analytics",label:"Analytics",color:"#34d399"},{id:"tags",icon:"tag",label:"Manage Tags",color:"#f59e0b"},{id:"coaching",icon:"target",label:"Coaching",color:"#f59e0b"},{id:"console",icon:"compass",label:"Coach Console",color:"#fb923c"},{id:"progress",icon:"trend",label:"My Progress",color:"#4ade80"},{id:"train",icon:"dumbbell",label:"Train",color:"#22c55e"},{id:"history",icon:"bars",label:"Practice Log",color:"#14b8a6"},{id:"calls",icon:"phone",label:"Calls",color:"#60a5fa"},{id:"rubric",icon:"ruler",label:"Rubric",color:"#a855f7"},{id:"resources",icon:"book",label:"Resources",color:"#f59e0b"},{id:"records",icon:"clipboard",label:"Non-Sales",color:"var(--t2)"},{id:"queue",icon:"list",label:"Queue",color:"#a78bfa"},{id:"health",icon:"heart",label:"Health",color:"#f472b6"},{id:"team",icon:"users",label:"Team",color:"#818cf8"},{id:"outcomes",icon:"tag",label:"Outcomes",color:"#f59e0b"},{id:"referrals",icon:"shuffle",label:"Referrals",color:"#14b8a6"},{id:"moments",icon:"trophy",label:"Golden Moments",color:"#fbbf24"},{id:"stitch",icon:"link",label:"Stitching",color:"#2dd4bf"},{id:"calibration",icon:"target",label:"Calibration",color:"#a5b4fc"},{id:"export",icon:"download",label:"Reports",color:"#22d3ee"},{id:"about",icon:"info",label:"About",color:"var(--t3)"}];
 const NAV_BY_ID=Object.fromEntries(NAV.map(n=>[n.id,n]));
 // Grouped sidebar — 20 flat tabs were too many to scan. Same tabs, sectioned.
 const NAV_GROUPS=[
@@ -3236,7 +3360,7 @@ const NAV_GROUPS=[
   {title:"Coaching",ids:["console","coaching","progress","moments","rubric","resources"]},
   {title:"Training",ids:["train","history"]},
   {title:"Team",ids:["team","queue"]},               // daily-use — kept ≤2 clicks (Main constraint Jul 20)
-  {title:"System",ids:["health","calibration","stitch","export","about"]},  // rarely-touched — collapsed by default
+  {title:"System",ids:["health","calibration","stitch","tags","export","about"]},  // rarely-touched — collapsed by default
 ];
 const NAV_DEFAULT_COLLAPSED=Object.fromEntries(NAV_GROUPS.map(g=>[g.title,true]));  // 1c: all groups start collapsed
 function loadNavCollapsed(){try{const s=localStorage.getItem("qc_nav_collapsed");return s?(JSON.parse(s)||{}):{...NAV_DEFAULT_COLLAPSED};}catch(e){return{...NAV_DEFAULT_COLLAPSED};}}
@@ -3298,6 +3422,7 @@ function RubricViewer(){
 }
 
 function RubricPage(){
+  const isAdmin=useIsAdmin();
   const[data,setData]=useState(null);const[loading,setLoading]=useState(true);
   const[scope,setScope]=useState('all');const[days,setDays]=useState(30);const[rtab,setRtab]=usePersisted("rubric.tab","rubric");
   const[estimate,setEstimate]=useState(null);const[running,setRunning]=useState(false);
@@ -3322,9 +3447,9 @@ function RubricPage(){
   const current=data?.current||[];const comparisons=data?.perCallComparisons||[];
   return<div className="flex-col gap-16">
     <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Rubric</h2><p style={{fontSize:12,color:"var(--t3)",marginTop:4}}>The exact criteria every call is scored against — and the admin tools to re-score and compare versions.</p></div>
-    <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}} role="tablist">{[["rubric","📋 The Rubric"],["rescore","↻ Re-score & Compare"]].map(([k,l])=><button key={k} role="tab" aria-selected={rtab===k} onClick={()=>setRtab(k)} style={{padding:"9px 16px",background:"transparent",border:"none",borderBottom:rtab===k?"2px solid #a855f7":"2px solid transparent",color:rtab===k?"#d8b4fe":"var(--t3)",fontWeight:rtab===k?800:600,fontSize:13,cursor:"pointer",marginBottom:-1}}>{l}</button>)}</div>
+    <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}} role="tablist">{[["rubric","📋 The Rubric"],...(isAdmin?[["rescore","↻ Re-score & Compare"]]:[])].map(([k,l])=><button key={k} role="tab" aria-selected={rtab===k} onClick={()=>setRtab(k)} style={{padding:"9px 16px",background:"transparent",border:"none",borderBottom:rtab===k?"2px solid #a855f7":"2px solid transparent",color:rtab===k?"#d8b4fe":"var(--t3)",fontWeight:rtab===k?800:600,fontSize:13,cursor:"pointer",marginBottom:-1}}>{l}</button>)}</div>
     {rtab==="rubric"&&<RubricViewer/>}
-    {rtab==="rescore"&&<React.Fragment>
+    {rtab==="rescore"&&isAdmin&&<React.Fragment>
     <div className="card" style={{padding:24}}>
       <div className="section-head" style={{marginBottom:14}}>Re-score Calls</div>
       <div style={{background:"var(--bg)",padding:14,borderRadius:8,border:"1px solid #2a3140",marginBottom:14}}>
@@ -3387,6 +3512,43 @@ function goTo(page,param){window.location.hash="/"+page+(param!=null&&param!==""
 
 // ── P8 branded confirm dialog (Design Lab, Jul 21) — replaces native confirm() for destructive/costly actions ──
 let _qcConfirm=null;
+// ── Admin auth UI (Design Lab, Jul 24) ──
+function useIsAdmin(){const[a,setA]=useState(()=>!!authGet());useEffect(()=>{const on=()=>setA(!!authGet());window.addEventListener("qc-auth",on);window.addEventListener("qc-auth-401",on);return()=>{window.removeEventListener("qc-auth",on);window.removeEventListener("qc-auth-401",on);};},[]);return a;}
+function AdminOnly({children}){return useIsAdmin()?children:null;}
+let _openLogin=null;function openAdminLogin(){_openLogin&&_openLogin();}
+function AdminLoginHost(){
+  const[open,setOpen]=useState(false);const[pw,setPw]=useState("");const[busy,setBusy]=useState(false);const[err,setErr]=useState("");
+  useEffect(()=>{_openLogin=()=>{setErr("");setPw("");setOpen(true);};const on=()=>{setOpen(true);setErr("Your admin session expired — please log in again.");};window.addEventListener("qc-auth-401",on);return()=>{_openLogin=null;window.removeEventListener("qc-auth-401",on);};},[]);
+  async function submit(){if(!pw||busy)return;setBusy(true);setErr("");try{
+    const res=await fetch(API+"/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pw})});
+    const j=await res.json().catch(()=>null);
+    if(res.ok&&j&&j.ok&&j.token){authSet({token:j.token,expires_at:j.expires_at});setOpen(false);setPw("");}
+    else setErr((j&&j.error)||"Incorrect password.");
+  }catch(e){setErr("Couldn't reach the server.");}setBusy(false);}
+  if(!open)return null;
+  return<div className="modal-overlay" onClick={()=>setOpen(false)}>
+    <div className="modal" style={{maxWidth:380}} role="dialog" aria-modal="true" aria-label="Admin login" onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}><Icon name="gear" size={20} color="var(--focus)"/><div style={{fontSize:16,fontWeight:800,color:"var(--t1)"}}>Admin login</div></div>
+      <div style={{fontSize:12.5,color:"var(--t3)",lineHeight:1.6,marginBottom:16}}>Unlocks editing, deleting, tagging, and other admin actions for 24 hours on this browser. Viewing, Train, and Reports never need a login.</div>
+      <input type="password" autoFocus value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submit();}} placeholder="Admin password" style={{width:"100%",padding:"10px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,color:"var(--t1)",fontSize:14}}/>
+      {err&&<div style={{fontSize:12,color:"var(--neg)",marginTop:10}} role="alert">{err}</div>}
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:20}}>
+        <button className="btn" onClick={()=>setOpen(false)}>Cancel</button>
+        <button className="btn btn-primary" onClick={submit} disabled={busy||!pw}>{busy?"…":"Log in"}</button>
+      </div>
+    </div>
+  </div>;
+}
+function AdminFooter(){
+  const admin=useIsAdmin();
+  if(admin)return<div style={{padding:"12px 16px",borderTop:"1px solid #2a3140",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+    <span style={{display:"inline-flex",alignItems:"center",gap:7,fontSize:12,fontWeight:700,color:"#34d399"}}><span style={{width:7,height:7,borderRadius:4,background:"#34d399",boxShadow:"0 0 6px #34d399"}}/>Admin</span>
+    <button onClick={()=>authClear()} style={{background:"none",border:"none",color:"var(--t3)",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"var(--f)"}}>Log out</button>
+  </div>;
+  return<div style={{padding:"12px 16px",borderTop:"1px solid #2a3140"}}>
+    <button onClick={openAdminLogin} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"8px",background:"transparent",border:"1px solid var(--border)",borderRadius:8,color:"var(--t3)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"var(--f)"}}><Icon name="gear" size={14}/>Admin login</button>
+  </div>;
+}
 function qcConfirm(o){o=typeof o==="string"?{message:o}:o;return _qcConfirm?_qcConfirm(o):Promise.resolve(window.confirm(o.message||""));}
 function ConfirmHost(){
   const[st,setSt]=useState(null);
@@ -3429,11 +3591,11 @@ function App(){
     return()=>window.removeEventListener("hashchange",onHash);
   // eslint-disable-next-line
   },[]);
-  return<><ConfirmHost/><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><NavList pg={pg} onNav={(id)=>{sPg(id);sDt(null)}}/><div style={{padding:"14px 16px",borderTop:"1px solid #2a3140"}}><div style={{fontSize:12,fontWeight:700,color:"var(--t2)"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
+  return<><ConfirmHost/><AdminLoginHost/><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><NavList pg={pg} onNav={(id)=>{sPg(id);sDt(null)}}/><AdminFooter/></aside>
     <main><div className="max-w"><ErrorBoundary resetKey={pg} tag={pg}>{
       pg==="calls"&&param?<CallDetail call={{id:Number(param)}} onBack={()=>goTo("calls")}/>:
       pg==="rep"&&param?<MyProgressPage initialRep={param}/>:
-      pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="console"?<CoachConsolePage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={c=>goTo("calls",c.id)}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage initial={param}/>:pg==="records"?<RecordsPage/>:pg==="queue"?<SystemOpsPage initialTab="pipeline"/>:pg==="health"?<SystemOpsPage initialTab="health"/>:pg==="team"?<TeamPage/>:pg==="outcomes"?<OutcomesPage/>:pg==="referrals"?<ReferralsPage/>:pg==="moments"?<GoldenMomentsPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null
+      pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="console"?<CoachConsolePage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={c=>goTo("calls",c.id)}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage initial={param}/>:pg==="records"?<RecordsPage/>:pg==="queue"?<SystemOpsPage initialTab="pipeline"/>:pg==="health"?<SystemOpsPage initialTab="health"/>:pg==="team"?<TeamPage/>:pg==="outcomes"?<OutcomesPage/>:pg==="referrals"?<ReferralsPage/>:pg==="moments"?<GoldenMomentsPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="tags"?<ManageTagsPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null
     }</ErrorBoundary></div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
