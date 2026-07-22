@@ -2485,16 +2485,116 @@ router.get('/health', async (req, res) => {
 });
 
 // ─── Resources: training manuals (served as structured HTML) ──
+// TWO sources, merged at read time: the 5 built-in manuals (static, code-defined
+// in resources.js — Sam's real .docx-sourced training docs, never editable
+// through this API) + custom manuals in the `manuals` table (admin-created via
+// POST /manuals below). Built-ins always sort first.
 const TRAINING_MANUALS = require('../services/resources');
-router.get('/resources', (req, res) => {
-  // list = lightweight (no html bodies); full = with content
-  if (req.query.full === '1') return res.json({ manuals: TRAINING_MANUALS });
-  res.json({ manuals: TRAINING_MANUALS.map(({ html, ...meta }) => meta) });
+async function allManuals(fullContent) {
+  const custom = (await q('SELECT * FROM manuals WHERE active=true ORDER BY created_at')).rows;
+  const merged = [...TRAINING_MANUALS, ...custom];
+  return fullContent ? merged : merged.map(({ html, ...meta }) => meta);
+}
+router.get('/resources', async (req, res) => {
+  try { res.json({ manuals: await allManuals(req.query.full === '1') }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
-router.get('/resources/:id', (req, res) => {
-  const m = TRAINING_MANUALS.find(x => x.id === req.params.id);
-  if (!m) return res.status(404).json({ error: 'Manual not found' });
-  res.json(m);
+router.get('/resources/:id', async (req, res) => {
+  try {
+    const builtIn = TRAINING_MANUALS.find(x => x.id === req.params.id);
+    if (builtIn) return res.json(builtIn);
+    const custom = (await q('SELECT * FROM manuals WHERE id=? AND active=true', [req.params.id])).rows[0];
+    if (!custom) return res.status(404).json({ error: 'Manual not found' });
+    res.json(custom);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+const BUILT_IN_MANUAL_IDS = TRAINING_MANUALS.map(m => m.id);
+function slugifyManualId(title) {
+  return String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+}
+
+// Create a manual. Admin-only — content-authoring, same reasoning as scenario
+// creation: a bad entry degrades the library for the whole team, not just its
+// author. Auto-generates subtitle + category via a cheap Haiku call so new
+// manuals get a consistent one-line description without the admin writing one —
+// this is what makes "Add manual" genuinely fast rather than just a form.
+router.post('/resources', requireAdmin, express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const title = String(b.title || '').trim();
+    const html = String(b.html || b.content || '').trim();
+    if (!title) return res.status(400).json({ error: 'title is required' });
+    if (!html) return res.status(400).json({ error: 'content is required' });
+
+    let id = b.id ? slugifyManualId(b.id) : slugifyManualId(title);
+    if (!id) return res.status(400).json({ error: 'Could not derive a valid id from that title — provide one explicitly.' });
+    if (BUILT_IN_MANUAL_IDS.includes(id)) {
+      return res.status(409).json({ error: `"${id}" collides with a built-in manual id — choose a different title or provide an explicit id.` });
+    }
+    const existing = (await q('SELECT id, active FROM manuals WHERE id=?', [id])).rows[0];
+    if (existing) {
+      return res.status(409).json({ error: `Manual "${id}" already exists (${existing.active ? 'active' : 'inactive — reactivate it with PATCH instead'}).` });
+    }
+
+    // Bot-generated summary + category. Best-effort: if the AI call fails for any
+    // reason, fall back to a plain-text excerpt rather than blocking creation —
+    // an admin creating a manual should never lose their work over an AI hiccup.
+    const plainText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    let subtitle = b.subtitle || '';
+    let category = b.category || '';
+    if (!subtitle || !category) {
+      try {
+        const { callAIJson } = require('../services/ai');
+        const prompt = `You are labelling a new sales training manual for the BNB Turnkey QC platform.
+Read the content below and return ONLY JSON, nothing else:
+{"subtitle":"one line, under 80 chars, describing what a rep learns from this","category":"one of: discovery, qualification, pitch, frame_control, objections_close — whichever rubric skill this manual most teaches"}
+
+TITLE: ${title}
+CONTENT (excerpt): ${plainText.slice(0, 4000)}`;
+        const { result } = await callAIJson(prompt, { maxTokens: 300 });
+        if (!subtitle && result?.subtitle) subtitle = String(result.subtitle).slice(0, 120);
+        if (!category && result?.category) category = String(result.category).toLowerCase();
+      } catch (e) {
+        console.error('[Manuals] AI summary failed, falling back to excerpt:', e.message);
+        if (!subtitle) subtitle = plainText.slice(0, 100);
+      }
+    }
+    const validCats = ['discovery', 'qualification', 'pitch', 'frame_control', 'objections_close'];
+    if (!validCats.includes(category)) category = 'discovery';
+
+    const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    await q(
+      `INSERT INTO manuals (id, title, icon, subtitle, category, html, chars, active, created_by, created_at)
+       VALUES (?,?,?,?,?,?,?,true,?,?)`,
+      [id, title, b.icon || '📄', subtitle, category, html, plainText.length, b.created_by || 'Admin', ts]);
+    const created = (await q('SELECT * FROM manuals WHERE id=?', [id])).rows[0];
+    res.json({ ok: true, manual: created, ai_generated: !b.subtitle || !b.category });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Edit a custom manual. Built-ins 404 here by design (they're not in this table) —
+// keeps Sam's real training docs out of reach of an admin-UI mistake. id immutable.
+router.patch('/resources/:id', requireAdmin, express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (BUILT_IN_MANUAL_IDS.includes(id)) return res.status(403).json({ error: 'Built-in manuals cannot be edited through this API.' });
+    const existing = (await q('SELECT * FROM manuals WHERE id=?', [id])).rows[0];
+    if (!existing) return res.status(404).json({ error: `Manual "${id}" not found` });
+    const b = req.body || {};
+    const next = {
+      title: b.title != null ? String(b.title) : existing.title,
+      icon: b.icon || existing.icon,
+      subtitle: b.subtitle != null ? String(b.subtitle) : existing.subtitle,
+      category: b.category || existing.category,
+      html: b.html != null ? String(b.html) : existing.html,
+      active: typeof b.active === 'boolean' ? b.active : existing.active,
+    };
+    await q('UPDATE manuals SET title=?, icon=?, subtitle=?, category=?, html=?, active=? WHERE id=?',
+      [next.title, next.icon, next.subtitle, next.category, next.html, next.active, id]);
+    const updated = (await q('SELECT * FROM manuals WHERE id=?', [id])).rows[0];
+    res.json({ ok: true, manual: updated });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── Rubric: the live scoring rubric (for the Rubric tab) ──
