@@ -293,7 +293,7 @@ async function migrate() {
     ['SET',        'Setter — Booked Closer Call', 'D_OUTCOME_POSITIVE', false,
       'Setter successfully booked a qualified closer call with a confirmed date/time. A strong outcome.', '#22c55e', 90],
     ['CLOSED_WON', 'Closer — Closed Won',          'D_OUTCOME_POSITIVE', false,
-      'Closer secured explicit commitment to proceed (agreement/payment/paperwork discussed) in this call. The win.', '#16a34a', 91],
+      'Payment was actually processed or confirmed LIVE, during this call — card charged, payment confirmed on the line. Not just agreement to proceed, not a promise to pay later, not paperwork sent for a future signature. A "yes let\'s do this, I\'ll send payment tomorrow" is NOT this tag. If payment clears later the same day but after the call ends, apply this tag manually with that context — automated detection only sees what happened on the call itself.', '#16a34a', 91],
 
     // ── E: Missed-opportunity judgment tags (Francis, Jul 23) — NOT yet AI-suggested;
     // these keys exist so the schema/UI is ready, but the prompt work that populates
