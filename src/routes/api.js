@@ -14,6 +14,7 @@ const router = express.Router();
 // ═══════════════════════════════════════════════════════════════════════
 const NOT_TAGGED = `NOT EXISTS (SELECT 1 FROM call_tag_assignments cta JOIN call_tags ct ON ct.key = cta.tag_key WHERE cta.call_id = calls.id AND cta.status = 'CONFIRMED' AND ct.excludes_from_average = true)`;
 // For WHERE clauses:
+const { requireAdmin } = require('../services/auth');
 const EXCL_TAGGED = `AND ${NOT_TAGGED}`;
 // For use INSIDE FILTER(WHERE ...) aggregates — so a tagged call still counts as a call
 // the rep made (total_calls), but does NOT pull their AVERAGE. That distinction matters:
@@ -210,7 +211,7 @@ function computeCallMechanics(transcript, repName, durationSec, quality) {
   };
 }
 
-router.patch('/calls/:id', async (req, res) => {
+router.patch('/calls/:id', requireAdmin, async (req, res) => {
   try {
     const allowed = ['rep_name','client_name','role','team','call_duration_sec','agent_talk_pct','contact_talk_pct','status','error'];
     const sets = [], vals = [];
@@ -222,12 +223,12 @@ router.patch('/calls/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.delete('/calls/:id', async (req, res) => {
+router.delete('/calls/:id', requireAdmin, async (req, res) => {
   try { await q('DELETE FROM calls WHERE id=?', [req.params.id]); res.json({ ok: true }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/calls/bulk-delete', async (req, res) => {
+router.post('/calls/bulk-delete', requireAdmin, async (req, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Provide ids array' });
@@ -236,7 +237,7 @@ router.post('/calls/bulk-delete', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/calls/:id/reqc', async (req, res) => {
+router.post('/calls/:id/reqc', requireAdmin, async (req, res) => {
   try { await q("UPDATE calls SET status='REQC', error='', retry_count=0 WHERE id=?", [req.params.id]); res.json({ ok: true }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -271,7 +272,7 @@ router.get('/rescore/preview', async (req, res) => {
 });
 
 // Execute the re-score (flags calls as REQC so the worker picks them up on next cycle)
-router.post('/rescore/execute', async (req, res) => {
+router.post('/rescore/execute', requireAdmin, async (req, res) => {
   try {
     const { scope = 'all', days, ids } = req.body || {};
     let where = "status='SCORED'";
@@ -391,7 +392,7 @@ router.get('/rubric-comparison', async (req, res) => {
 
 // ─── End bulk rescore / history / comparison ────────────────
 
-router.post('/calls/:id/override', express.json(), async (req, res) => {
+router.post('/calls/:id/override', requireAdmin, express.json(), async (req, res) => {
   try {
     // category_scores is optional — Sam can score just the overall, or go category-by-category.
     const { override_score, reason, override_by = 'Sam', category_scores } = req.body;
@@ -456,7 +457,7 @@ router.get('/calibration', async (req, res) => {
 // ─── Bulk Re-score ──────────────────────────────────────────
 // Tags calls as REQC so the worker re-processes them with current rubric.
 // Old scores are auto-archived into score_history by the worker before re-scoring.
-router.post('/calls/rescore-all', async (req, res) => {
+router.post('/calls/rescore-all', requireAdmin, async (req, res) => {
   try {
     const r = await q("UPDATE calls SET status='REQC', error='Queued for re-score (bulk)', retry_count=0 WHERE status='SCORED'");
     const affected = r.rowsAffected || r.changes || 0;
@@ -464,7 +465,7 @@ router.post('/calls/rescore-all', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/calls/rescore-recent', async (req, res) => {
+router.post('/calls/rescore-recent', requireAdmin, async (req, res) => {
   try {
     const days = Number(req.body?.days || 30);
     if (days < 1 || days > 365) return res.status(400).json({ error: 'days must be 1-365' });
@@ -474,7 +475,7 @@ router.post('/calls/rescore-recent', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/calls/rescore-selected', async (req, res) => {
+router.post('/calls/rescore-selected', requireAdmin, async (req, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Provide ids array' });
@@ -577,7 +578,7 @@ router.get('/false-voicemails', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/calls/rescue-false-voicemails', async (req, res) => {
+router.post('/calls/rescue-false-voicemails', requireAdmin, async (req, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Provide ids array' });
@@ -596,7 +597,7 @@ router.post('/calls/rescue-false-voicemails', async (req, res) => {
 //               real sales call the classifier got wrong, e.g. a 45-min "follow up").
 // force=false → send back through classification (safe default).
 // SKIP_NOT_ROSTERED is intentionally NOT rescuable here — those are handled by the roster.
-router.post('/calls/rescue-nonsales', express.json(), async (req, res) => {
+router.post('/calls/rescue-nonsales', requireAdmin, express.json(), async (req, res) => {
   try {
     const { ids, force } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Provide ids array' });
@@ -751,7 +752,7 @@ router.get('/analytics/distribution', async (req, res) => {
 // Rescue calls stuck at MAX_RETRY. The worker's batch query skips anything with
 // retry_count >= MAX_RETRY, so such calls are invisible to Process/Retry AND to a
 // force re-score — they need their counter reset first. This does that.
-router.post('/queue/reset-retries', express.json(), async (req, res) => {
+router.post('/queue/reset-retries', requireAdmin, express.json(), async (req, res) => {
   try {
     const ids = req.body?.ids;
     let r;
@@ -782,12 +783,12 @@ router.get('/queue/status', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/queue/process', async (req, res) => {
+router.post('/queue/process', requireAdmin, async (req, res) => {
   try { res.json(await processQueue(parseInt(req.query.max || '5'))); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/queue/retry-all', async (req, res) => {
+router.post('/queue/retry-all', requireAdmin, async (req, res) => {
   try {
     // Only retry genuinely-failed calls. WAIT_TRANSCRIPT is a legitimate waiting
     // state (transcript hasn't arrived yet) — retrying it forces a NO_TRANSCRIPT error.
@@ -801,7 +802,7 @@ router.post('/queue/retry-all', async (req, res) => {
 // Manually pull recent calls from Aloware/Fathom APIs (backfill for missed webhooks).
 // Safe: runs fetched calls through the same dedup-protected ingestCall path.
 // If credentials are missing or an API fails, it reports that and changes nothing.
-router.post('/queue/pull', express.json(), async (req, res) => {
+router.post('/queue/pull', requireAdmin, express.json(), async (req, res) => {
   try {
     const { pullCalls } = require('../services/pullService');
     const sources = (req.body && req.body.sources) || ['aloware', 'fathom'];
@@ -817,7 +818,7 @@ router.post('/queue/pull', express.json(), async (req, res) => {
 // Targeted per-rep Fathom backfill for a webhook outage. Dry-run by default
 // (reports what Fathom returns, ingests nothing); set commit:true to ingest.
 // POST body: { srcTag, limit, commit, hostMatch, allowUnfiltered }
-router.post('/pull/fathom-backfill', express.json(), async (req, res) => {
+router.post('/pull/fathom-backfill', requireAdmin, express.json(), async (req, res) => {
   try {
     const { pullFathomBackfill } = require('../services/pullService');
     const b = req.body || {};
@@ -864,7 +865,7 @@ router.get('/stitch/detect', async (req, res) => {
 });
 
 // Merge a specific pair (approve a suggestion, or confirm an auto).
-router.post('/stitch/merge', express.json(), async (req, res) => {
+router.post('/stitch/merge', requireAdmin, express.json(), async (req, res) => {
   try {
     const { mergeCalls } = require('../services/stitchService');
     const { first_id, second_id, merged_by } = req.body || {};
@@ -875,7 +876,7 @@ router.post('/stitch/merge', express.json(), async (req, res) => {
 });
 
 // Undo a merge (reversibility).
-router.post('/stitch/unmerge', express.json(), async (req, res) => {
+router.post('/stitch/unmerge', requireAdmin, express.json(), async (req, res) => {
   try {
     const { unmergeCalls } = require('../services/stitchService');
     const { survivor_id } = req.body || {};
@@ -888,7 +889,7 @@ router.post('/stitch/unmerge', express.json(), async (req, res) => {
 // Manually merge two calls the user picks (escape hatch for pairs auto-detect missed).
 // Auto-orders by time (earlier = survivor) so the transcript stitches in the right order.
 // Warns (doesn't block) if rep/client differ — the user chose them deliberately.
-router.post('/stitch/manual-merge', express.json(), async (req, res) => {
+router.post('/stitch/manual-merge', requireAdmin, express.json(), async (req, res) => {
   try {
     const { mergeCalls } = require('../services/stitchService');
     const { id_a, id_b } = req.body || {};
@@ -909,7 +910,7 @@ router.post('/stitch/manual-merge', express.json(), async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-router.post('/stitch/auto-merge', async (req, res) => {
+router.post('/stitch/auto-merge', requireAdmin, async (req, res) => {
   try {
     const { detectStitches, mergeCalls } = require('../services/stitchService');
     const all = await detectStitches();
@@ -952,7 +953,7 @@ router.get('/calls/:id/tags', async (req, res) => {
 // One outcome per call: confirming an A/B tag replaces any other confirmed A/B tag.
 // Group C (routing/cross-sell) is additive — a call can be DISQUALIFIED for BNB
 // Turnkey AND a great BNB Lending lead. That's a win, not a failure.
-router.post('/calls/:id/tag', express.json(), async (req, res) => {
+router.post('/calls/:id/tag', requireAdmin, express.json(), async (req, res) => {
   try {
     const { tag, reason, by } = req.body || {};
     const callId = req.params.id;
@@ -987,7 +988,7 @@ router.post('/calls/:id/tag', express.json(), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/calls/:id/untag', express.json(), async (req, res) => {
+router.post('/calls/:id/untag', requireAdmin, express.json(), async (req, res) => {
   try {
     const { tag } = req.body || {};
     if (tag) await q('DELETE FROM call_tag_assignments WHERE call_id=? AND tag_key=?', [req.params.id, tag]);
@@ -998,7 +999,7 @@ router.post('/calls/:id/untag', express.json(), async (req, res) => {
 
 // Dismiss a suggestion — call stays scored. The DISMISSED row also stops the bot
 // re-suggesting the same tag on a future re-score (ON CONFLICT DO NOTHING).
-router.post('/calls/:id/dismiss-tag', express.json(), async (req, res) => {
+router.post('/calls/:id/dismiss-tag', requireAdmin, express.json(), async (req, res) => {
   try {
     const { tag } = req.body || {};
     if (!tag) return res.status(400).json({ error: 'tag is required' });
@@ -1195,7 +1196,7 @@ router.get('/golden-moments', async (req, res) => {
 
 // Pin a moment as a canonical exemplar (Sam's quality gate — the bot's
 // "golden" isn't always golden, so a human decides what becomes canon).
-router.post('/golden-moments/pin', express.json(), async (req, res) => {
+router.post('/golden-moments/pin', requireAdmin, express.json(), async (req, res) => {
   try {
     const { call_id, moment_index, category, note, by } = req.body || {};
     if (call_id == null || moment_index == null) return res.status(400).json({ error: 'call_id and moment_index required' });
@@ -1210,7 +1211,7 @@ router.post('/golden-moments/pin', express.json(), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/golden-moments/unpin', express.json(), async (req, res) => {
+router.post('/golden-moments/unpin', requireAdmin, express.json(), async (req, res) => {
   try {
     const { call_id, moment_index } = req.body || {};
     await q('DELETE FROM golden_moment_pins WHERE call_id=? AND moment_index=?', [call_id, moment_index]);
@@ -1273,7 +1274,7 @@ router.get('/diagnostics/transcript-scan', async (req, res) => {
 // Two segments in the path → no collision with the greedy GET /calls/:id.
 
 // Single call — used by the "re-look at moments" button on a call.
-router.post('/calls/:id/relook-moments', express.json(), async (req, res) => {
+router.post('/calls/:id/relook-moments', requireAdmin, express.json(), async (req, res) => {
   try {
     const { reExtractMoments } = require('../workers/qcWorker');
     const r = await reExtractMoments(req.params.id);
@@ -1302,7 +1303,7 @@ router.get('/golden-moments/relook-status', async (req, res) => {
 // Batch backfill — processes up to `limit` calls per request (default 8) so it
 // never hits Render's request timeout, and reports how many remain. The client
 // calls this repeatedly until remaining hits 0, showing progress.
-router.post('/golden-moments/relook-all', express.json(), async (req, res) => {
+router.post('/golden-moments/relook-all', requireAdmin, express.json(), async (req, res) => {
   try {
     const { reExtractMoments } = require('../workers/qcWorker');
     const limit = Math.min(Number(req.body?.limit) || 8, 15);
@@ -1335,7 +1336,7 @@ router.post('/golden-moments/relook-all', express.json(), async (req, res) => {
 // ─── Slack ───────────────────────────────────────────────────────
 // Post the daily digest to Slack on demand (for setup verification). force=true
 // posts even when the window has no calls, so you can confirm the wiring works.
-router.post('/slack/test-digest', express.json(), async (req, res) => {
+router.post('/slack/test-digest', requireAdmin, express.json(), async (req, res) => {
   try {
     const { sendDailyDigest } = require('../services/slackService');
     const r = await sendDailyDigest({ preset: (req.body && req.body.preset) || 'yesterday', force: true });
@@ -1347,7 +1348,7 @@ router.get('/slack/status', (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 // Post the usage summary on demand (force posts even on an empty day, for setup checks).
-router.post('/slack/test-usage', express.json(), async (req, res) => {
+router.post('/slack/test-usage', requireAdmin, express.json(), async (req, res) => {
   try {
     const { sendUsageSummary } = require('../services/slackService');
     const r = await sendUsageSummary({ preset: (req.body && req.body.preset) || 'yesterday', force: true });
@@ -1473,7 +1474,7 @@ router.get('/deduction-weights', async (req, res) => {
 });
 
 // PREVIEW — shows the blast radius before anything is written. Nothing is saved.
-router.post('/deduction-weights/preview', express.json(), async (req, res) => {
+router.post('/deduction-weights/preview', requireAdmin, express.json(), async (req, res) => {
   try {
     const { DEDUCT_DEFAULTS } = require('../workers/qcWorker');
     const current = (await q('SELECT rule, points FROM deduction_weights')).rows;
@@ -1513,7 +1514,7 @@ router.post('/deduction-weights/preview', express.json(), async (req, res) => {
 // APPLY — persists weights + audit. Historical recompute is OPT-IN (default off):
 // changing a weight affects future scoring only unless recompute_history is true,
 // because silently moving every rep's average would break the trust model.
-router.post('/deduction-weights', express.json(), async (req, res) => {
+router.post('/deduction-weights', requireAdmin, express.json(), async (req, res) => {
   try {
     const { DEDUCT_DEFAULTS, loadDeductWeights } = require('../workers/qcWorker');
     const body = req.body || {};
@@ -1944,7 +1945,7 @@ router.get('/reps/:id/outcomes', async (req, res) => {
 // nothing is auto-applied. Sam decides call-by-call in the review queue.
 // Worst-scored first: a call scored 0-3 that's really a nurture is the most
 // unfairly penalised, so those are the ones worth Sam's attention first.
-router.post('/tags/backfill-scan', express.json(), async (req, res) => {
+router.post('/tags/backfill-scan', requireAdmin, express.json(), async (req, res) => {
   try {
     const { callAIJson } = require('../services/ai');
     const { saveTagSuggestions } = require('../workers/qcWorker');
@@ -2130,7 +2131,7 @@ router.get('/reps/:id/progress', async (req, res) => {
 
 //  - Closer: needs a UNIQUE src_tag (maps to a dedicated Fathom webhook). aloware_user_id ignored.
 //  - Setter: src_tag defaults to 'aloware-setters'; needs a UNIQUE aloware_user_id.
-router.post('/reps', express.json(), async (req, res) => {
+router.post('/reps', requireAdmin, express.json(), async (req, res) => {
   try {
     const b = req.body || {};
     const name = (b.name || '').trim();
@@ -2172,7 +2173,7 @@ router.post('/reps', express.json(), async (req, res) => {
 });
 
 // Edit a rep (fix typo, change team/color, update user_id). Same uniqueness guards.
-router.patch('/reps/:id', express.json(), async (req, res) => {
+router.patch('/reps/:id', requireAdmin, express.json(), async (req, res) => {
   try {
     const id = req.params.id;
     const cur = (await q('SELECT * FROM rep_roster WHERE id=?', [id])).rows[0];
@@ -2202,14 +2203,14 @@ router.patch('/reps/:id', express.json(), async (req, res) => {
 });
 
 // Deactivate / reactivate (never hard-delete — preserves historical call attribution).
-router.post('/reps/:id/deactivate', async (req, res) => {
+router.post('/reps/:id/deactivate', requireAdmin, async (req, res) => {
   try {
     const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
     const r = await q('UPDATE rep_roster SET active=0, deactivated_at=? WHERE id=?', [ts, req.params.id]);
     res.json({ ok: true, changed: r.rowCount, deactivated_at: ts });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-router.post('/reps/:id/reactivate', async (req, res) => {
+router.post('/reps/:id/reactivate', requireAdmin, async (req, res) => {
   try {
     const r = await q('UPDATE rep_roster SET active=1, deactivated_at=NULL WHERE id=?', [req.params.id]);
     res.json({ ok: true, changed: r.rowCount });
@@ -2234,7 +2235,7 @@ router.get('/reps/:id/one-on-ones', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/reps/:id/one-on-ones', express.json(), async (req, res) => {
+router.post('/reps/:id/one-on-ones', requireAdmin, express.json(), async (req, res) => {
   try {
     const rep = (await q('SELECT id, name FROM rep_roster WHERE id=?', [req.params.id])).rows[0];
     if (!rep) return res.status(404).json({ error: 'Rep not found' });
@@ -2752,7 +2753,7 @@ router.post('/calls/:id/comments', express.json(), async (req, res) => {
     res.json({ ok: true, id: ins.lastInsertRowid });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-router.delete('/comments/:id', async (req, res) => {
+router.delete('/comments/:id', requireAdmin, async (req, res) => {
   try { await q('DELETE FROM call_comments WHERE id=?', [req.params.id]); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
