@@ -354,7 +354,7 @@ async function processCall(row) {
   // A SUGGESTED tag has ZERO effect on any average. Only a human CONFIRM does.
   // This is the guardrail: the bot can never silently change anyone's numbers.
   try {
-    await saveTagSuggestions(row.id, result, ts);
+    await saveTagSuggestions(row.id, result, ts, row.transcript);
   } catch (tagErr) {
     console.error(`[QC] #${row.id} tag suggestion failed: ${tagErr.message} — scoring already saved, continuing`);
   }
@@ -452,7 +452,7 @@ const CROSS_SELL_TAGS = ['HOTEL_TURNKEY_LEAD','BNB_LENDING_LEAD','INVESTOR_ACADE
 // NEVER writes CONFIRMED — a human must confirm before any average changes.
 // Re-suggesting is idempotent: an existing CONFIRMED or DISMISSED assignment is left alone,
 // so the bot can't overwrite a human decision on a re-score.
-async function saveTagSuggestions(callId, result, ts) {
+async function saveTagSuggestions(callId, result, ts, transcript) {
   const suggestions = [];
 
   const outcome = String(result?.outcome_tag || 'NONE').toUpperCase();
@@ -467,6 +467,20 @@ async function saveTagSuggestions(callId, result, ts) {
       suggestions.push({ key: k, reason: result?.cross_sell_reason || '' });
     }
   }
+
+  // Deterministic wrong-business-unit check (no AI, no prompt dependency) — catches
+  // a call like Kevin's Legacy call the moment it's SCORED, not weeks later when
+  // someone happens to notice. SUGGESTED only, same as everything else here; a human
+  // still confirms before it ever touches an average. Shared logic with the digest
+  // filter in api.js — see src/services/topicDetect.js for detection + validation.
+  try {
+    const { looksOffTopic, offTopicCounts } = require('../services/topicDetect');
+    if (transcript && looksOffTopic(transcript)) {
+      const { legal, turnkey } = offTopicCounts(transcript);
+      suggestions.push({ key: 'BNB_LEGACY',
+        reason: `Auto-detected (deterministic): ${legal} legal/estate-topic phrase(s), ${turnkey} Turnkey-topic phrase(s). Review the transcript before confirming.` });
+    }
+  } catch (e) { console.error('[QC] off-topic check failed, continuing:', e.message); }
 
   if (!suggestions.length) return { suggested: 0 };
 
