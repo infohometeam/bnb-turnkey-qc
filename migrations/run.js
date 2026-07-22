@@ -391,6 +391,69 @@ async function migrate() {
     created_by text,
     created_at text)`);
 
+  // ⚠️ RETROACTIVE (Jul 24) — these two tables existed live but had NO migration
+  // record at all. Found while building Train live signals: a fresh deploy of this
+  // whole system from scratch would have been missing the Trainer's entire schema,
+  // breaking Train completely with no clear error pointing at why. Schema below
+  // copied exactly from `information_schema.columns` on the live DB, verified
+  // column-for-column before writing — not reconstructed from memory.
+  await q(`CREATE TABLE IF NOT EXISTS scenarios (
+    id text PRIMARY KEY,
+    title text,
+    type text,
+    target_role text,
+    target_categories text,
+    target_beliefs text,
+    difficulty_tier integer,
+    persona_json text,
+    situation_json text,
+    hidden_truth_json text,
+    layered_objections_json text,
+    scoring_focus_json text,
+    source_call_id integer,
+    author text,
+    version integer,
+    active integer,
+    created_at text)`);
+
+  await q(`CREATE TABLE IF NOT EXISTS practice_sessions (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    rep_name text,
+    rep_id integer,
+    scenario_id text,
+    source text,
+    difficulty_overrides_json text,
+    messages_json text,
+    started_at text,
+    ended_at text,
+    duration_sec integer,
+    status text,
+    overall_score real,
+    overall_score_adj real,
+    score_adjust_notes text,
+    category_scores text,
+    pass_fail text,
+    coaching_notes text,
+    quick_summary text,
+    strengths text,
+    improvements text,
+    golden_moments text,
+    model_used text,
+    rubric_version integer,
+    identified_type_correct integer,
+    created_at text)`);
+
+  // Train live signals (Jul 24): a live belief-tracker rail during a session, and a
+  // vs-last-attempt score delta on the scorecard.
+  // beliefs_covered_json: cumulative array of the 7 Beliefs touched so far, updated
+  // after each rep turn — powers the live rail. prior_attempt_score/score_delta:
+  // captured once at scoring time by looking up the rep's most recent prior SCORED
+  // session on the same scenario — powers the "vs last attempt" delta on the
+  // end-of-session scorecard.
+  await q(`ALTER TABLE practice_sessions ADD COLUMN IF NOT EXISTS beliefs_covered_json text`);
+  await q(`ALTER TABLE practice_sessions ADD COLUMN IF NOT EXISTS prior_attempt_score real`);
+  await q(`ALTER TABLE practice_sessions ADD COLUMN IF NOT EXISTS score_delta real`);
+
   console.log('[DB] Migration complete ✓ (Postgres)');
 }
 
