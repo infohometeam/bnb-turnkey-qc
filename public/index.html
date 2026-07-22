@@ -2971,7 +2971,12 @@ function ResourcesPage({initial}){
   const[active,setActive]=useState(null);
   const[content,setContent]=useState(null);
   const[loading,setLoading]=useState(false);
+  const[q,setQ]=useState("");
+  const[cat,setCat]=usePersisted("res.cat","ALL");
+  const[adding,setAdding]=useState(false);
+  const{data:rep}=useApi("/report?days=7");
   React.useEffect(()=>{fetch(`${API}/resources`).then(r=>r.json()).then(d=>setManuals(d.manuals||[])).catch(()=>setManuals([]))},[]);
+  function reloadManuals(){fetch(`${API}/resources`).then(r=>r.json()).then(d=>setManuals(d.manuals||[])).catch(()=>{})}
   async function open(id){setLoading(true);setActive(id);const r=await fetch(`${API}/resources/${id}`).then(r=>r.json()).catch(()=>null);setContent(r);setLoading(false);window.scrollTo(0,0)}
   React.useEffect(()=>{if(initial)open(initial)},[initial]);
   if(active&&content){return<div className="flex-col gap-16" style={{maxWidth:820}}>
@@ -2979,19 +2984,55 @@ function ResourcesPage({initial}){
     <div style={{display:"flex",alignItems:"center",gap:14}}><span style={{fontSize:32}}>{content.icon}</span><div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>{content.title}</h2><p style={{fontSize:12,color:"var(--t3)",marginTop:2}}>{content.subtitle}</p></div></div>
     <div className="card manual-body" style={{padding:"28px 32px"}} dangerouslySetInnerHTML={{__html:content.html}}/>
   </div>}
-  return<div className="flex-col gap-20" style={{maxWidth:820}}>
-    <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Resources</h2><p style={{fontSize:12,color:"var(--t3)",marginTop:4}}>The training manuals behind the rubric. Read these to understand what great looks like — then see it reflected in your scores.</p></div>
-    {!manuals&&<Skel/>}
-    <div className="grid" style={{gridTemplateColumns:"1fr 1fr",gap:14}}>
-      {(manuals||[]).map(m=><div key={m.id} onClick={()=>open(m.id)} className="card" style={{padding:22,cursor:"pointer",transition:"all .15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#4338ca"} onMouseLeave={e=>e.currentTarget.style.borderColor=""}>
-        <div style={{fontSize:30,marginBottom:10}}>{m.icon}</div>
-        <div style={{fontSize:15,fontWeight:800,color:"var(--t2)",marginBottom:4}}>{m.title}</div>
-        <div style={{fontSize:12,color:"var(--t3)",lineHeight:1.5}}>{m.subtitle}</div>
-        <div style={{marginTop:12}}><span className="badge" style={{background:"#1e1b4b",color:"#a5b4fc",border:"1px solid #4338ca55",fontSize:9}}>{CL[m.category]||m.category}</span></div>
-      </div>)}
+  return<div className="flex-col gap-20">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
+      <div style={{flex:1,minWidth:260}}><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Resources</h2><p style={{fontSize:12,color:"var(--t3)",marginTop:4}}>The training manuals behind the rubric. Read these to understand what great looks like — then see it reflected in your scores.</p></div>
+      <button className="btn btn-primary" onClick={()=>setAdding(true)}>＋ Add manual</button>
     </div>
-    {loading&&<div style={{padding:20,textAlign:"center",color:"#374151"}}>Opening…</div>}
+    {!manuals&&<Skel/>}
+    {manuals&&(()=>{
+      const weak=rep?.team_categories?.[0];
+      const recId=weak?playbookFor(CL[weak.category]||weak.category):null;
+      const rec=recId&&(manuals||[]).find(m=>m.id===recId);
+      const ql=q.trim().toLowerCase();
+      const cats=[...new Set((manuals||[]).map(m=>m.category).filter(Boolean))];
+      const shown=(manuals||[]).filter(m=>(cat==="ALL"||m.category===cat)&&(!ql||(m.title+" "+(m.subtitle||"")).toLowerCase().includes(ql)));
+      const groups={};shown.forEach(m=>{(groups[m.category]=groups[m.category]||[]).push(m)});
+      const card=(m,hl)=><div key={m.id} onClick={()=>open(m.id)} className="card" style={{padding:20,cursor:"pointer",transition:"border-color .15s",borderColor:hl?"#5c4a12":undefined}} onMouseEnter={e=>e.currentTarget.style.borderColor="#4338ca"} onMouseLeave={e=>e.currentTarget.style.borderColor=hl?"#5c4a12":""}>
+        <div style={{fontSize:28,marginBottom:10}}>{m.icon}</div>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--t1)",marginBottom:4}}>{m.title}</div>
+        <div style={{fontSize:12,color:"var(--t3)",lineHeight:1.5,marginBottom:12}}>{m.subtitle}</div>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span className="badge" style={{background:"#1e1b4b",color:"#a5b4fc",border:"1px solid #4338ca55",fontSize:9}}>{CL[m.category]||m.category}</span>{hl&&<span className="mono" style={{fontSize:9,color:"#fbbf24"}}>◎ recommended</span>}</div>
+      </div>;
+      return<React.Fragment>
+        {rec&&<div className="card" onClick={()=>open(rec.id)} style={{padding:"16px 18px",background:"linear-gradient(150deg,#1a1305,#161b26)",borderColor:"#5c4a12",cursor:"pointer"}}>
+          <div className="lbl" style={{color:"#fbbf24",marginBottom:8}}>◎ Recommended for the team</div>
+          <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}><div style={{fontSize:26}}>{rec.icon}</div><div style={{flex:1,minWidth:200}}><div style={{fontSize:14,fontWeight:800,color:"var(--t1)"}}>{rec.title}</div><div style={{fontSize:12,color:"#c9a35a",marginTop:2}}>Weakest category the last 7 days is <b style={{color:"#fca5a5"}}>{CL[weak.category]||weak.category} ({weak.avg})</b> — start here.</div></div><span className="btn" style={{background:"#3a2a05",borderColor:"#a16207",color:"#fbbf24"}}>Read now →</span></div>
+        </div>}
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search manuals…" style={{flex:1,minWidth:200,fontSize:12,background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,padding:"8px 12px",color:"var(--t1)"}}/>
+          <button onClick={()=>setCat("ALL")} className="badge" style={{cursor:"pointer",padding:"6px 13px",background:cat==="ALL"?"#3a2a0522":"#151a24",border:`1px solid ${cat==="ALL"?"#f59e0b":"var(--border)"}`,color:cat==="ALL"?"#fbbf24":"var(--t3)"}}>All</button>
+          {cats.map(cc=><button key={cc} onClick={()=>setCat(cc)} className="badge" style={{cursor:"pointer",padding:"6px 13px",background:cat===cc?"#3a2a0522":"#151a24",border:`1px solid ${cat===cc?"#f59e0b":"var(--border)"}`,color:cat===cc?"#fbbf24":"var(--t3)"}}>{CL[cc]||cc}</button>)}
+        </div>
+        {shown.length===0?<div className="card" style={{padding:40,textAlign:"center",color:"var(--t3)"}}>No manuals match “{q}”.</div>:
+          Object.keys(groups).map(g=><div key={g}><div className="lbl" style={{margin:"6px 0 10px"}}>{CL[g]||g}</div><div className="grid" style={{gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:12}}>{groups[g].map(m=>card(m,rec&&m.id===rec.id))}</div></div>)}
+      </React.Fragment>;
+    })()}
+    {loading&&<div style={{padding:20,textAlign:"center",color:"var(--t3)"}}>Opening…</div>}
+    {adding&&<AddManualModal onClose={()=>setAdding(false)} onSaved={()=>{setAdding(false);reloadManuals();}}/>}
   </div>
+}
+function AddManualModal({onClose,onSaved}){
+  const[title,setTitle]=useState("");const[cat,setCat]=useState("skill");const[body,setBody]=useState("");const[saving,setSaving]=useState(false);const[err,setErr]=useState(null);
+  async function save(){if(!title.trim()||!body.trim())return;setSaving(true);setErr(null);try{await postApi("/resources",{title:title.trim(),category:cat,content:body.trim()});onSaved();}catch(e){setErr("Save failed — nothing was added.");setSaving(false);}}
+  return<div className="modal-overlay" onClick={onClose}><div className="modal" style={{maxWidth:560}} role="dialog" aria-modal="true" aria-label="Add manual" onClick={e=>e.stopPropagation()}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><div style={{fontSize:17,fontWeight:800}}>Add a manual</div><button className="btn btn-sm" onClick={onClose}>✕</button></div>
+    <div className="lbl" style={{marginBottom:6}}>Title</div><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Handling the price objection" style={{marginBottom:14}}/>
+    <div className="lbl" style={{marginBottom:6}}>Category</div><select value={cat} onChange={e=>setCat(e.target.value)} style={{marginBottom:14}}><option value="philosophy">Philosophy</option><option value="skill">Skill</option><option value="mechanics">Mechanics</option></select>
+    <div className="lbl" style={{marginBottom:6}}>Content</div><textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="Paste or write the manual. The bot drafts a summary and suggests the rubric criterion on save." style={{width:"100%",minHeight:150,background:"#0a0e16",border:"1px solid var(--border)",borderRadius:9,padding:12,fontSize:13,color:"var(--t1)",lineHeight:1.6,resize:"vertical",fontFamily:"inherit"}}/>
+    {err&&<div style={{fontSize:12,color:"#f87171",marginTop:10}}>{err}</div>}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:16}}><span className="mono" style={{fontSize:10,color:"var(--t4)"}}>🤖 Bot drafts summary + suggests criterion on save</span><div style={{display:"flex",gap:8}}><button className="btn" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={save} disabled={saving||!title.trim()||!body.trim()}>{saving?"Saving…":"Add manual"}</button></div></div>
+  </div></div>;
 }
 
 // Maps a score deduction to the training manual that fixes it (Resources tab).
