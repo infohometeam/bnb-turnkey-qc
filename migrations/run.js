@@ -373,6 +373,24 @@ async function migrate() {
              WHERE tag_group IN ('A_NOT_CLOSEABLE','B_REAL_ATTEMPT','D_OUTCOME_POSITIVE','F_MANUAL_EXCLUSION')
                AND is_primary_outcome IS DISTINCT FROM true`);
 
+  // Custom training manuals (Francis, Jul 24 — "Add manual" backend). Deliberately
+  // SEPARATE from the 5 built-in manuals in src/services/resources.js, which stay
+  // static/code-defined — those are Sam's real .docx-sourced training docs and
+  // should never be silently editable through an admin UI mistake. This table is
+  // purely additive: only NEW manuals created here live in the DB; the built-in 5
+  // are merged in at read time (see GET /resources in api.js).
+  await q(`CREATE TABLE IF NOT EXISTS manuals (
+    id text PRIMARY KEY,
+    title text NOT NULL,
+    icon text DEFAULT '📄',
+    subtitle text,
+    category text,
+    html text NOT NULL,
+    chars integer,
+    active boolean DEFAULT true,
+    created_by text,
+    created_at text)`);
+
   console.log('[DB] Migration complete ✓ (Postgres)');
 }
 
