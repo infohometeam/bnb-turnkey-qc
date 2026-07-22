@@ -207,6 +207,17 @@ async function migrate() {
     // Populated at score time and by the "re-look at moments" re-extract pass.
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS tough_moments text`,
 
+    // AI-judged guidance-style verdict (coach vs. convince) and alt-investment
+    // handling — complements the deterministic proxy already in Call Mechanics
+    // (computeCallMechanics/topicDetect). These need real judgment from reading
+    // the transcript, so unlike the deterministic layer they're stored at score
+    // time, not recomputed live. missed_opportunity itself needs NO new column —
+    // it flows through the existing call_tags/call_tag_assignments system.
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS guidance_style_verdict integer`,
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS guidance_style_notes text`,
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS alt_investment_handling text`,
+    `ALTER TABLE calls ADD COLUMN IF NOT EXISTS alt_investment_handling_reason text`,
+
     // One-line scannable summary (max ~120 chars) for dense table rows in the
     // Calls list. Distinct from quick_summary (2-3 sentences, shown on detail).
     `ALTER TABLE calls ADD COLUMN IF NOT EXISTS list_summary text`,
