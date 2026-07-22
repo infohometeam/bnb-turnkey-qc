@@ -959,13 +959,21 @@ router.post('/calls/:id/tag', express.json(), async (req, res) => {
     if (!tag) return res.status(400).json({ error: 'tag is required' });
     const t = (await q('SELECT * FROM call_tags WHERE key=? AND active=true', [tag])).rows[0];
     if (!t) return res.status(400).json({ error: `Unknown tag "${tag}"` });
+    // EXCLUDED_OTHER has no inherent meaning on its own — unlike DISQUALIFIED etc.,
+    // the reason IS the content, so it's required rather than optional.
+    if (t.tag_group === 'F_MANUAL_EXCLUSION' && !String(reason || '').trim()) {
+      return res.status(400).json({ error: 'A reason is required when applying this tag.' });
+    }
     const ts = new Date().toISOString().replace('T',' ').slice(0,19);
     const who = by || 'Sam';
-    if (t.tag_group === 'A_NOT_CLOSEABLE' || t.tag_group === 'B_REAL_ATTEMPT') {
+    // These groups are mutually exclusive "what kind of call was this" answers — a
+    // call can't be both Disqualified AND Hard No, and can't be both a real Turnkey
+    // attempt AND "not a Turnkey call at all" / "excluded for some other reason".
+    if (['A_NOT_CLOSEABLE', 'B_REAL_ATTEMPT', 'F_MANUAL_EXCLUSION'].includes(t.tag_group)) {
       await q(
         `DELETE FROM call_tag_assignments
          WHERE call_id=? AND tag_key <> ?
-           AND tag_key IN (SELECT key FROM call_tags WHERE tag_group IN ('A_NOT_CLOSEABLE','B_REAL_ATTEMPT'))`,
+           AND tag_key IN (SELECT key FROM call_tags WHERE tag_group IN ('A_NOT_CLOSEABLE','B_REAL_ATTEMPT','F_MANUAL_EXCLUSION'))`,
         [callId, tag]);
     }
     await q(
@@ -2648,29 +2656,17 @@ router.get('/report', async (req, res) => {
     }) : null;
     const setters = digestRows.filter(c => c.role === 'Setter');
     const closers = digestRows.filter(c => c.role === 'Closer');
-    // Untagged wrong-business-unit filter for Best/Toughest selection only. Detects
-    // calls that read like they were NEVER about Turnkey (e.g. a Legacy/legal matter)
-    // even though nobody has manually applied BNB_LEGACY yet. Deliberately soft-scoped:
-    // this only removes a call from CANDIDACY for Best/Toughest in this digest — it
-    // never touches overall_score_adj, never writes a tag, never affects a rep's
-    // average. That stays behind human-confirmed tags (bot suggests, human confirms).
-    // Deliberately conservative (needs 3+ distinct legal-topic phrases AND zero
-    // Turnkey-topic language) — same "ambiguous → leave it alone" bias as the tagging
-    // spec's DQ test, because a false suppression here just means a genuinely good
-    // call doesn't get featured, which is low-stakes; a false EXCLUSION from a score
-    // would not be.
-    const LEGAL_TOPIC_RE = /\b(estate planning|living trust|revocable trust|irrevocable trust|last will and testament|power of attorney|probate|elder law|asset protection trust|legacy planning|trust document|law firm|attorney fees|legal services|legal counsel)\b/gi;
-    const TURNKEY_TOPIC_RE = /\b(short-?term rental|\bstr\b|airbnb|turnkey|cash ?flow|rental income|occupancy|investment property|property management|vacation rental|booking)\b/gi;
-    const looksOffTopic = (c) => {
-      const t = c.transcript;
-      if (!t) return false;
-      const legal = (t.match(LEGAL_TOPIC_RE) || []).length;
-      const turnkey = (t.match(TURNKEY_TOPIC_RE) || []).length;
-      return legal >= 3 && turnkey === 0;
-    };
+    // Untagged wrong-business-unit filter for Best/Toughest selection only. See
+    // src/services/topicDetect.js for the detection logic and validation notes —
+    // shared with the scoring pipeline's auto-suggest so the two never drift apart.
+    // Scope is intentionally narrow: this only removes a call from CANDIDACY for
+    // Best/Toughest in this digest — it never touches overall_score_adj, never
+    // writes a tag, never affects a rep's average. That stays behind human-confirmed
+    // tags (bot suggests, human confirms).
+    const { looksOffTopic } = require('../services/topicDetect');
     const filterOffTopic = (list) => {
       const kept = [], suppressed = [];
-      for (const c of list) (looksOffTopic(c) ? suppressed : kept).push(c);
+      for (const c of list) (looksOffTopic(c.transcript) ? suppressed : kept).push(c);
       if (suppressed.length) console.log(`[Digest] Suppressed ${suppressed.length} likely off-topic call(s) from Best/Toughest candidacy: ${suppressed.map(c => c.id).join(',')}`);
       return kept;
     };
