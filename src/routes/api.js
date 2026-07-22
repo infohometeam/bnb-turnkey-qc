@@ -967,13 +967,13 @@ router.post('/calls/:id/tag', express.json(), async (req, res) => {
     const ts = new Date().toISOString().replace('T',' ').slice(0,19);
     const who = by || 'Sam';
     // These groups are mutually exclusive "what kind of call was this" answers — a
-    // call can't be both Disqualified AND Hard No, and can't be both a real Turnkey
-    // attempt AND "not a Turnkey call at all" / "excluded for some other reason".
-    if (['A_NOT_CLOSEABLE', 'B_REAL_ATTEMPT', 'F_MANUAL_EXCLUSION'].includes(t.tag_group)) {
+    // call can't be both Disqualified AND Hard No, can't be both Closed Won AND
+    // Hard No, and can't be a real Turnkey attempt AND "not a Turnkey call at all".
+    if (['A_NOT_CLOSEABLE', 'B_REAL_ATTEMPT', 'D_OUTCOME_POSITIVE', 'F_MANUAL_EXCLUSION'].includes(t.tag_group)) {
       await q(
         `DELETE FROM call_tag_assignments
          WHERE call_id=? AND tag_key <> ?
-           AND tag_key IN (SELECT key FROM call_tags WHERE tag_group IN ('A_NOT_CLOSEABLE','B_REAL_ATTEMPT','F_MANUAL_EXCLUSION'))`,
+           AND tag_key IN (SELECT key FROM call_tags WHERE tag_group IN ('A_NOT_CLOSEABLE','B_REAL_ATTEMPT','D_OUTCOME_POSITIVE','F_MANUAL_EXCLUSION'))`,
         [callId, tag]);
     }
     await q(
