@@ -13,6 +13,15 @@ services:
         value: claude
       - key: ANTHROPIC_API_KEY
         sync: false
+      # ── Single-credential admin gate (Jul 24) — NOT full multi-user auth.
+      # ADMIN_PASSWORD: the one shared credential that unlocks mutating actions.
+      # AUTH_SECRET: random signing key for admin session tokens — pick a long
+      # random string, keep it secret, changing it instantly invalidates all
+      # existing admin sessions (a built-in "log everyone out" switch).
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
       - key: CLAUDE_MODEL
         value: claude-haiku-4-5-20251001
       # Token pricing per MILLION tokens — drives the in-app cost figure.
