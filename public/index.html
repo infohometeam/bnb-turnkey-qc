@@ -1945,109 +1945,70 @@ function RepForm({editing,prefill,onClose,onSaved}){
 function MyProgressPage(){
   const{data:reps}=useApi("/reps");
   const[repId,setRepId]=useState("");
+  const[tab,setTab]=usePersisted("mp.tab","overview");
   const{data}=useApi(repId?`/reps/${repId}/progress`:null,[repId]);
   const{data:ins}=useApi(repId?`/reps/${repId}/insights`:null,[repId]);
+  const{data:report}=useApi("/report?days=30");
   React.useEffect(()=>{if(reps&&reps.length&&!repId)setRepId(String(reps[0].id));},[reps]);
-
-  const CAT_LABELS={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",frame_control:"Frame/Control",objections_close:"Objections & Close"};
-  return<div className="flex-col gap-20" style={{maxWidth:820}}>
+  const repName=data?.rep?.name;
+  const{data:allCalls}=useApi(repName?`/calls?rep=${encodeURIComponent(repName)}&limit=100`:null,[repName]);
+  const CL2={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",frame_control:"Frame / Control",objections_close:"Objections & Close"};
+  const teamCat={};(report?.team_categories||[]).forEach(c=>{teamCat[c.category]=c.avg;});
+  const mkPts=(arr,W,H,pad,key)=>{const a=(arr||[]).map(x=>Number(key?x[key]:x)).filter(v=>!isNaN(v));if(a.length<2)return null;const mn=Math.min(...a),mx=Math.max(...a),rng=(mx-mn)||1;return a.map((v,i)=>((i/(a.length-1))*W).toFixed(1)+","+(H-((v-mn)/rng)*(H-pad*2)-pad).toFixed(1)).join(" ");};
+  return<div className="flex-col gap-16">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
-      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>My Progress</h2>
-        <div style={{fontSize:13,color:"var(--t3)",marginTop:2}}>Track your scores and see where you're improving.</div></div>
-      {reps&&<select value={repId} onChange={e=>setRepId(e.target.value)} style={{padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,color:"var(--t1)",fontSize:13}}>
-        {reps.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
-      </select>}
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>My Progress</h2><div style={{fontSize:13,color:"var(--t3)",marginTop:2}}>Where you shine and what to sharpen.</div></div>
+      {reps&&<span style={{fontSize:12,color:"var(--t2)",display:"flex",alignItems:"center",gap:8}}>Viewing<select value={repId} onChange={e=>setRepId(e.target.value)} style={{padding:"7px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,color:"var(--t1)",fontSize:13}}>{reps.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></span>}
     </div>
-
-    {!data?<Skel/>:
-     data.stats.scored==0?<div className="card" style={{padding:40,textAlign:"center",color:"var(--t2)"}}>No scored calls yet for {data.rep.name}.</div>:<>
-      <div className="grid grid-stats">
-        <div className="card stat-card"><div className="stat-label">Scored calls</div><div style={{fontSize:26,fontWeight:900,color:"var(--t2)"}}>{data.stats.scored}</div></div>
-        <div className="card stat-card"><div className="stat-label">Avg score</div><div style={{fontSize:26,fontWeight:900,color:sClr(data.stats.avg_adj)}}>{data.stats.avg_adj}</div></div>
-        <div className="card stat-card"><div className="stat-label">Avg talk %</div><div style={{fontSize:26,fontWeight:900,color:"var(--t2)"}}>{data.stats.avg_talk}%</div></div>
+    {!data||!data.stats?<Skel/>:data.stats.scored==0?<div className="card" style={{padding:40,textAlign:"center",color:"var(--t2)"}}>No scored calls yet for {data.rep?.name||"this rep"}.</div>:(()=>{
+      const trendVals=data.trend.map(t=>t.avg_score);
+      const delta=trendVals.length>1?Math.round((trendVals[trendVals.length-1]-trendVals[0])*10)/10:null;
+      const railSpark=mkPts(data.trend,260,44,4,"avg_score");
+      const lowCat=[...data.categories].sort((a,b)=>a.avg-b.avg)[0];
+      return<div style={{display:"grid",gridTemplateColumns:"320px minmax(0,1fr)",gap:16,alignItems:"start"}}>
+      <aside style={{background:"#10141d",border:"1px solid var(--border)",borderRadius:14,padding:20,display:"flex",flexDirection:"column",gap:16}}>
+        <div className="card" style={{padding:18,textAlign:"center",background:"linear-gradient(160deg,#1c2333,#161b26)",borderColor:"#3a4256"}}>
+          <div className="stat-label" style={{justifyContent:"center"}}>Your avg score</div>
+          <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:8,margin:"4px 0"}}><div className="slab" style={{fontSize:50,color:sClr(data.stats.avg_adj),lineHeight:.9}}>{data.stats.avg_adj}</div><div style={{fontFamily:"var(--m)",fontSize:11,color:"var(--t3)",paddingBottom:7}}>/10</div></div>
+          {delta!=null&&<div style={{fontFamily:"var(--m)",fontSize:10,color:delta>0?"#34d399":delta<0?"#f87171":"var(--t3)"}}>{delta>0?"▲ +":delta<0?"▼ ":"– "}{delta?Math.abs(delta):""} over period</div>}
+          {railSpark&&<svg viewBox="0 0 260 44" preserveAspectRatio="none" style={{width:"100%",marginTop:10,height:44}}><polyline points={railSpark} fill="none" stroke={sClr(data.stats.avg_adj)} strokeWidth="2" vectorEffect="non-scaling-stroke"/></svg>}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div className="card" style={{padding:"11px 13px"}}><div className="stat-label">Scored</div><div className="slab" style={{fontSize:18,marginTop:2}}>{data.stats.scored}</div></div>
+          <div className="card" style={{padding:"11px 13px"}}><div className="stat-label">Agent talk</div><div className="slab" style={{fontSize:18,color:data.stats.avg_talk>70?"#ef4444":"#34d399",marginTop:2}}>{data.stats.avg_talk}%</div></div>
+        </div>
+        {data.categories.length>0&&<div><div className="section-head" style={{marginBottom:10}}>You vs team</div><div style={{display:"flex",flexDirection:"column",gap:10}}>{data.categories.map(c=>{const tv=teamCat[c.category];const above=tv==null||c.avg>=tv;return<div key={c.category}><div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}><span style={{color:"var(--t2)"}}>{CL2[c.category]||c.category}</span><span style={{fontFamily:"var(--m)",color:above?"#34d399":"#f59e0b"}}>{c.avg}{tv!=null&&<span style={{color:"var(--t4)"}}> / {Math.round(tv*10)/10}</span>}</span></div><div style={{position:"relative",height:5,background:"#232936",borderRadius:3}}>{tv!=null&&<div style={{position:"absolute",height:5,width:(tv*10)+"%",background:"#3a4250",borderRadius:3}}/>}<div style={{position:"absolute",height:5,width:(c.avg*10)+"%",background:above?"#818cf8":"#f59e0b",borderRadius:3}}/></div></div>})}</div></div>}
+        {lowCat&&<div className="card" style={{padding:"13px 15px",borderColor:"#3a2f0f",background:"#171410",marginTop:"auto"}}><div className="stat-label" style={{color:"#fb923c"}}>◎ Focus this week</div><div style={{fontSize:12,color:"#eecfa3",lineHeight:1.5,marginTop:6}}>Your lowest area is <b>{CL2[lowCat.category]||lowCat.category}</b> ({lowCat.avg}). Sharpen it on every call.</div></div>}
+      </aside>
+      <div className="card" style={{padding:0,overflow:"hidden"}}>
+        <div style={{display:"flex",padding:"6px 14px 0",borderBottom:"1px solid var(--border)",flexWrap:"wrap",gap:2}} role="tablist">
+          {[["overview","Overview"],["growth","Strengths & Growth"],["habits","Habits"],["deductions","Where you lose points"],["allcalls","All Calls"+(allCalls?.total!=null?" "+allCalls.total:"")]].map(([k,l])=><button key={k} role="tab" aria-selected={tab===k} onClick={()=>setTab(k)} style={{padding:"10px 15px",background:"transparent",border:"none",borderBottom:tab===k?"2px solid #818cf8":"2px solid transparent",color:tab===k?"#a5b4fc":"var(--t3)",fontWeight:tab===k?800:600,fontSize:12.5,cursor:"pointer",marginBottom:-1,whiteSpace:"nowrap"}}>{l}</button>)}
+        </div>
+        <div style={{padding:20,display:"flex",flexDirection:"column",gap:16}}>
+          {tab==="overview"&&<React.Fragment>
+            {ins&&(ins.best_call||ins.worst_call)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+              {ins.best_call&&<div className="card" style={{padding:18,borderColor:"#4338ca",background:"#0f0f28",cursor:"pointer"}} onClick={()=>goTo("calls",ins.best_call.id)}><div className="mono" style={{fontSize:10,fontWeight:700,color:"#a5b4fc",letterSpacing:1,marginBottom:8}}>🏆 BEST CALL THIS WEEK</div><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}><span className="slab" style={{fontSize:22,color:sClr(ins.best_call.score)}}>{ins.best_call.score}</span><span style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{ins.best_call.client_name}</span></div><div style={{fontSize:11,color:"var(--t2)",lineHeight:1.6}}>{(ins.best_call.summary||"").slice(0,130)}…</div><div style={{fontSize:11,fontWeight:700,color:"#818cf8",marginTop:8}}>Study what worked →</div></div>}
+              {ins.worst_call&&<div className="card" style={{padding:18,borderColor:"#9f1239",background:"#1a0a10",cursor:"pointer"}} onClick={()=>goTo("calls",ins.worst_call.id)}><div className="mono" style={{fontSize:10,fontWeight:700,color:"#fb7185",letterSpacing:1,marginBottom:8}}>🧗 TOUGHEST CALL THIS WEEK</div><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}><span className="slab" style={{fontSize:22,color:sClr(ins.worst_call.score)}}>{ins.worst_call.score}</span><span style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{ins.worst_call.client_name}</span></div><div style={{fontSize:11,color:"var(--t2)",lineHeight:1.6}}>{(ins.worst_call.summary||"").slice(0,130)}…</div><div style={{fontSize:11,fontWeight:700,color:"#818cf8",marginTop:8}}>Review what to change →</div></div>}
+            </div>}
+            <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr",gap:14}}>
+              {data.trend.length>1&&<div className="card" style={{padding:18}}><div className="section-head">Score trend</div><TrendChart data={data.trend.map(t=>({period_date:t.period,avg_score:t.avg_score,scored:t.calls}))}/></div>}
+              {lowCat&&<div className="card" style={{padding:18,borderColor:"#3730a3",background:"#0f0f28"}}><div className="mono" style={{fontSize:10,fontWeight:700,color:"#a5b4fc",letterSpacing:1,marginBottom:8}}>📚 RECOMMENDED FOR YOU</div><div style={{fontSize:14,fontWeight:800,marginBottom:5}}>Sharpen {CL2[lowCat.category]||lowCat.category}</div><div style={{fontSize:11,color:"var(--t2)",lineHeight:1.6,marginBottom:10}}>Because it's your lowest category ({lowCat.avg}).</div><button className="btn btn-sm" onClick={()=>goTo("resources")} style={{fontSize:11}}>Open Resources →</button></div>}
+            </div>
+            <div className="card" style={{padding:18}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div className="section-head" style={{marginBottom:0}}>Recent calls</div><button className="btn btn-sm" style={{fontSize:10}} onClick={()=>setTab("allcalls")}>All calls →</button></div>{data.recent.map(c=><div key={c.id} onClick={()=>goTo("calls",c.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 8px",margin:"0 -8px",borderRadius:9,cursor:"pointer",borderBottom:"1px solid var(--bg)"}} onMouseEnter={e=>e.currentTarget.style.background="#151a24"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><span className="slab" style={{fontSize:15,color:sClr(c.overall_score_adj),width:30}}>{c.overall_score_adj}</span><div style={{flex:1,minWidth:0}}><div style={{fontSize:12,color:"var(--t1)",fontWeight:600}}>{c.client_name||"—"}</div><div style={{fontSize:11,color:"var(--t3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.list_summary||c.quick_summary||""}</div></div><span className="mono" style={{fontSize:10,color:"var(--t4)"}}>{fmt(c.received_at)}</span><span style={{color:"#818cf8"}}>→</span></div>)}</div>
+          </React.Fragment>}
+          {tab==="growth"&&(ins?<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div className="card" style={{padding:20,borderColor:"#166534"}}><div className="section-head" style={{color:"#4ade80",marginBottom:4}}>What you do well</div><div style={{fontSize:10,color:"var(--t4)",marginBottom:12}}>Recurring across your last {ins.based_on} calls</div>{(ins.strengths||[]).map((x,i)=><div key={i} style={{fontSize:13,color:"var(--t2)",marginBottom:12,lineHeight:1.6,display:"flex",gap:10}}><span style={{color:"#4ade80",fontWeight:800,fontFamily:"var(--m)",flexShrink:0}}>{x.count}×</span><span>{x.text}</span></div>)}{!(ins.strengths||[]).length&&<div style={{fontSize:12,color:"var(--t4)"}}>Not enough data yet.</div>}</div>
+            <div className="card" style={{padding:20,borderColor:"#92400e"}}><div className="section-head" style={{color:"#f59e0b",marginBottom:4}}>Your growth areas</div><div style={{fontSize:10,color:"var(--t4)",marginBottom:12}}>Your most repeated gaps — with the fix</div>{(ins.pain_points||[]).map((x,i)=><div key={i} style={{fontSize:13,color:"var(--t2)",marginBottom:12,lineHeight:1.6,display:"flex",gap:10}}><span style={{color:"#f59e0b",fontWeight:800,fontFamily:"var(--m)",flexShrink:0}}>{x.count}×</span><span>{x.text}</span></div>)}{!(ins.pain_points||[]).length&&<div style={{fontSize:12,color:"var(--t4)"}}>Not enough data yet.</div>}</div>
+          </div>:<Skel/>)}
+          {tab==="habits"&&(repId?<HabitsCard repId={repId}/>:null)}
+          {tab==="deductions"&&<div className="card" style={{padding:20}}><div className="section-head" style={{marginBottom:4}}>Where you lose points most</div><div style={{fontSize:10,color:"var(--t4)",marginBottom:14}}>Fix these and your score moves fastest.</div>{(ins?.top_deductions||[]).map((d,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<(ins.top_deductions.length-1)?"1px solid var(--border)":"none"}}><span style={{fontSize:13,color:"var(--t2)"}}>{d.label}</span><span style={{fontSize:13,fontWeight:800,color:"#f87171",fontFamily:"var(--m)"}}>{d.count}×</span></div>)}{!(ins?.top_deductions||[]).length&&<div style={{fontSize:12,color:"var(--t4)"}}>No recurring deductions — nice.</div>}</div>}
+          {tab==="allcalls"&&(!allCalls?<Skel/>:<div className="card" style={{overflow:"hidden"}}><div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",fontSize:12,fontWeight:700,color:"var(--t2)"}}>All calls · {allCalls.total}</div>{(allCalls.calls||[]).map(c=><div key={c.id} onClick={()=>goTo("calls",c.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",borderBottom:"1px solid var(--bg)",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#151a24"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><span className="slab" style={{fontSize:14,color:sClr(c.overall_score_adj),width:30}}>{c.overall_score_adj??"—"}</span><div style={{flex:1,minWidth:0}}><div style={{fontSize:12.5,color:"var(--t1)",fontWeight:600}}>{c.client_name||"—"}</div><div style={{fontSize:11,color:"var(--t3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.list_summary||c.quick_summary||""}</div></div><span className="mono" style={{fontSize:10,color:"var(--t4)"}}>{fmt(c.received_at)}</span></div>)}</div>)}
+        </div>
       </div>
-
-      {/* Trend over time */}
-      {data.trend.length>1&&<div className="card" style={{padding:20}}>
-        <div className="section-head" style={{marginBottom:14}}>Score trend (weekly)</div>
-        <TrendChart data={data.trend.map(t=>({period_date:t.period,avg_score:t.avg_score,scored:t.calls}))}/>
-      </div>}
-
-      {/* Category breakdown */}
-      {data.categories.length>0&&<div className="card" style={{padding:20}}>
-        <div className="section-head" style={{marginBottom:14}}>Your category averages</div>
-        {data.categories.map(c=><div key={c.category} style={{marginBottom:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
-            <span style={{color:"var(--t2)"}}>{CAT_LABELS[c.category]||c.category}</span>
-            <span style={{fontFamily:"var(--m)",fontWeight:700,color:sClr(c.avg)}}>{c.avg}</span></div>
-          <div style={{height:6,background:"var(--bg)",borderRadius:3,overflow:"hidden"}}><div style={{width:`${c.avg*10}%`,height:"100%",background:sClr(c.avg)}}/></div>
-        </div>)}
-      </div>}
-
-      {/* What you're good at / what to work on */}
-      {repId&&<HabitsCard repId={repId}/>}
-      {ins&&(ins.strengths?.length>0||ins.pain_points?.length>0)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-        {ins.strengths?.length>0&&<div className="card" style={{padding:20,borderColor:"#166534"}}>
-          <div className="section-head" style={{color:"#4ade80",marginBottom:4}}>What you do well</div>
-          <div style={{fontSize:10,color:"var(--t4)",marginBottom:10}}>Recurring across your last {ins.based_on} calls</div>
-          {ins.strengths.map((x,i)=><div key={i} style={{fontSize:12,color:"var(--t2)",marginBottom:8,lineHeight:1.5,display:"flex",gap:8}}>
-            <span style={{color:"#4ade80",fontWeight:800,fontFamily:"var(--m)",flexShrink:0}}>{x.count}×</span><span>{x.text}</span></div>)}
-        </div>}
-        {ins.pain_points?.length>0&&<div className="card" style={{padding:20,borderColor:"#92400e"}}>
-          <div className="section-head" style={{color:"#f59e0b",marginBottom:4}}>What to work on</div>
-          <div style={{fontSize:10,color:"var(--t4)",marginBottom:10}}>Your most repeated gaps</div>
-          {ins.pain_points.map((x,i)=><div key={i} style={{fontSize:12,color:"var(--t2)",marginBottom:8,lineHeight:1.5,display:"flex",gap:8}}>
-            <span style={{color:"#f59e0b",fontWeight:800,fontFamily:"var(--m)",flexShrink:0}}>{x.count}×</span><span>{x.text}</span></div>)}
-        </div>}
-      </div>}
-
-      {/* Most common deductions — the concrete, fixable ones */}
-      {ins?.top_deductions?.length>0&&<div className="card" style={{padding:20}}>
-        <div className="section-head" style={{marginBottom:4}}>Where you lose points most</div>
-        <div style={{fontSize:10,color:"var(--t4)",marginBottom:10}}>Fix these and your score moves fastest.</div>
-        {ins.top_deductions.map((d,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:i<ins.top_deductions.length-1?"1px solid var(--card)":"none"}}>
-          <span style={{fontSize:12,color:"var(--t2)"}}>{d.label}</span>
-          <span style={{fontSize:12,fontWeight:800,color:"#f87171",fontFamily:"var(--m)"}}>{d.count}× </span>
-        </div>)}
-      </div>}
-
-      {/* Best & worst call — learn from both */}
-      {ins&&(ins.best_call||ins.worst_call)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-        {ins.best_call&&<div className="card" style={{padding:18,borderColor:"#166534",cursor:"pointer"}} onClick={()=>goTo("calls",ins.best_call.id)}>
-          <div className="section-head" style={{color:"#4ade80",marginBottom:8}}>★ Your best call</div>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-            <span style={{fontSize:22,fontWeight:900,color:sClr(ins.best_call.score),fontFamily:"var(--m)"}}>{ins.best_call.score}</span>
-            <span style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{ins.best_call.client_name}</span>
-          </div>
-          <div style={{fontSize:11,color:"var(--t2)",lineHeight:1.6}}>{(ins.best_call.summary||"").slice(0,140)}…</div>
-          <div style={{fontSize:10,color:"#4ade80",marginTop:6}}>Study what you did right →</div>
-        </div>}
-        {ins.worst_call&&<div className="card" style={{padding:18,borderColor:"#7f1d1d",cursor:"pointer"}} onClick={()=>goTo("calls",ins.worst_call.id)}>
-          <div className="section-head" style={{color:"#f87171",marginBottom:8}}>Your toughest call</div>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-            <span style={{fontSize:22,fontWeight:900,color:sClr(ins.worst_call.score),fontFamily:"var(--m)"}}>{ins.worst_call.score}</span>
-            <span style={{fontSize:13,fontWeight:700,color:"var(--t2)"}}>{ins.worst_call.client_name}</span>
-          </div>
-          <div style={{fontSize:11,color:"var(--t2)",lineHeight:1.6}}>{(ins.worst_call.summary||"").slice(0,140)}…</div>
-          <div style={{fontSize:10,color:"#f87171",marginTop:6}}>Review what to change →</div>
-        </div>}
-      </div>}
-
-      {/* Recent calls */}
-      <div className="card" style={{overflow:"hidden"}}>
-        <div style={{padding:"12px 18px",borderBottom:"1px solid var(--card)",fontSize:12,fontWeight:700,color:"var(--t2)",letterSpacing:.5}}>RECENT CALLS</div>
-        {data.recent.map(c=><div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 18px",borderBottom:"1px solid var(--bg)"}}>
-          <span style={{fontSize:13,color:"var(--t2)"}}>{c.client_name||"—"}</span>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:11,color:"var(--t4)"}}>{fmt(c.received_at)}</span>
-            <span style={{fontFamily:"var(--m)",fontWeight:800,color:sClr(c.overall_score_adj)}}>{c.overall_score_adj}</span>
-          </div>
-        </div>)}
-      </div>
-    </>}
+      </div>;
+    })()}
   </div>;
 }
-
 function CalibrationPage(){
   const{data}=useApi("/calibration");
   const{data:dw}=useApi("/deduction-weights");
@@ -3045,20 +3006,21 @@ const NAV_GROUPS=[
   {title:"Team",ids:["team","queue"]},               // daily-use — kept ≤2 clicks (Main constraint Jul 20)
   {title:"System",ids:["health","calibration","stitch","export","about"]},  // rarely-touched — collapsed by default
 ];
-const NAV_DEFAULT_COLLAPSED={System:true};
+const NAV_DEFAULT_COLLAPSED=Object.fromEntries(NAV_GROUPS.map(g=>[g.title,true]));  // 1c: all groups start collapsed
 function loadNavCollapsed(){try{const s=localStorage.getItem("qc_nav_collapsed");return s?(JSON.parse(s)||{}):{...NAV_DEFAULT_COLLAPSED};}catch(e){return{...NAV_DEFAULT_COLLAPSED};}}
 function NavList({pg,onNav}){
   const[collapsed,setCollapsed]=useState(loadNavCollapsed);
   const activeGroup=NAV_GROUPS.find(g=>g.ids.includes(pg))?.title;
-  function toggle(title){setCollapsed(c=>{const n={...c,[title]:!c[title]};try{localStorage.setItem("qc_nav_collapsed",JSON.stringify(n));}catch(e){}return n;});}
+  function toggle(title){setCollapsed(c=>{const opening=c[title];const n={};NAV_GROUPS.forEach(g=>{n[g.title]=g.title===title?!c[title]:true;});try{localStorage.setItem("qc_nav_collapsed",JSON.stringify(n));}catch(e){}return n;});}
   return<nav style={{flex:1,padding:"10px 6px",display:"flex",flexDirection:"column",gap:2,overflowY:"auto"}}>
+    <div style={{margin:"0 4px 10px",padding:"8px 10px",border:"1px dashed #1f3a44",borderRadius:9,background:"#0a1519"}}><div className="mono" style={{fontSize:9,fontWeight:800,letterSpacing:.8,color:"#3f6b76"}}>★ PINNED · COMING SOON</div><div style={{fontSize:9,color:"#2f5560",fontFamily:"var(--m)",marginTop:4}}>right-click any tab → Pin</div></div>
     {NAV_GROUPS.map(g=>{
       const open=!collapsed[g.title]||g.title===activeGroup;  // active group is always visible
       return<div key={g.title} style={{marginBottom:6}}>
         <button onClick={()=>toggle(g.title)} aria-expanded={open} aria-label={`${g.title} section`} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",
           background:"transparent",border:"none",cursor:"pointer",padding:"6px 12px 4px",color:"#5b6472",
           fontSize:10,fontWeight:800,letterSpacing:.8,textTransform:"uppercase"}}>
-          <span>{g.title}</span><span style={{fontSize:9,color:"#3b4250"}}>{open?"▾":"▸"}</span>
+          <span>{g.title}</span><span style={{fontSize:9,color:open?"#818cf8":"#3b4250",fontFamily:"var(--m)"}}>{open?"▾":"▸"} {g.ids.length}</span>
         </button>
         {open&&g.ids.map(id=>{const n=NAV_BY_ID[id];if(!n)return null;return<button key={n.id} className={pg===n.id?"active":""} aria-label={n.label} aria-current={pg===n.id?"page":undefined}
           onClick={()=>onNav(n.id)} style={pg===n.id?{color:n.color,background:`${n.color}22`,borderLeftColor:n.color}:{}}>
