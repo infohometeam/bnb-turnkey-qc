@@ -154,6 +154,17 @@ async function migrate() {
       color text DEFAULT '#64748b',
       sort_order integer DEFAULT 100,
       active boolean DEFAULT true)`,
+    // A tag marked TRUE here describes "what kind of call was this, primarily" —
+    // mutually exclusive with every other primary-outcome tag (can't be both
+    // Disqualified and Hard No). Group C (routing/cross-sell) and E (missed-
+    // opportunity coaching flags) are deliberately NOT primary — they're additive
+    // signals that coexist with whatever the primary outcome is. Data-driven so a
+    // future custom tag (created via the admin UI) can opt into this without a
+    // code change — see /tags POST/PATCH.
+    `ALTER TABLE call_tags ADD COLUMN IF NOT EXISTS is_primary_outcome boolean DEFAULT false`,
+    `UPDATE call_tags SET is_primary_outcome=true
+       WHERE tag_group IN ('A_NOT_CLOSEABLE','B_REAL_ATTEMPT','D_OUTCOME_POSITIVE','F_MANUAL_EXCLUSION')
+         AND is_primary_outcome IS DISTINCT FROM true`,
     // A call can carry one Group A/B tag + any number of Group C (routing) tags.
     // Only status='CONFIRMED' has any effect on averages — SUGGESTED changes nothing.
     `CREATE TABLE IF NOT EXISTS call_tag_assignments (
