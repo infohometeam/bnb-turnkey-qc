@@ -200,7 +200,7 @@ Return ONLY valid JSON (no markdown). Schema:
   "tough_moments": [{"timestamp":"mm:ss","speaker":"rep|lead","quote":"short verbatim quote from the transcript","why_it_was_tough":"what went wrong / was hard here","what_to_do_instead":"the concrete better move (see TOUGH MOMENTS rules below)"}],
   "confidence": "high|medium|low",
   "confidence_reason": "1 sentence why",
-  "outcome_tag": "DISQUALIFIED|NOT_READY|LONG_TERM_NURTURE|INFO_SEEKER|SHORT_TERM_NURTURE|REDZONE_HOT|HARD_NO|NONE",
+  "outcome_tag": "DISQUALIFIED|NOT_READY|LONG_TERM_NURTURE|INFO_SEEKER|SHORT_TERM_NURTURE|REDZONE_HOT|HARD_NO|SET|CLOSED_WON|NONE",
   "outcome_tag_reason": "1 sentence citing the SPECIFIC stated blocker or signal from the transcript",
   "cross_sell_tags": ["HOTEL_TURNKEY_LEAD|BNB_LENDING_LEAD|INVESTOR_ACADEMY_LEAD|SURGE_TAX_LEAD|HOME_TEAM_MGMT_LEAD|REALTY_LEAD"],
   "cross_sell_reason": "1 sentence per tag, or empty if none"
@@ -226,10 +226,15 @@ TAGS THAT MEAN A REAL SALES ATTEMPT HAPPENED (still the rep's performance):
 - REDZONE_HOT: lead is HOT, close is imminent, strong buying signals. This is an EXCELLENT call.
 - HARD_NO: rep pitched a viable, present lead and the client firmly declined.
 
+TAGS THAT MEAN A REAL WIN HAPPENED (role-specific — read the strict bar carefully):
+- SET (Setter calls only): the lead showed genuine buying signals AND the rep booked a CONFIRMED closer call with a specific date/time. A vague "I'll think about it, maybe call me back" is NOT this — that's SHORT_TERM_NURTURE or NONE.
+- CLOSED_WON (Closer calls only): payment was ACTUALLY PROCESSED OR CONFIRMED LIVE, DURING THIS CALL — card charged, payment confirmed on the line. This is NOT verbal agreement to proceed, NOT "I'll send you the agreement to sign," NOT "let's get payment sorted this week," and NOT "we're good, I'll process this tomorrow." If the lead agreed to move forward but payment or signing happens after the call ends — even later the same day — use REDZONE_HOT or SHORT_TERM_NURTURE instead. The transcript must show the payment actually happening, not just being discussed.
+
 CRITICAL RULES:
 1. A WEAK CALL IS NEVER A DISQUALIFICATION. If the lead was viable and present but the rep skipped discovery, gave a generic pitch, or folded on an objection — that is "NONE". The rep underperformed; do not let them off the hook.
 2. The blocker must be CONCRETE and STATED BY THE LEAD. "Seemed lukewarm" or "wasn't feeling it" is NOT a blocker. "I just sold my company and I'm locked in for four years" IS.
 3. WHEN IN DOUBT, RETURN "NONE". It is far better to score a borderline call than to let a weak call escape scoring.
+4. SET and CLOSED_WON require CONCRETE evidence IN THE TRANSCRIPT ITSELF — a confirmed booking with a date/time for SET, or live payment confirmation for CLOSED_WON. A call that merely sounds positive is not enough. When in doubt, do NOT use these two tags.
 
 ═══════════════════════════════════════════════
 CROSS-SELL SIGNALS (The Rise Collective ecosystem)
