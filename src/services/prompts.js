@@ -203,7 +203,13 @@ Return ONLY valid JSON (no markdown). Schema:
   "outcome_tag": "DISQUALIFIED|NOT_READY|LONG_TERM_NURTURE|INFO_SEEKER|SHORT_TERM_NURTURE|REDZONE_HOT|HARD_NO|SET|CLOSED_WON|NONE",
   "outcome_tag_reason": "1 sentence citing the SPECIFIC stated blocker or signal from the transcript",
   "cross_sell_tags": ["HOTEL_TURNKEY_LEAD|BNB_LENDING_LEAD|INVESTOR_ACADEMY_LEAD|SURGE_TAX_LEAD|HOME_TEAM_MGMT_LEAD|REALTY_LEAD"],
-  "cross_sell_reason": "1 sentence per tag, or empty if none"
+  "cross_sell_reason": "1 sentence per tag, or empty if none",
+  "missed_opportunity_tag": "COULD_HAVE_BEEN_SET|COULD_HAVE_BEEN_ONE_CALL_CLOSE|NONE",
+  "missed_opportunity_reason": "if NONE, empty. Otherwise: [what happened / what was missed] — [what would have gotten it further]",
+  "guidance_style_verdict": "1-10, see GUIDANCE STYLE rules below",
+  "guidance_style_notes": "2-3 sentences citing specific moments — the evidence for the verdict above",
+  "alt_investment_handling": "BALANCED|DISMISSIVE|IGNORED|NONE",
+  "alt_investment_handling_reason": "if NONE (lead never named an alternative), empty. Otherwise cite what the lead named and how the rep responded"
 }
 
 ═══════════════════════════════════════════════
@@ -235,6 +241,46 @@ CRITICAL RULES:
 2. The blocker must be CONCRETE and STATED BY THE LEAD. "Seemed lukewarm" or "wasn't feeling it" is NOT a blocker. "I just sold my company and I'm locked in for four years" IS.
 3. WHEN IN DOUBT, RETURN "NONE". It is far better to score a borderline call than to let a weak call escape scoring.
 4. SET and CLOSED_WON require CONCRETE evidence IN THE TRANSCRIPT ITSELF — a confirmed booking with a date/time for SET, or live payment confirmation for CLOSED_WON. A call that merely sounds positive is not enough. When in doubt, do NOT use these two tags.
+
+═══════════════════════════════════════════════
+MISSED OPPORTUNITY — a coaching flag, separate from the outcome tag above
+═══════════════════════════════════════════════
+This is NOT part of outcome_tag and does not replace it — a call can carry an outcome_tag AND a missed_opportunity_tag at the same time (e.g. SHORT_TERM_NURTURE with a missed one-call-close). This flags execution, not lead quality — the call stays scored on the rubric exactly as it would otherwise; this is an additional coaching signal layered on top, never a score override.
+
+Role-specific — a Setter call can only get COULD_HAVE_BEEN_SET; a Closer call can only get COULD_HAVE_BEEN_ONE_CALL_CLOSE.
+
+- COULD_HAVE_BEEN_SET (Setter only): the lead showed a genuine buying signal — explicit interest in next steps, a stated timeline, a direct question about the closer/process, or confirmed qualification with no stated objection to moving forward — that the rep did NOT convert into a booked closer call.
+  THE TEST: did the lead say something equivalent to "yes, let's do this" or "what's next" that the rep failed to turn into a booking?
+  Does NOT apply to: a merely polite/engaged lead with no forward signal, or any lead who was correctly Disqualified/Not-Ready/Long-Term-Nurture (those are Group A outcomes — the lead was never signaling readiness, so nothing was missed).
+
+- COULD_HAVE_BEEN_ONE_CALL_CLOSE (Closer only): the lead explicitly indicated readiness to commit — "okay let's do it," "how do we get started," a positive answer to a trial close — that the rep did not ask for or secure, OR the rep asked and then let a soft "let me think about it" go unchallenged without attempting the objection framework (Isolate → Hypothetical Remove → Clarify → Handle → Loop).
+  THE TEST: did the rep have a clean opening to ask for commitment and not take it, or fold on a soft objection without running the framework?
+  Does NOT apply to: HARD_NO calls (a real attempt, firm decline — that is not a missed close, that is a no) or genuine SHORT_TERM_NURTURE where the lead stated a real, concrete reason they cannot decide today.
+
+WHEN IN DOUBT, use "NONE". Same bias as the outcome tag above — a call that merely went well is not automatically a missed opportunity; the signal must be a clear, stated readiness the rep failed to act on.
+
+═══════════════════════════════════════════════
+GUIDANCE STYLE — coach vs. convince (Sam: "coach the lead into STRs, don't convince them")
+═══════════════════════════════════════════════
+This is a QUALITATIVE judgment complementing the deterministic question-counting already done elsewhere. A lead can say yes after a genuinely great question OR after a hard push — telling those apart is exactly what this field is for.
+
+Score 1-10:
+- 10 = the prospect reached their own conclusion primarily through the rep's curious, open questions. The rep guided; the prospect did the concluding.
+- 1 = the rep supplied the conclusion themselves and pushed for agreement ("you should do this," "trust me," repeated closed/leading questions) rather than letting the prospect arrive there.
+- Judge the WHOLE call's pattern, not one moment. A call can have one pushy line and still be mostly coaching (score 7-8), or one great question buried in mostly directive language (score 3-4).
+- guidance_style_notes must cite 1-2 SPECIFIC moments (quote or paraphrase) that justify the number — not a generic restatement of the score.
+
+═══════════════════════════════════════════════
+ALT-INVESTMENT HANDLING — only when the lead names an alternative
+═══════════════════════════════════════════════
+Only fill this in if the lead explicitly compares STRs to something else — the stock market, crypto, day trading, another rental, a competitor, etc. If the lead never names an alternative, this is "NONE" and alt_investment_handling_reason stays empty.
+
+When it applies, judge how the REP responded:
+- BALANCED: the rep engaged honestly — named a real strength AND a real limitation of the alternative (or of STRs relative to it) rather than either dismissing it or ignoring it. This builds Trust even when it means acknowledging a real tradeoff. Example shape: "The market's been good to you, but here's what you're not getting — cash flow" is BALANCED; a one-sided pitch against the alternative with no acknowledgment of its merit is not.
+- DISMISSIVE: the rep talked over it, minimized it without engaging, or pure-pitched past it without acknowledging what the lead said.
+- IGNORED: the rep didn't engage with it at all — moved on as if it hadn't been said.
+
+WHEN IN DOUBT between BALANCED and DISMISSIVE, look for whether the rep said anything genuinely conceding a point to the alternative. If they only ever argued against it, that's DISMISSIVE, not BALANCED.
 
 ═══════════════════════════════════════════════
 CROSS-SELL SIGNALS (The Rise Collective ecosystem)
