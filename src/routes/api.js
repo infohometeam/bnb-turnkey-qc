@@ -2597,7 +2597,7 @@ router.get('/report', async (req, res) => {
     const digestRows = (await q(
       `SELECT id, rep_name, role, client_name, overall_score_adj, received_at,
               golden_moments, tough_moments, improvements, coaching_notes,
-              category_scores, aloware_contact_id, aloware_call_id
+              category_scores, aloware_contact_id, aloware_call_id, transcript
        FROM calls
        WHERE status='SCORED' AND rep_name != 'Unknown Setter' ${EXCL_TAGGED}
          AND ${periodClause}`)).rows;
@@ -2648,9 +2648,41 @@ router.get('/report', async (req, res) => {
     }) : null;
     const setters = digestRows.filter(c => c.role === 'Setter');
     const closers = digestRows.filter(c => c.role === 'Closer');
+    // Untagged wrong-business-unit filter for Best/Toughest selection only. Detects
+    // calls that read like they were NEVER about Turnkey (e.g. a Legacy/legal matter)
+    // even though nobody has manually applied BNB_LEGACY yet. Deliberately soft-scoped:
+    // this only removes a call from CANDIDACY for Best/Toughest in this digest — it
+    // never touches overall_score_adj, never writes a tag, never affects a rep's
+    // average. That stays behind human-confirmed tags (bot suggests, human confirms).
+    // Deliberately conservative (needs 3+ distinct legal-topic phrases AND zero
+    // Turnkey-topic language) — same "ambiguous → leave it alone" bias as the tagging
+    // spec's DQ test, because a false suppression here just means a genuinely good
+    // call doesn't get featured, which is low-stakes; a false EXCLUSION from a score
+    // would not be.
+    const LEGAL_TOPIC_RE = /\b(estate planning|living trust|revocable trust|irrevocable trust|last will and testament|power of attorney|probate|elder law|asset protection trust|legacy planning|trust document|law firm|attorney fees|legal services|legal counsel)\b/gi;
+    const TURNKEY_TOPIC_RE = /\b(short-?term rental|\bstr\b|airbnb|turnkey|cash ?flow|rental income|occupancy|investment property|property management|vacation rental|booking)\b/gi;
+    const looksOffTopic = (c) => {
+      const t = c.transcript;
+      if (!t) return false;
+      const legal = (t.match(LEGAL_TOPIC_RE) || []).length;
+      const turnkey = (t.match(TURNKEY_TOPIC_RE) || []).length;
+      return legal >= 3 && turnkey === 0;
+    };
+    const filterOffTopic = (list) => {
+      const kept = [], suppressed = [];
+      for (const c of list) (looksOffTopic(c) ? suppressed : kept).push(c);
+      if (suppressed.length) console.log(`[Digest] Suppressed ${suppressed.length} likely off-topic call(s) from Best/Toughest candidacy: ${suppressed.map(c => c.id).join(',')}`);
+      return kept;
+    };
+    const settersOnTopic = filterOffTopic(setters);
+    const closersOnTopic = filterOffTopic(closers);
     const samDigest = {
-      setters: { best: liteCall(bestOf(setters)), toughest: liteCall(toughestOf(setters)), count: setters.length },
-      closers: { best: liteCall(bestOf(closers)), toughest: liteCall(toughestOf(closers)), count: closers.length },
+      setters: { best: liteCall(bestOf(settersOnTopic.length ? settersOnTopic : setters)),
+                 toughest: liteCall(toughestOf(settersOnTopic.length ? settersOnTopic : setters)),
+                 count: setters.length },
+      closers: { best: liteCall(bestOf(closersOnTopic.length ? closersOnTopic : closers)),
+                 toughest: liteCall(toughestOf(closersOnTopic.length ? closersOnTopic : closers)),
+                 count: closers.length },
     };
 
     const windowLabel = preset === 'today' ? 'Today (ET)' : preset === 'yesterday' ? 'Yesterday (ET)'
