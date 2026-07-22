@@ -1760,6 +1760,9 @@ function TeamPage(){
   const{data:unrostered,reload:reloadUnrostered}=useApi("/reps/unrostered");
   const[period,setPeriod]=usePersisted("team.period","week");
   const{data:an}=useApi(`/analytics?period=${period}`,[period]);
+  const dd=trendScope(period).d;
+  const{data:atr}=useApi(`/analytics/trends?days=${dd}`,[period]);
+  const{data:rpt}=useApi(`/report?days=${dd}`,[period]);
   const[showForm,setShowForm]=useState(false);
   const[prefill,setPrefill]=useState(null);
   const[editing,setEditing]=useState(null);
@@ -1783,7 +1786,13 @@ function TeamPage(){
 
   if(!reps)return<Skel/>;
   const active=reps.filter(r=>r.active);const inactive=reps.filter(r=>!r.active);
-  const vitals={};(an?.repStats||[]).forEach(r=>{vitals[r.rep_name]=r});
+  const vitals={};(an?.repStats||[]).forEach(r=>{vitals[r.rep_name]={...r};});
+  // trend: per-rep first→last delta from /analytics/trends
+  const trendByRep={};(atr?.repTrends||[]).forEach(p=>{(trendByRep[p.rep_name]=trendByRep[p.rep_name]||[]).push(Number(p.avg_adj!=null?p.avg_adj:p.avg_score));});
+  Object.keys(trendByRep).forEach(n=>{const a=trendByRep[n].filter(v=>!isNaN(v));trendByRep[n]=a.length>1?Math.round((a[a.length-1]-a[0])*10)/10:null;});
+  // focus: weakest category per rep from /report reps
+  const focusByRep={};(rpt?.reps||[]).forEach(r=>{const cats=r.categories||{};const ks=Object.keys(cats).filter(k=>cats[k]!=null);if(ks.length){const low=ks.sort((a,b)=>cats[a]-cats[b])[0];focusByRep[r.rep_name]=(CL[low]||low);}});
+  Object.keys(vitals).forEach(n=>{vitals[n].trend=trendByRep[n]??null;vitals[n].focus=focusByRep[n]??null;});
 
   return<div className="flex-col gap-20">
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
@@ -1852,14 +1861,15 @@ function UnrosteredRow({u,first,onAdd}){
 function RepRow({rep,v,onEdit,onToggle,onOpen,busy}){
   const initials=(rep.name||"?").split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
   const avg=v?.avg_score;
-  const foc=v?.focus||(avg!=null&&avg>=8?"Reinforce strengths":null);
   const isCloser=(rep.role||"").toLowerCase().includes("clos");
+  const calls=v?.call_count??v?.scored??v?.calls;
+  const foc=v?.focus||(avg!=null&&avg>=8?"Reinforce strengths":null);
   return<div onClick={onOpen} style={{display:"grid",gridTemplateColumns:"minmax(180px,2fr) 90px 60px 84px 70px minmax(140px,1.4fr) 150px",gap:12,padding:"12px 18px",borderBottom:"1px solid var(--bg)",alignItems:"center",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
     <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}><div style={{width:30,height:30,borderRadius:8,background:rep.color||RC[rep.name]||"#6366f1",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12,color:"#fff",flexShrink:0}}>{initials}</div><div style={{minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{rep.name}</div>{rep.team&&<div style={{fontSize:10,color:"var(--t4)",fontFamily:"var(--m)"}}>{rep.team}</div>}</div></div>
     <span className="badge" style={{justifySelf:"start",background:isCloser?"#14224a":"#2a1a05",color:isCloser?"#93c5fd":"#fbbf24",border:"none",fontSize:9}}>{(rep.role||"—").toUpperCase()}</span>
     <span className="slab" style={{fontSize:15,color:avg!=null?sClr(avg):"var(--t4)",textAlign:"center"}}>{avg!=null?avg:"—"}</span>
     <span className="mono" style={{fontSize:11,textAlign:"right",color:v?.trend>0?"#34d399":v?.trend<0?"#f87171":"var(--t4)"}}>{v?.trend>0?`↗ +${v.trend}`:v?.trend<0?`↘ ${v.trend}`:"→"}</span>
-    <span className="mono" style={{fontSize:12,color:"var(--t3)",textAlign:"right"}}>{v?.scored??"—"}</span>
+    <span className="mono" style={{fontSize:12,color:"var(--t3)",textAlign:"right"}}>{calls??"—"}</span>
     <span style={{fontSize:11,color:foc?(avg!=null&&avg>=8?"#6ee7b7":"#f59e0b"):"var(--t4)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{foc||"—"}</span>
     <span style={{display:"flex",gap:6,justifyContent:"flex-end"}} onClick={e=>e.stopPropagation()}><button className="btn" onClick={onEdit} disabled={busy} style={{fontSize:11,padding:"4px 10px"}}>Edit</button><button className="btn" onClick={onToggle} disabled={busy} style={{fontSize:11,padding:"4px 10px",color:rep.active?"#f87171":"#34d399"}}>{rep.active?"Off":"On"}</button></span>
   </div>;
@@ -1965,14 +1975,14 @@ function RepForm({editing,prefill,onClose,onSaved}){
   </div>;
 }
 
-function MyProgressPage(){
+function MyProgressPage({initialRep}){
   const{data:reps}=useApi("/reps");
   const[repId,setRepId]=useState("");
   const[tab,setTab]=usePersisted("mp.tab","overview");
   const{data}=useApi(repId?`/reps/${repId}/progress`:null,[repId]);
   const{data:ins}=useApi(repId?`/reps/${repId}/insights`:null,[repId]);
   const{data:report}=useApi("/report?days=30");
-  React.useEffect(()=>{if(reps&&reps.length&&!repId)setRepId(String(reps[0].id));},[reps]);
+  React.useEffect(()=>{if(!reps||!reps.length)return;if(initialRep){const m=reps.find(r=>r.name===initialRep||String(r.id)===String(initialRep));if(m){setRepId(String(m.id));return;}}if(!repId)setRepId(String(reps[0].id));},[reps,initialRep]);
   const repName=data?.rep?.name;
   const{data:allCalls}=useApi(repName?`/calls?rep=${encodeURIComponent(repName)}&limit=100`:null,[repName]);
   const CL2={discovery:"Discovery",qualification:"Qualification",pitch:"Pitch",frame_control:"Frame / Control",objections_close:"Objections & Close"};
@@ -3300,7 +3310,7 @@ function App(){
   return<><ConfirmHost/><aside><div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:11,borderBottom:"1px solid #2a3140"}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff"}}>Q</div><span style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Turnkey QC</span></div><NavList pg={pg} onNav={(id)=>{sPg(id);sDt(null)}}/><div style={{padding:"14px 16px",borderTop:"1px solid #2a3140"}}><div style={{fontSize:12,fontWeight:700,color:"var(--t2)"}}>Sam & Francis</div><div style={{fontSize:10,color:"#6366f1",fontFamily:"var(--m)"}}>ADMIN</div></div></aside>
     <main><div className="max-w"><ErrorBoundary resetKey={pg} tag={pg}>{
       pg==="calls"&&param?<CallDetail call={{id:Number(param)}} onBack={()=>goTo("calls")}/>:
-      pg==="rep"&&param?<RepDetailPage name={param}/>:
+      pg==="rep"&&param?<MyProgressPage initialRep={param}/>:
       pg==="dashboard"?<Dashboard/>:pg==="analytics"?<AnalyticsPage/>:pg==="coaching"?<CoachingPage/>:pg==="console"?<CoachConsolePage/>:pg==="progress"?<MyProgressPage/>:pg==="train"?<TrainPage/>:pg==="history"?<PracticeHistoryPage/>:pg==="calls"?<CallsList onSelect={c=>goTo("calls",c.id)}/>:pg==="rubric"?<RubricPage/>:pg==="resources"?<ResourcesPage initial={param}/>:pg==="records"?<RecordsPage/>:pg==="queue"?<QueuePage/>:pg==="health"?<HealthPage/>:pg==="team"?<TeamPage/>:pg==="outcomes"?<OutcomesPage/>:pg==="referrals"?<ReferralsPage/>:pg==="moments"?<GoldenMomentsPage/>:pg==="stitch"?<StitchPage/>:pg==="calibration"?<CalibrationPage/>:pg==="export"?<ExportPage/>:pg==="about"?<AboutPage/>:null
     }</ErrorBoundary></div></main></>}
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
