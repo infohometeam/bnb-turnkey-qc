@@ -2391,48 +2391,77 @@ function ScenarioCreator({onClose,onCreated}){
     }catch(e){setErr("Failed to save.");}
     setBusy(false);
   }
-  const inp={width:"100%",padding:"8px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:13,marginTop:4};
-  const lbl={fontSize:10,color:"var(--t3)",fontWeight:700,letterSpacing:.5,marginTop:12,display:"block"};
-  return<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:100,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"40px 20px"}} onClick={onClose}>
-    <div className="card" style={{padding:28,maxWidth:640,width:"100%"}} onClick={e=>e.stopPropagation()}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-        <h2 style={{fontSize:20,fontWeight:900,margin:0}}>Create a Scenario</h2>
-        <span onClick={onClose} style={{fontSize:20,color:"var(--t3)",cursor:"pointer"}}>✕</span>
+  const inp={width:"100%",padding:"8px 11px",background:"var(--bg)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12.5,marginTop:0};
+  const lbl={fontSize:9,color:"var(--t3)",fontWeight:700,letterSpacing:.5,textTransform:"uppercase",display:"block",marginBottom:4};
+  const grp={border:"1px solid var(--border)",borderRadius:12,padding:"16px 18px"};
+  const GN=({n,c})=><span style={{width:20,height:20,borderRadius:6,fontFamily:"var(--m)",fontWeight:800,fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",color:"#0b0f1a",background:c}}>{n}</span>;
+  const gh={display:"flex",alignItems:"center",gap:8,marginBottom:12};
+  const gt={fontSize:13,fontWeight:800};
+  return<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:"var(--z-modal)",display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 20px"}} onClick={onClose}>
+    <div className="card" style={{padding:0,maxWidth:820,width:"100%",maxHeight:"90vh",display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Create a Scenario">
+      {/* header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 22px",borderBottom:"1px solid var(--border)"}}>
+        <div><div style={{fontSize:18,fontWeight:900}}>Create a Scenario</div><div style={{fontSize:11,color:"var(--t3)",marginTop:2}}>The AI prospect embodies the persona &amp; hidden truth you define — reps are scored on the same rubric.</div></div>
+        <span onClick={onClose} style={{fontSize:18,color:"var(--t3)",cursor:"pointer"}} title="Close">✕</span>
       </div>
-      <p style={{fontSize:12,color:"var(--t3)",marginBottom:8}}>Build a custom practice scenario. The AI prospect will embody the persona and hidden truth you define, and reps get scored on the same rubric.</p>
-
-      <label style={lbl}>SCENARIO TITLE *</label>
-      <input style={inp} value={f.title} onChange={e=>up("title",e.target.value)} placeholder="e.g. The Skeptical Retiree"/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div><label style={lbl}>ROLE</label><select style={inp} value={f.target_role} onChange={e=>up("target_role",e.target.value)}><option>Setter</option><option>Closer</option><option>Both</option></select></div>
-        <div><label style={lbl}>DIFFICULTY TIER (1-5)</label><select style={inp} value={f.difficulty_tier} onChange={e=>up("difficulty_tier",e.target.value)}>{[1,2,3,4,5].map(n=><option key={n} value={n}>{n}</option>)}</select></div>
+      {/* scrolling body */}
+      <div style={{padding:"20px 22px",display:"flex",flexDirection:"column",gap:14,overflowY:"auto"}}>
+        {/* 1 basics */}
+        <div style={grp}>
+          <div style={gh}><GN n="1" c="#818cf8"/><span style={gt}>Basics</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1.4fr",gap:10}}>
+            <div><span style={lbl}>Scenario title *</span><input style={inp} value={f.title} onChange={e=>up("title",e.target.value)} placeholder="e.g. The Skeptical Retiree"/></div>
+            <div><span style={lbl}>Role</span><select style={inp} value={f.target_role} onChange={e=>up("target_role",e.target.value)}><option>Setter</option><option>Closer</option><option>Both</option></select></div>
+            <div><span style={lbl}>Difficulty tier</span><div style={{display:"flex",gap:4}}>{[1,2,3,4,5].map(n=>{const on=Number(f.difficulty_tier)===n;return<button key={n} onClick={()=>up("difficulty_tier",n)} className="btn" style={{flex:1,padding:"7px 0",fontSize:11,fontWeight:700,background:on?"#1e1b4b":"",borderColor:on?"#4338ca":"",color:on?"#c7d2fe":""}}>{n}</button>})}</div></div>
+          </div>
+        </div>
+        {/* 2 + 3 two-up */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          <div style={grp}>
+            <div style={gh}><GN n="2" c="#34d399"/><span style={gt}>The prospect</span></div>
+            <div style={{display:"flex",flexDirection:"column",gap:9}}>
+              <div><span style={lbl}>Name</span><input style={inp} value={f.persona_name} onChange={e=>up("persona_name",e.target.value)} placeholder="e.g. Robert"/></div>
+              <div><span style={lbl}>Background</span><input style={inp} value={f.persona_bg} onChange={e=>up("persona_bg",e.target.value)} placeholder="Who they are, their situation"/></div>
+              <div><span style={lbl}>Communication style</span><input style={inp} value={f.persona_style} onChange={e=>up("persona_style",e.target.value)} placeholder="e.g. Blunt, asks a lot of questions"/></div>
+            </div>
+          </div>
+          <div style={grp}>
+            <div style={gh}><GN n="3" c="#fbbf24"/><span style={gt}>The situation</span></div>
+            <div style={{display:"flex",flexDirection:"column",gap:9}}>
+              <div><span style={lbl}>What's happening</span><textarea style={{...inp,minHeight:44,resize:"vertical"}} value={f.situation} onChange={e=>up("situation",e.target.value)} placeholder="The setup — where the call picks up"/></div>
+              <div><span style={lbl}>Stated interest — what they SAY</span><input style={inp} value={f.stated_interest} onChange={e=>up("stated_interest",e.target.value)} placeholder="e.g. Interested but noncommittal"/></div>
+            </div>
+          </div>
+        </div>
+        {/* 4 hidden truth (accent) */}
+        <div style={{...grp,borderColor:"#5c4a12",background:"linear-gradient(150deg,#1a1305,#161b26)"}}>
+          <div style={gh}><GN n="4" c="#f59e0b"/><span style={{...gt,color:"#fbbf24"}}>The hidden truth</span><span className="mono" style={{fontSize:9,color:"#a8956b"}}>— what the rep must uncover</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div><span style={{...lbl,color:"#c9a35a"}}>The real truth</span><textarea style={{...inp,minHeight:44,resize:"vertical",borderColor:"#5c4a12"}} value={f.hidden_truth} onChange={e=>up("hidden_truth",e.target.value)} placeholder="What's actually going on beneath the surface"/></div>
+            <div><span style={{...lbl,color:"#c9a35a"}}>The real objection</span><input style={{...inp,borderColor:"#5c4a12"}} value={f.real_objection} onChange={e=>up("real_objection",e.target.value)} placeholder="The true barrier"/></div>
+          </div>
+        </div>
+        {/* 5 + 6 two-up */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          <div style={grp}>
+            <div style={gh}><GN n="5" c="#f472b6"/><span style={gt}>Objections they'll raise</span></div>
+            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+              <input style={inp} value={f.obj1} onChange={e=>up("obj1",e.target.value)} placeholder='1 · what they&apos;ll actually say'/>
+              <input style={inp} value={f.obj2} onChange={e=>up("obj2",e.target.value)} placeholder="2 · next objection"/>
+              <input style={inp} value={f.obj3} onChange={e=>up("obj3",e.target.value)} placeholder="3 · deeper objection"/>
+            </div>
+          </div>
+          <div style={grp}>
+            <div style={gh}><GN n="6" c="#22d3ee"/><span style={gt}>Scoring focus</span></div>
+            <div><span style={lbl}>What separates a good rep from a bad one here?</span><textarea style={{...inp,minHeight:74,resize:"vertical"}} value={f.focus} onChange={e=>up("focus",e.target.value)} placeholder="What should reps be rewarded / penalised for?"/></div>
+          </div>
+        </div>
+        {err&&<div style={{color:"#ef4444",fontSize:12}}>{err}</div>}
       </div>
-
-      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"var(--t2)"}}>The Prospect</b></div>
-      <label style={lbl}>NAME</label><input style={inp} value={f.persona_name} onChange={e=>up("persona_name",e.target.value)} placeholder="e.g. Robert"/>
-      <label style={lbl}>BACKGROUND</label><input style={inp} value={f.persona_bg} onChange={e=>up("persona_bg",e.target.value)} placeholder="Who they are, their situation"/>
-      <label style={lbl}>COMMUNICATION STYLE</label><input style={inp} value={f.persona_style} onChange={e=>up("persona_style",e.target.value)} placeholder="e.g. Blunt, asks a lot of questions"/>
-
-      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"var(--t2)"}}>The Situation</b></div>
-      <label style={lbl}>WHAT'S HAPPENING</label><textarea style={{...inp,minHeight:50}} value={f.situation} onChange={e=>up("situation",e.target.value)} placeholder="The setup — where the call picks up"/>
-      <label style={lbl}>STATED INTEREST (what they SAY)</label><input style={inp} value={f.stated_interest} onChange={e=>up("stated_interest",e.target.value)} placeholder="e.g. Seems interested but noncommittal"/>
-
-      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"var(--t2)"}}>The Hidden Truth</b> <span style={{fontSize:10,color:"var(--t3)"}}>(what the rep must uncover)</span></div>
-      <label style={lbl}>THE REAL TRUTH</label><textarea style={{...inp,minHeight:50}} value={f.hidden_truth} onChange={e=>up("hidden_truth",e.target.value)} placeholder="What's actually going on beneath the surface"/>
-      <label style={lbl}>THE REAL OBJECTION</label><input style={inp} value={f.real_objection} onChange={e=>up("real_objection",e.target.value)} placeholder="The true barrier"/>
-
-      <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid #2a3140"}}><b style={{fontSize:12,color:"var(--t2)"}}>Objections They'll Raise</b></div>
-      <input style={inp} value={f.obj1} onChange={e=>up("obj1",e.target.value)} placeholder="Objection 1 (what they'll actually say)"/>
-      <input style={{...inp,marginTop:8}} value={f.obj2} onChange={e=>up("obj2",e.target.value)} placeholder="Objection 2"/>
-      <input style={{...inp,marginTop:8}} value={f.obj3} onChange={e=>up("obj3",e.target.value)} placeholder="Objection 3"/>
-
-      <label style={lbl}>SCORING FOCUS / COACHING NOTES</label>
-      <textarea style={{...inp,minHeight:50}} value={f.focus} onChange={e=>up("focus",e.target.value)} placeholder="What separates a good rep from a bad one here? What should they be rewarded/penalized for?"/>
-
-      {err&&<div style={{color:"#ef4444",fontSize:12,marginTop:12}}>{err}</div>}
-      <div style={{display:"flex",gap:10,marginTop:20}}>
-        <button className="btn btn-primary" onClick={save} disabled={busy} style={{flex:1}}>{busy?"Saving…":"Create Scenario"}</button>
+      {/* pinned footer */}
+      <div style={{display:"flex",justifyContent:"flex-end",gap:10,padding:"16px 22px",borderTop:"1px solid var(--border)",background:"#0e131c"}}>
         <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy?"Saving…":"Create Scenario"}</button>
       </div>
     </div>
   </div>
