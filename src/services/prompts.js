@@ -200,7 +200,7 @@ Return ONLY valid JSON (no markdown). Schema:
   "tough_moments": [{"timestamp":"mm:ss","speaker":"rep|lead","quote":"short verbatim quote from the transcript","why_it_was_tough":"what went wrong / was hard here","what_to_do_instead":"the concrete better move (see TOUGH MOMENTS rules below)"}],
   "confidence": "high|medium|low",
   "confidence_reason": "1 sentence why",
-  "outcome_tag": "DISQUALIFIED|NOT_READY|LONG_TERM_NURTURE|INFO_SEEKER|SHORT_TERM_NURTURE|REDZONE_HOT|HARD_NO|SET|CLOSED_WON|NONE",
+  "outcome_tag": "DISQUALIFIED|NOT_READY|LONG_TERM_NURTURE|INFO_SEEKER|SHORT_TERM_NURTURE|REDZONE_HOT|HARD_NO|SET|CLOSED_WON|PARTNERSHIP_CALL|NONE",
   "outcome_tag_reason": "1 sentence citing the SPECIFIC stated blocker or signal from the transcript",
   "cross_sell_tags": ["HOTEL_TURNKEY_LEAD|BNB_LENDING_LEAD|INVESTOR_ACADEMY_LEAD|SURGE_TAX_LEAD|HOME_TEAM_MGMT_LEAD|REALTY_LEAD"],
   "cross_sell_reason": "1 sentence per tag, or empty if none",
@@ -241,6 +241,22 @@ CRITICAL RULES:
 2. The blocker must be CONCRETE and STATED BY THE LEAD. "Seemed lukewarm" or "wasn't feeling it" is NOT a blocker. "I just sold my company and I'm locked in for four years" IS.
 3. WHEN IN DOUBT, RETURN "NONE". It is far better to score a borderline call than to let a weak call escape scoring.
 4. SET and CLOSED_WON require CONCRETE evidence IN THE TRANSCRIPT ITSELF — a confirmed booking with a date/time for SET, or live payment confirmation for CLOSED_WON. A call that merely sounds positive is not enough. When in doubt, do NOT use these two tags.
+5. PARTNERSHIP_CALL is a judgment about ROLE, not topic — a partnership call can still contain plenty of ordinary Turnkey language (properties, cash flow, the pitch). Do not require the absence of Turnkey vocabulary the way you would for a legal/off-topic call; look at who the caller is speaking FOR.
+
+═══════════════════════════════════════════════
+PARTNERSHIP_CALL — a different kind of call entirely, watch the ROLE not the topic
+═══════════════════════════════════════════════
+Unlike a Legacy/legal call, a partnership call often still contains ORDINARY Turnkey
+language throughout — properties, cash flow, the business model — because the caller
+is discussing Turnkey's business, not avoiding it. The signal is not topic, it's ROLE:
+is the caller speaking AS an individual investor considering buying in, or AS a
+representative of another company proposing the two businesses work together
+(referral partnership, white-label, joint venture, "let's partner," vendor/affiliate
+relationship, co-marketing)? If it's the latter — even if cash flow, properties, and
+the standard pitch language all come up — this is PARTNERSHIP_CALL, not a real
+investor conversation, and should not be scored as a normal sales attempt.
+THE TEST: is the caller trying to invest their own money, or trying to build a
+business relationship BETWEEN their company and BNB Turnkey?
 
 ═══════════════════════════════════════════════
 MISSED OPPORTUNITY — a coaching flag, separate from the outcome tag above
