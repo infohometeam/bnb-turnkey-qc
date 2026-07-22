@@ -1965,8 +1965,8 @@ function MyProgressPage(){
       const delta=trendVals.length>1?Math.round((trendVals[trendVals.length-1]-trendVals[0])*10)/10:null;
       const railSpark=mkPts(data.trend,260,44,4,"avg_score");
       const lowCat=[...data.categories].sort((a,b)=>a.avg-b.avg)[0];
-      return<div style={{display:"grid",gridTemplateColumns:"320px minmax(0,1fr)",gap:16,alignItems:"start"}}>
-      <aside style={{background:"#10141d",border:"1px solid var(--border)",borderRadius:14,padding:20,display:"flex",flexDirection:"column",gap:16}}>
+      return<div style={{display:"grid",gridTemplateColumns:"320px minmax(0,1fr)",gap:16,alignItems:"stretch"}}>
+      <aside className="cd-rail" style={{alignSelf:"stretch"}}>
         <div className="card" style={{padding:18,textAlign:"center",background:"linear-gradient(160deg,#1c2333,#161b26)",borderColor:"#3a4256"}}>
           <div className="stat-label" style={{justifyContent:"center"}}>Your avg score</div>
           <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:8,margin:"4px 0"}}><div className="slab" style={{fontSize:50,color:sClr(data.stats.avg_adj),lineHeight:.9}}>{data.stats.avg_adj}</div><div style={{fontFamily:"var(--m)",fontSize:11,color:"var(--t3)",paddingBottom:7}}>/10</div></div>
