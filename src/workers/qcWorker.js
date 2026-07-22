@@ -338,8 +338,13 @@ async function processCall(row) {
     rubric_version: rubricVersion,
   };
 
-  await q('UPDATE calls SET overall_score=?,overall_score_adj=?,score_adjust_notes=?,category_scores=?,pass_fail=?,coaching_notes=?,quick_summary=?,list_summary=?,strengths=?,improvements=?,next_step_text=?,golden_moments=?,tough_moments=?,flagged=?,status=?,error=?,processed_at=?,model_used=?,transcript_slice=?,rubric_version=?,call_duration_sec=COALESCE(?,call_duration_sec) WHERE id=?',
-    [result.overall_score, adj.adjusted, adjustNotes, JSON.stringify(result.category_scores||{}), JSON.stringify(enrichedPassFail), result.coaching_notes||'', result.quick_summary||'', (result.list_summary||'').slice(0,160), JSON.stringify(result.strengths||[]), JSON.stringify(result.improvements||[]), result.next_step_text||'', JSON.stringify(result.golden_moments||[]), JSON.stringify(result.tough_moments||[]), flagged?1:0, 'SCORED', '', ts, usage.model||'unknown', slice, rubricVersion, durSec, row.id]);
+  await q('UPDATE calls SET overall_score=?,overall_score_adj=?,score_adjust_notes=?,category_scores=?,pass_fail=?,coaching_notes=?,quick_summary=?,list_summary=?,strengths=?,improvements=?,next_step_text=?,golden_moments=?,tough_moments=?,flagged=?,status=?,error=?,processed_at=?,model_used=?,transcript_slice=?,rubric_version=?,call_duration_sec=COALESCE(?,call_duration_sec),guidance_style_verdict=?,guidance_style_notes=?,alt_investment_handling=?,alt_investment_handling_reason=? WHERE id=?',
+    [result.overall_score, adj.adjusted, adjustNotes, JSON.stringify(result.category_scores||{}), JSON.stringify(enrichedPassFail), result.coaching_notes||'', result.quick_summary||'', (result.list_summary||'').slice(0,160), JSON.stringify(result.strengths||[]), JSON.stringify(result.improvements||[]), result.next_step_text||'', JSON.stringify(result.golden_moments||[]), JSON.stringify(result.tough_moments||[]), flagged?1:0, 'SCORED', '', ts, usage.model||'unknown', slice, rubricVersion, durSec,
+     Number.isFinite(Number(result.guidance_style_verdict)) ? Number(result.guidance_style_verdict) : null,
+     result.guidance_style_notes || '',
+     result.alt_investment_handling || null,
+     result.alt_investment_handling_reason || '',
+     row.id]);
 
   // Persist transcript-quality grade separately (isolated so it can never disturb
   // the scoring write above). Read by the call detail view + diagnostics endpoints.
@@ -354,7 +359,7 @@ async function processCall(row) {
   // A SUGGESTED tag has ZERO effect on any average. Only a human CONFIRM does.
   // This is the guardrail: the bot can never silently change anyone's numbers.
   try {
-    await saveTagSuggestions(row.id, result, ts, row.transcript);
+    await saveTagSuggestions(row.id, result, ts, row.transcript, row.role);
   } catch (tagErr) {
     console.error(`[QC] #${row.id} tag suggestion failed: ${tagErr.message} — scoring already saved, continuing`);
   }
@@ -452,7 +457,7 @@ const CROSS_SELL_TAGS = ['HOTEL_TURNKEY_LEAD','BNB_LENDING_LEAD','INVESTOR_ACADE
 // NEVER writes CONFIRMED — a human must confirm before any average changes.
 // Re-suggesting is idempotent: an existing CONFIRMED or DISMISSED assignment is left alone,
 // so the bot can't overwrite a human decision on a re-score.
-async function saveTagSuggestions(callId, result, ts, transcript) {
+async function saveTagSuggestions(callId, result, ts, transcript, role) {
   const suggestions = [];
 
   const outcome = String(result?.outcome_tag || 'NONE').toUpperCase();
@@ -466,6 +471,18 @@ async function saveTagSuggestions(callId, result, ts, transcript) {
     if (CROSS_SELL_TAGS.includes(k)) {
       suggestions.push({ key: k, reason: result?.cross_sell_reason || '' });
     }
+  }
+
+  // Missed-opportunity coaching flag — SEPARATE from outcome_tag above, a call can
+  // carry both (e.g. SHORT_TERM_NURTURE + a missed one-call-close). Role-gated:
+  // COULD_HAVE_BEEN_SET only makes sense for a Setter call, COULD_HAVE_BEEN_ONE_CALL_CLOSE
+  // only for a Closer call — enforced here even if the model returns the wrong one
+  // for the role, since the prompt instructs role-specific but shouldn't be the only guard.
+  const missed = String(result?.missed_opportunity_tag || 'NONE').toUpperCase();
+  if (missed === 'COULD_HAVE_BEEN_SET' && role === 'Setter') {
+    suggestions.push({ key: missed, reason: result?.missed_opportunity_reason || '' });
+  } else if (missed === 'COULD_HAVE_BEEN_ONE_CALL_CLOSE' && role === 'Closer') {
+    suggestions.push({ key: missed, reason: result?.missed_opportunity_reason || '' });
   }
 
   // Deterministic wrong-business-unit check (no AI, no prompt dependency) — catches
