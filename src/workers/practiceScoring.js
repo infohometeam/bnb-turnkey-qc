@@ -96,12 +96,27 @@ async function scorePracticeSession(session, scenario, rubricItems) {
   const { adjusted, notes, deductions } = adjustScore(raw, durationSec, agentTalkPct, result);
   if (result?.pass_fail) result.pass_fail.deductions = deductions;
 
+  // Vs-last-attempt delta (Train live signals, Jul 24): the rep's most recent PRIOR
+  // scored session on this SAME scenario — not scenario type or difficulty, the
+  // exact scenario, so the comparison is apples-to-apples. Excludes the current
+  // session (it isn't 'scored' yet at this point in the flow anyway, but excluded
+  // explicitly for clarity). Null when this is a first attempt — never fabricate a
+  // delta from nothing, same discipline as the rest of this platform.
+  const priorRow = await q(
+    `SELECT overall_score_adj FROM practice_sessions
+     WHERE scenario_id=? AND rep_name=? AND status='scored' AND id<>?
+     ORDER BY id DESC LIMIT 1`,
+    [session.scenario_id, session.rep_name, session.id]);
+  const priorScore = priorRow.rows.length ? toNum(priorRow.rows[0].overall_score_adj) : null;
+  const scoreDelta = (priorScore != null && adjusted != null) ? Math.round((adjusted - priorScore) * 10) / 10 : null;
+
   const ts = now();
   await q(`UPDATE practice_sessions SET status='scored',
       overall_score=?, overall_score_adj=?, score_adjust_notes=?,
       category_scores=?, pass_fail=?, coaching_notes=?, quick_summary=?,
       strengths=?, improvements=?, golden_moments=?, model_used=?, rubric_version=2,
-      duration_sec=?, ended_at=COALESCE(ended_at, ?)
+      duration_sec=?, ended_at=COALESCE(ended_at, ?),
+      prior_attempt_score=?, score_delta=?
       WHERE id=?`,
     [raw, adjusted, notes.join(' | '),
      JSON.stringify(result?.category_scores || {}),
@@ -109,9 +124,12 @@ async function scorePracticeSession(session, scenario, rubricItems) {
      result?.coaching_notes || '', result?.quick_summary || '',
      JSON.stringify(result?.strengths || []), JSON.stringify(result?.improvements || []),
      JSON.stringify(result?.golden_moments || []),
-     usage?.model || 'claude', durationSec, ts, session.id]);
+     usage?.model || 'claude', durationSec, ts,
+     priorScore, scoreDelta,
+     session.id]);
 
-  return { ok: true, sessionId: session.id, overall: raw, adjusted, deductions, usage };
+  return { ok: true, sessionId: session.id, overall: raw, adjusted, deductions, usage,
+    prior_attempt_score: priorScore, score_delta: scoreDelta };
 }
 
 function toNum(v) { const n = Number(v); return isFinite(n) ? n : null; }
