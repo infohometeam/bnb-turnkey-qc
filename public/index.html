@@ -787,55 +787,42 @@ function OutcomesPage(){
   const excluding=sug.filter(s=>s.excludes_from_average);
   const other=sug.filter(s=>!s.excludes_from_average);
 
-  function Row({s}){
-    return<div className="card" style={{padding:16,borderColor:s.color+"66"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
-        <div style={{flex:1,minWidth:220}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-            <span style={{padding:"2px 9px",borderRadius:20,fontSize:10,fontWeight:800,background:s.color+"22",border:`1px solid ${s.color}`,color:s.color}}>{s.label}</span>
-            {s.excludes_from_average&&<span style={{fontSize:10,color:"#f59e0b"}}>removes from average</span>}
-          </div>
-          <div onClick={()=>goTo("calls",s.call_id)} style={{fontSize:13,fontWeight:700,color:"var(--t2)",cursor:"pointer"}}>
-            <span style={{fontFamily:"var(--m)",fontSize:10,color:"#6366f1",marginRight:5}}>#{s.call_id}</span>
-            {s.rep_name} → {s.client_name||"?"}
-            <span style={{fontWeight:400,color:"var(--t3)",fontSize:11}}> · scored {s.overall_score_adj} · {s.role}</span>
-          </div>
-          {s.reason&&<div style={{fontSize:12,color:"var(--t2)",fontStyle:"italic",marginTop:5,lineHeight:1.5}}>"{s.reason}"</div>}
-        </div>
-        <div style={{display:"flex",gap:6,flexShrink:0}}>
-          <button className="btn btn-primary" onClick={()=>confirm(s)} disabled={busy===s.id} style={{fontSize:11}}>{busy===s.id?"…":"✓ Confirm"}</button>
-          <button className="btn" onClick={()=>dismiss(s)} disabled={busy===s.id} style={{fontSize:11}}>Dismiss</button>
-        </div>
+  function Section({title,color,rows}){
+    if(!rows.length)return null;
+    return<div className="card" style={{overflow:"hidden"}}>
+      <div style={{padding:"10px 16px",background:"#151a24",borderBottom:"1px solid var(--border)",fontSize:11,fontWeight:800,letterSpacing:.5,color:color,fontFamily:"var(--m)"}}>{title} ({rows.length})</div>
+      <div style={{display:"grid",gridTemplateColumns:"1.8fr 1.3fr 1.7fr 56px 150px",gap:12,padding:"9px 16px",borderBottom:"1px solid var(--border)",alignItems:"center"}}>
+        <span className="th">Rep → Client</span><span className="th">Suggested tag</span><span className="th">Why the bot flagged it</span><span className="th" style={{textAlign:"center"}}>Score</span><span className="th" style={{textAlign:"right"}}>Review</span>
       </div>
+      {rows.map((s,i)=><div key={s.id} style={{display:"grid",gridTemplateColumns:"1.8fr 1.3fr 1.7fr 56px 150px",gap:12,padding:"12px 16px",borderBottom:i<rows.length-1?"1px solid #1a1f2b":"none",alignItems:"center",background:i%2?"#131722":"transparent"}}>
+        <div style={{minWidth:0,cursor:"pointer"}} onClick={()=>goTo("calls",s.call_id)}><div style={{fontSize:13,fontWeight:700,color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.rep_name} → {s.client_name||"?"}</div><div style={{fontSize:10,color:"var(--t4)",fontFamily:"var(--m)"}}>#{s.call_id} · {s.role} · {fmt(s.received_at)}</div></div>
+        <span style={{justifySelf:"start",padding:"2px 9px",borderRadius:20,fontSize:10,fontWeight:800,fontFamily:"var(--m)",background:s.color+"22",border:`1px dashed ${s.color}`,color:s.color}}>{s.label}{s.excludes_from_average&&" ⊘"}</span>
+        <span style={{fontSize:11,color:"var(--t2)",fontStyle:"italic",lineHeight:1.4,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{s.reason?`"${s.reason}"`:"—"}</span>
+        <span className="slab" style={{fontSize:13,color:sClr(s.overall_score_adj),textAlign:"center"}}>{s.overall_score_adj??"—"}</span>
+        <span style={{display:"flex",gap:6,justifyContent:"flex-end"}}><button className="btn btn-green btn-sm" onClick={()=>confirm(s)} disabled={busy===s.id} style={{fontSize:10,padding:"4px 9px"}}>{busy===s.id?"…":"✓ Confirm"}</button><button className="btn btn-sm" onClick={()=>dismiss(s)} disabled={busy===s.id} style={{fontSize:10,padding:"4px 9px"}}>✕</button></span>
+      </div>)}
     </div>;
   }
 
-  return<div className="flex-col gap-20" style={{maxWidth:900}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+  return<div className="flex-col gap-20">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
       <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Call Outcomes</h2>
-        <div style={{fontSize:13,color:"var(--t3)",marginTop:2}}>The bot flags calls where the <b>lead</b> couldn't be closed. Confirm to remove them from the rep's average — they stay attributed.</div></div>
+        <div style={{fontSize:12,color:"var(--t3)",marginTop:2,maxWidth:640,lineHeight:1.5}}>Cross-sell & outcome tags the bot suggested. <b style={{color:"var(--t2)"}}>You confirm</b> what's real — the bot never tags on its own. Confirming removes a call from the average (still attributed) or feeds Referrals.</div></div>
       <button className="btn btn-primary" onClick={backfill} disabled={scanning}>{scanning?"Scanning…":"⟳ Scan old calls"}</button>
     </div>
 
     {scanMsg&&<div className="card" style={{padding:14,fontSize:12,color:"var(--t2)"}}>{scanMsg}</div>}
-
-    <div className="card" style={{padding:14,background:"#0d1420",borderColor:"#1e3a5f",fontSize:12,color:"var(--t2)",lineHeight:1.6}}>
-      <b style={{color:"#7dd3fc"}}>Nothing changes until you confirm.</b> A suggestion has zero effect on anyone's numbers. Only <b>Confirm</b> removes a call from the scored average — and even then the call stays visible and attributed to the rep.
-    </div>
 
     {!data?<Skel/>:
      sug.length===0?<div className="card" style={{padding:40,textAlign:"center"}}>
        <div style={{fontSize:14,color:"var(--t2)"}}>No pending suggestions.</div>
        <div style={{fontSize:12,color:"var(--t3)",marginTop:6}}>New calls get checked automatically. Use <b>Scan old calls</b> to review already-scored ones.</div>
      </div>:<>
-      {excluding.length>0&&<div>
-        <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",letterSpacing:.5,marginBottom:10}}>LEAD COULDN'T BE CLOSED — WOULD REMOVE FROM AVERAGE ({excluding.length})</div>
-        <div className="flex-col gap-10">{excluding.map(s=><Row key={s.id} s={s}/>)}</div>
-      </div>}
-      {other.length>0&&<div>
-        <div style={{fontSize:12,fontWeight:700,color:"var(--t2)",letterSpacing:.5,marginBottom:10,marginTop:8}}>OUTCOME / CROSS-SELL — NO EFFECT ON SCORE ({other.length})</div>
-        <div className="flex-col gap-10">{other.map(s=><Row key={s.id} s={s}/>)}</div>
-      </div>}
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 15px",borderRadius:10,background:"#0f1a2e",border:"1px solid #1e3a5f"}}>
+        <Icon name="target" size={16} color="#93c5fd"/><span style={{fontSize:12,color:"var(--t2)"}}><b style={{color:"#93c5fd"}}>{sug.length} suggestion{sug.length!==1?"s":""}</b> waiting for your review · nothing changes until you confirm</span>
+      </div>
+      <Section title="LEAD COULDN'T BE CLOSED — WOULD REMOVE FROM AVERAGE" color="#f59e0b" rows={excluding}/>
+      <Section title="OUTCOME / CROSS-SELL — NO EFFECT ON SCORE" color="var(--t2)" rows={other}/>
      </>}
   </div>;
 }
