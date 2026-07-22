@@ -1758,6 +1758,8 @@ function ExportPage(){
 function TeamPage(){
   const{data:reps,reload}=useApi("/reps/all");
   const{data:unrostered,reload:reloadUnrostered}=useApi("/reps/unrostered");
+  const[period,setPeriod]=usePersisted("team.period","week");
+  const{data:an}=useApi(`/analytics?period=${period}`,[period]);
   const[showForm,setShowForm]=useState(false);
   const[prefill,setPrefill]=useState(null);
   const[editing,setEditing]=useState(null);
@@ -1781,35 +1783,39 @@ function TeamPage(){
 
   if(!reps)return<Skel/>;
   const active=reps.filter(r=>r.active);const inactive=reps.filter(r=>!r.active);
+  const vitals={};(an?.repStats||[]).forEach(r=>{vitals[r.rep_name]=r});
 
-  return<div className="flex-col gap-20" style={{maxWidth:900}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+  return<div className="flex-col gap-20">
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
       <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Team</h2>
-        <div style={{fontSize:13,color:"var(--t3)",marginTop:2}}>Manage reps, add new hires, onboard from the unrostered queue.</div></div>
-      <button className="btn btn-primary" onClick={()=>{setEditing(null);setPrefill(null);setShowForm(true);}}>+ Add Rep</button>
+        <div style={{fontSize:13,color:"var(--t3)",marginTop:2}}>{active.length} active reps · vitals from the selected window. Click a rep for their full profile.</div></div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div className="mono" style={{display:"flex",gap:2,background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,padding:3,fontSize:11}}>{[["week","7d"],["month","30d"],["all","All"]].map(([k,l])=><span key={k} onClick={()=>setPeriod(k)} style={{padding:"5px 10px",borderRadius:6,cursor:"pointer",background:period===k?"#6366f133":"transparent",color:period===k?"#a5b4fc":"var(--t3)",fontWeight:period===k?700:400}}>{l}</span>)}</div>
+        <button className="btn btn-primary" onClick={()=>{setEditing(null);setPrefill(null);setShowForm(true);}}>+ Add Rep</button>
+      </div>
     </div>
 
     {showForm&&<RepForm editing={editing} prefill={prefill}
       onClose={()=>{setShowForm(false);setEditing(null);setPrefill(null);}}
       onSaved={()=>{reload();reloadUnrostered();setShowForm(false);setEditing(null);setPrefill(null);}}/>}
 
-    {/* Unrostered onboarding queue */}
     {unrostered&&unrostered.unrostered&&unrostered.unrostered.length>0&&
-      <div className="card" style={{padding:20,background:"#161200",borderColor:"#92400e"}}>
+      <div className="card" style={{padding:20,background:"linear-gradient(150deg,#1c1206,#161b26)",borderColor:"#92400e"}}>
         <div className="section-head" style={{color:"#f59e0b"}}>⚠ Dialing through but not set up ({unrostered.unrostered.length})</div>
         <div style={{fontSize:12,color:"#a8956b",marginBottom:12}}>These are making calls but aren't in the roster — their calls are parked (not scored). Add them to start scoring.</div>
         {unrostered.unrostered.map((u,i)=><UnrosteredRow key={i} u={u} first={!i} onAdd={()=>onboardFromUnrostered(u)}/>)}
       </div>}
 
-    {/* Active roster */}
     <div className="card" style={{overflow:"hidden"}}>
-      <div style={{padding:"12px 18px",borderBottom:"1px solid var(--card)",fontSize:12,fontWeight:700,color:"var(--t2)",letterSpacing:.5}}>ACTIVE ROSTER ({active.length})</div>
-      {active.map(r=><RepRow key={r.id} rep={r} busy={busy} onEdit={()=>{setEditing(r);setPrefill(null);setShowForm(true);}} onToggle={()=>toggleActive(r)}/>)}
+      <div style={{display:"grid",gridTemplateColumns:"minmax(180px,2fr) 90px 60px 84px 70px minmax(140px,1.4fr) 150px",gap:12,padding:"11px 18px",borderBottom:"1px solid var(--border)",background:"#151a24",alignItems:"center"}}>
+        <span className="th">Active Roster ({active.length})</span><span className="th">Role</span><span className="th" style={{textAlign:"center"}}>Avg</span><span className="th" style={{textAlign:"right"}}>Trend</span><span className="th" style={{textAlign:"right"}}>Calls</span><span className="th">Focus area</span><span className="th" style={{textAlign:"right"}}>Manage</span>
+      </div>
+      {active.map(r=><RepRow key={r.id} rep={r} v={vitals[r.name]} busy={busy} onOpen={()=>goTo("rep",r.name)} onEdit={()=>{setEditing(r);setPrefill(null);setShowForm(true);}} onToggle={()=>toggleActive(r)}/>)}
     </div>
 
-    {inactive.length>0&&<div className="card" style={{overflow:"hidden",opacity:.7}}>
-      <div style={{padding:"12px 18px",borderBottom:"1px solid var(--card)",fontSize:12,fontWeight:700,color:"var(--t3)",letterSpacing:.5}}>INACTIVE ({inactive.length})</div>
-      {inactive.map(r=><RepRow key={r.id} rep={r} busy={busy} onEdit={()=>{setEditing(r);setPrefill(null);setShowForm(true);}} onToggle={()=>toggleActive(r)}/>)}
+    {inactive.length>0&&<div className="card" style={{overflow:"hidden",opacity:.65}}>
+      <div className="th" style={{padding:"12px 18px",borderBottom:"1px solid var(--border)"}}>Inactive ({inactive.length})</div>
+      {inactive.map(r=><RepRow key={r.id} rep={r} v={null} busy={busy} onOpen={()=>goTo("rep",r.name)} onEdit={()=>{setEditing(r);setPrefill(null);setShowForm(true);}} onToggle={()=>toggleActive(r)}/>)}
     </div>}
   </div>;
 }
@@ -1843,15 +1849,19 @@ function UnrosteredRow({u,first,onAdd}){
   </div>;
 }
 
-function RepRow({rep,onEdit,onToggle,busy}){
-  return<div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid var(--bg)"}}>
-    <div style={{width:10,height:10,borderRadius:"50%",background:rep.color||"#6366f1",flexShrink:0}}/>
-    <div style={{flex:1,minWidth:0}}>
-      <div style={{fontSize:14,fontWeight:700,color:"var(--t2)"}}>{rep.name} <span style={{fontSize:11,fontWeight:400,color:"var(--t3)"}}>· {rep.role} · {rep.team}</span></div>
-      <div style={{fontSize:11,color:"var(--t4)",fontFamily:"var(--m)"}}>{rep.src_tag}{rep.aloware_user_id?` · user_id ${rep.aloware_user_id}`:""}</div>
-    </div>
-    <button className="btn" onClick={onEdit} disabled={busy} style={{fontSize:11,padding:"4px 10px"}}>Edit</button>
-    <button className="btn" onClick={onToggle} disabled={busy} style={{fontSize:11,padding:"4px 10px",color:rep.active?"#f87171":"#34d399"}}>{rep.active?"Deactivate":"Reactivate"}</button>
+function RepRow({rep,v,onEdit,onToggle,onOpen,busy}){
+  const initials=(rep.name||"?").split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
+  const avg=v?.avg_score;
+  const foc=v?.focus||(avg!=null&&avg>=8?"Reinforce strengths":null);
+  const isCloser=(rep.role||"").toLowerCase().includes("clos");
+  return<div onClick={onOpen} style={{display:"grid",gridTemplateColumns:"minmax(180px,2fr) 90px 60px 84px 70px minmax(140px,1.4fr) 150px",gap:12,padding:"12px 18px",borderBottom:"1px solid var(--bg)",alignItems:"center",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#131c30"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+    <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}><div style={{width:30,height:30,borderRadius:8,background:rep.color||RC[rep.name]||"#6366f1",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12,color:"#fff",flexShrink:0}}>{initials}</div><div style={{minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{rep.name}</div>{rep.team&&<div style={{fontSize:10,color:"var(--t4)",fontFamily:"var(--m)"}}>{rep.team}</div>}</div></div>
+    <span className="badge" style={{justifySelf:"start",background:isCloser?"#14224a":"#2a1a05",color:isCloser?"#93c5fd":"#fbbf24",border:"none",fontSize:9}}>{(rep.role||"—").toUpperCase()}</span>
+    <span className="slab" style={{fontSize:15,color:avg!=null?sClr(avg):"var(--t4)",textAlign:"center"}}>{avg!=null?avg:"—"}</span>
+    <span className="mono" style={{fontSize:11,textAlign:"right",color:v?.trend>0?"#34d399":v?.trend<0?"#f87171":"var(--t4)"}}>{v?.trend>0?`↗ +${v.trend}`:v?.trend<0?`↘ ${v.trend}`:"→"}</span>
+    <span className="mono" style={{fontSize:12,color:"var(--t3)",textAlign:"right"}}>{v?.scored??"—"}</span>
+    <span style={{fontSize:11,color:foc?(avg!=null&&avg>=8?"#6ee7b7":"#f59e0b"):"var(--t4)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{foc||"—"}</span>
+    <span style={{display:"flex",gap:6,justifyContent:"flex-end"}} onClick={e=>e.stopPropagation()}><button className="btn" onClick={onEdit} disabled={busy} style={{fontSize:11,padding:"4px 10px"}}>Edit</button><button className="btn" onClick={onToggle} disabled={busy} style={{fontSize:11,padding:"4px 10px",color:rep.active?"#f87171":"#34d399"}}>{rep.active?"Off":"On"}</button></span>
   </div>;
 }
 
