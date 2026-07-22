@@ -1578,34 +1578,40 @@ function ExportPage(){
       <div style={{fontSize:12,color:"var(--t2)",marginTop:4}}>{String(report.error).slice(0,200)}</div>
     </div>}
     <div className="no-print" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
-      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Reports <span style={{fontSize:12,fontWeight:600,color:"#818cf8",marginLeft:8}}>{windowLabel}{!touched&&<span style={{color:"var(--t4)"}}> (default)</span>}</span></h2><p style={{fontSize:12,color:"var(--t3)",marginTop:4}}>Per-rep report cards, weekly digest, and trends — print any view to PDF.</p></div>
-      <div style={{display:"flex",gap:8}}>
-        <button className="btn" onClick={()=>{
-          const rows=(report&&report.perRep)||[];
-          if(!rows.length){alert("No report data to export yet.");return;}
-          downloadCSV(rows.map(r=>({
-            rep:r.rep_name,role:r.role,scored:r.scored,
-            avg_adjusted:r.avg_adj,avg_raw:r.avg_raw,
-            voicemails:r.voicemails,total_calls:r.total_calls,avg_talk_pct:r.avg_talk
-          })),`qc-report-${days}d-${new Date().toISOString().slice(0,10)}.csv`);
-        }}>⤓ Download CSV</button>
-        <button className="btn btn-primary" onClick={()=>window.print()}>⎙ Print / Save PDF</button>
+      <div><h2 style={{fontSize:24,fontWeight:900,margin:0}}>Reports</h2><p style={{fontSize:12,color:"var(--t3)",marginTop:4}}>Pick a report, set the window, export. Each report opens on the window that suits it — override any time.</p></div>
+    </div>
+    {/* Step 1 — pick a report (labelled cards) */}
+    <div className="no-print">
+      <div className="lbl" style={{fontFamily:"var(--m)",fontSize:10,fontWeight:800,letterSpacing:.6,color:"var(--t3)",textTransform:"uppercase",marginBottom:10}}>1 · What do you need?</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
+        {[["digest","Weekly Digest","Team summary, last 7 days"],["daily","Daily Digest","Today's best & toughest for Sam"],["cards","Rep Cards","Per-rep, last 30 days"],["trends","Trends","Score over time"],["scorecards","Scorecards","Printable per-call sheets"]].map(([id,l,sub])=>{const on=mode===id;return<div key={id} onClick={()=>setMode(id)} style={{borderRadius:11,padding:"14px 16px",border:"1px solid "+(on?"#4338ca":"var(--border)"),background:on?"#1e1b4b":"var(--card)",cursor:"pointer",transition:"all var(--dur) ease"}}><div style={{fontSize:13,fontWeight:800,color:on?"#c7d2fe":"var(--t1)"}}>{l}</div><div style={{fontSize:10.5,color:"var(--t3)",marginTop:3,lineHeight:1.4}}>{sub}</div></div>;})}
       </div>
     </div>
-    <div className="no-print card" style={{padding:18,display:"flex",gap:18,flexWrap:"wrap",alignItems:"center"}}>
-      <div style={{display:"flex",gap:6}}>{[["digest","Weekly Digest"],["daily","Daily Digest"],["cards","Rep Cards"],["trends","Trends"],["scorecards","Scorecards"]].map(([id,l])=><button key={id} onClick={()=>setMode(id)} className="btn" style={{padding:"6px 14px",fontSize:12,background:mode===id?"#1e1b4b":"",borderColor:mode===id?"#4338ca":"",color:mode===id?"#c7d2fe":""}}>{l}</button>)}</div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-        {[["today","Today"],["yesterday","Yesterday"]].map(([pv,l])=>{const on=preset===pv&&!from&&!to;
-          return<button key={pv} onClick={()=>{setPreset(on?"":pv);setFrom("");setTo("");setTouched(true);}} className="btn" style={{padding:"6px 12px",fontSize:12,background:on?"#1e1b4b":"",borderColor:on?"#4338ca":"",color:on?"#c7d2fe":""}}>{l}</button>;})}
-        {[[7,"7d"],[14,"14d"],[30,"30d"],[90,"90d"]].map(([d,l])=>{const on=days===d&&!preset&&!from&&!to;
-          return<button key={d} onClick={()=>{setDays(d);setPreset("");setFrom("");setTo("");setTouched(true);}} className="btn" style={{padding:"6px 12px",fontSize:12,background:on?"#1e1b4b":"",borderColor:on?"#4338ca":"",color:on?"#c7d2fe":""}}>{l}</button>;})}
-        <span style={{color:"#2a3040"}}>|</span>
+    {/* Step 2+3 — window + rep + export, one persistent bar */}
+    <div className="no-print card" style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",gap:16,flexWrap:"wrap",alignItems:"center"}}>
+      <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+        <span className="lbl" style={{fontFamily:"var(--m)",fontSize:10,fontWeight:800,letterSpacing:.6,color:"var(--t3)",textTransform:"uppercase"}}>2 · Window</span>
+        <div className="mono" style={{display:"flex",gap:2,background:"var(--bg)",border:"1px solid var(--border)",borderRadius:8,padding:3}}>
+          {[["today","Today"],["yesterday","Yesterday"]].map(([pv,l])=>{const on=preset===pv&&!from&&!to;return<span key={pv} onClick={()=>{setPreset(on?"":pv);setFrom("");setTo("");setTouched(true);}} style={{padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:11,background:on?"#6366f133":"transparent",color:on?"#a5b4fc":"var(--t3)",fontWeight:on?700:400}}>{l}</span>;})}
+          {[[7,"7d"],[14,"14d"],[30,"30d"],[90,"90d"]].map(([d,l])=>{const on=days===d&&!preset&&!from&&!to;return<span key={d} onClick={()=>{setDays(d);setPreset("");setFrom("");setTo("");setTouched(true);}} style={{padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:11,background:on?"#6366f133":"transparent",color:on?"#a5b4fc":"var(--t3)",fontWeight:on?700:400}}>{l}</span>;})}
+        </div>
         <input type="date" value={from} onChange={e=>{setFrom(e.target.value);setPreset("");setTouched(true);}} title="From" style={{padding:"5px 8px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}/>
         <span style={{color:"var(--t3)",fontSize:12}}>→</span>
         <input type="date" value={to} onChange={e=>{setTo(e.target.value);setPreset("");setTouched(true);}} title="To" style={{padding:"5px 8px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}/>
-        {touched&&<button className="btn" onClick={()=>setMode(mode)} title="Back to this report's default window" style={{padding:"5px 10px",fontSize:11}}>↺ Default</button>}
+        <select value={rep} onChange={e=>setRep(e.target.value)} style={{padding:"6px 11px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="">All reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
+        <span className="mono" style={{fontSize:10,color:"var(--t4)"}}>{windowLabel}{!touched&&" · default"}</span>
+        {touched&&<button className="btn btn-sm" onClick={()=>setMode(mode)} title="Back to this report's default window" style={{fontSize:11}}>↺ Default</button>}
       </div>
-      <select value={rep} onChange={e=>setRep(e.target.value)} style={{padding:"7px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="">All reps</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <span className="lbl" style={{fontFamily:"var(--m)",fontSize:10,fontWeight:800,letterSpacing:.6,color:"var(--t3)",textTransform:"uppercase"}}>3 · Export</span>
+        <button className="btn btn-sm" onClick={()=>{
+          const rows=(report&&report.perRep)||[];
+          if(!rows.length){alert("No report data to export yet.");return;}
+          downloadCSV(rows.map(r=>({rep:r.rep_name,role:r.role,scored:r.scored,avg_adjusted:r.avg_adj,avg_raw:r.avg_raw,voicemails:r.voicemails,total_calls:r.total_calls,avg_talk_pct:r.avg_talk})),`qc-report-${days}d-${new Date().toISOString().slice(0,10)}.csv`);
+        }}>⤓ CSV</button>
+        <button className="btn btn-sm" onClick={copySlack} style={{background:copied?"#052e16":"",borderColor:copied?"#166534":"",color:copied?"#6ee7b7":""}} title="Copy the Slack digest block">{copied?"✓ Copied":"💬 Copy for Slack"}</button>
+        <button className="btn btn-primary btn-sm" onClick={()=>window.print()}>⎙ Print / PDF</button>
+      </div>
     </div>
     {loading&&<div style={{padding:40,textAlign:"center",color:"var(--t3)"}}>Building report…</div>}
     {report&&<div className="report-sheet flex-col gap-20">
