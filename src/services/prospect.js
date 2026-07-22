@@ -91,4 +91,27 @@ function dial(v, low, high) { return v <= 2 ? low : v >= 4 ? high : 'balanced'; 
 function safeObj(v) { try { const o = JSON.parse(v); return o && typeof o === 'object' ? o : {}; } catch { return {}; } }
 function safeArr(v) { try { const a = JSON.parse(v); return Array.isArray(a) ? a : []; } catch { return []; } }
 
-module.exports = { buildProspectPrompt };
+// ─── Live belief-touch classifier (Train live signals, Jul 24) ──────────────
+// A SEPARATE, minimal Haiku call — deliberately not folded into the prospect's
+// reply generation. The reply call must stay purely conversational so the
+// prospect's in-character dialogue quality never degrades from being forced to
+// also emit structured JSON. This runs in parallel with that call instead (see
+// practiceRoutes.js), so it costs a few cents per session, not added latency.
+// Cheap and small on purpose: short prompt, single rep turn, tiny output.
+const SEVEN_BELIEFS = ['Pain', 'Doubt', 'Desire', 'Cost', 'Money', 'Support', 'Trust'];
+function buildBeliefTouchPrompt(repText) {
+  return `A sales rep just said this during a practice call: "${repText}"
+
+Which of these 7 Beliefs did this statement primarily work to build, if any? Pain (surfacing a real problem), Doubt (DIY isn't the best path), Desire (pulling toward the future outcome), Cost (cost of inaction), Money (resources/willingness), Support (spouse/partner alignment), Trust (the method/company is right).
+
+Return ONLY JSON, nothing else: {"beliefs": ["Pain","Desire"]} — empty array if this statement was small talk, logistics, or didn't meaningfully address any belief. Most single statements touch 0-1 beliefs; only mark more than one if it clearly did both.`;
+}
+
+// Merges a fresh classification into the running total — pure, no I/O, easy to test.
+function mergeBeliefsCovered(existingArr, newlyTouched) {
+  const existing = Array.isArray(existingArr) ? existingArr : [];
+  const valid = (Array.isArray(newlyTouched) ? newlyTouched : []).filter(b => SEVEN_BELIEFS.includes(b));
+  return [...new Set([...existing, ...valid])];
+}
+
+module.exports = { buildProspectPrompt, buildBeliefTouchPrompt, mergeBeliefsCovered, SEVEN_BELIEFS };
