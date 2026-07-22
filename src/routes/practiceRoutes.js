@@ -6,6 +6,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { requireAdmin } = require('../services/auth');
 const { q } = require('../../migrations/run');
 const { callConversation } = require('../services/ai');
 const { buildProspectPrompt } = require('../services/prospect');
@@ -40,7 +41,7 @@ router.get('/scenarios/:id', async (req, res) => {
 });
 
 // Author a scenario (Sam/admin)
-router.post('/scenarios', express.json({ limit: '1mb' }), async (req, res) => {
+router.post('/scenarios', requireAdmin, express.json({ limit: '1mb' }), async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.id || !b.title || !b.type) return res.status(400).json({ error: 'id, title, type required' });
