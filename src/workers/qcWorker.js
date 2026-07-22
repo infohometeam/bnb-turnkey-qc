@@ -445,7 +445,7 @@ async function sweepStuckTranscripts(maxHours = 4) {
 }
 
 // Valid tag keys, guarded so a hallucinated tag from the model can never be written.
-const OUTCOME_TAGS = ['DISQUALIFIED','NOT_READY','LONG_TERM_NURTURE','INFO_SEEKER','SHORT_TERM_NURTURE','REDZONE_HOT','HARD_NO'];
+const OUTCOME_TAGS = ['DISQUALIFIED','NOT_READY','LONG_TERM_NURTURE','INFO_SEEKER','SHORT_TERM_NURTURE','REDZONE_HOT','HARD_NO','SET','CLOSED_WON'];
 const CROSS_SELL_TAGS = ['HOTEL_TURNKEY_LEAD','BNB_LENDING_LEAD','INVESTOR_ACADEMY_LEAD','SURGE_TAX_LEAD','HOME_TEAM_MGMT_LEAD','REALTY_LEAD'];
 
 // Write the model's tag suggestions as SUGGESTED assignments.
