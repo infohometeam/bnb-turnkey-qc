@@ -62,12 +62,19 @@ select,input[type=date]{background:var(--card);border:1px solid var(--border);bo
 .manual-body b,.manual-body strong{color:var(--t1)}
 .rep-card{break-inside:avoid}
 @media print{
-  aside,.no-print,.tab-btn{display:none!important}
-  main{margin:0!important}
+  @page{margin:1.4cm}
+  aside,.no-print,.tab-btn,nav,.period-toggle{display:none!important}
+  main{margin:0!important;padding:0!important}
   body,:root{--bg:#fff!important;--card:#fff!important}
-  .report-sheet,.report-sheet *{color:#111!important}
-  .card{border:1px solid #ddd!important;box-shadow:none!important;background:#fff!important}
-  .report-sheet .stat-value{color:#111!important}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  .report-sheet,.report-sheet *{color:#1e293b!important}
+  .report-sheet{max-width:760px;margin:0 auto!important}
+  .report-sheet .sh,.report-sheet h2,.report-sheet .section-head{color:#4338ca!important;border-color:#e2e8f0!important}
+  .report-sheet .lbl,.report-sheet .th{color:#64748b!important}
+  .card{border:1px solid #e2e8f0!important;box-shadow:none!important;background:#fff!important;break-inside:avoid}
+  .report-sheet .stat-value{color:#0f172a!important}
+  .report-sheet table td{border-color:#eef2f7!important}
+  .report-sheet a{color:#1e293b!important;text-decoration:none!important}
 }
 /* ── P2.5 grey-scale unification (Design Lab, Jul 20): near-duplicate slate greys migrated onto --t1/--t2/--t3/--t4/--bg/--card. Print scorecard, rep palette, #374151 faint text left as-is. ── */
 /* ── P2 accessibility (Design Lab, Jul 20) — global, consumes --focus/--dur from P1 ── */
@@ -248,36 +255,60 @@ function scorecardHTML(c,withTranscript){
   const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const li=(arr)=>arr.map(x=>`<li>${esc(x)}</li>`).join("");
   const dur=c.call_duration_sec?`${Math.floor(c.call_duration_sec/60)}m ${c.call_duration_sec%60}s`:"—";
-  const catRows=Object.keys(cats).map(k=>`<tr><td>${esc(CL[k]||k)}</td><td class="num">${esc(cats[k])}/10</td></tr>`).join("");
+  // Score band → colour (light-sheet palette)
+  const sv=Number(c.overall_score_adj);
+  const band=isNaN(sv)?"#64748b":sv>=8?"#15803d":sv>=6?"#b45309":"#b91c1c";
+  const bandBg=isNaN(sv)?"#f1f5f9":sv>=8?"#f0fdf4":sv>=6?"#fffbeb":"#fef2f2";
+  const bandLbl=isNaN(sv)?"":sv>=8?"Strong":sv>=6?"Fair":"Needs work";
+  const catRows=Object.keys(cats).map(k=>{const v=Number(cats[k]);const pct=isNaN(v)?0:Math.max(0,Math.min(100,v*10));const cc=isNaN(v)?"#94a3b8":v>=8?"#16a34a":v>=6?"#d97706":"#dc2626";
+    return `<tr><td class="cat">${esc(CL[k]||k)}</td><td class="bar"><span class="track"><span class="fill" style="width:${pct}%;background:${cc}"></span></span></td><td class="num">${esc(cats[k])}<span class="den">/10</span></td></tr>`;}).join("");
   return `<section class="sc">
-    <h1>QC Scorecard <span class="cid">#${esc(c.id)}</span></h1>
-    <div class="meta"><b>${esc(c.rep_name)||"?"}</b> → ${esc(c.client_name)||"?"}<br>
-      ${esc(c.received_at)} · ${esc(c.role)} · ${esc(c.base_source||c.source)} · ${dur} · agent talk ${esc(c.agent_talk_pct)}%</div>
-    <div class="score">Score: <b>${esc(c.overall_score_adj)}</b> / 10 <span style="color:#64748b">(raw ${esc(c.overall_score)})</span></div>
-    ${catRows?`<h2>Categories</h2><table>${catRows}</table>`:""}
-    ${deductions.length?`<h2>Deductions</h2><ul>${deductions.map(d=>`<li><b>${esc(d.label)}</b> (${esc(d.points)}) — ${esc(d.severity)}</li>`).join("")}</ul>`:""}
+    <div class="hd">
+      <div class="hd-l"><div class="ttl">QC Scorecard</div><div class="rep">${esc(c.rep_name)||"?"} <span class="arw">→</span> ${esc(c.client_name)||"?"}</div>
+        <div class="meta">${esc(c.received_at)} · ${esc(c.role)} · ${esc(c.base_source||c.source)} · ${dur} · agent talk ${esc(c.agent_talk_pct)}%</div></div>
+      <div class="hd-r"><span class="cid">#${esc(c.id)}</span></div>
+    </div>
+    <div class="score" style="background:${bandBg};border-color:${band}33">
+      <div class="score-big" style="color:${band}">${esc(c.overall_score_adj)}<span class="score-den">/10</span></div>
+      <div class="score-meta"><div class="score-band" style="color:${band}">${bandLbl}</div><div class="score-raw">adjusted · raw ${esc(c.overall_score)}</div></div>
+    </div>
+    ${catRows?`<h2>Categories</h2><table class="cats">${catRows}</table>`:""}
+    ${deductions.length?`<h2>Deductions</h2><ul class="ded">${deductions.map(d=>`<li><b>${esc(d.label)}</b> <span class="pts">${esc(d.points)}</span> <span class="sev">${esc(d.severity)}</span></li>`).join("")}</ul>`:""}
     ${c.quick_summary?`<h2>Summary</h2><p>${esc(c.quick_summary)}</p>`:""}
-    ${strengths.length?`<h2>Strengths</h2><ul>${li(strengths)}</ul>`:""}
-    ${improvements.length?`<h2>Areas to Improve</h2><ul>${li(improvements)}</ul>`:""}
+    ${strengths.length?`<h2>Strengths</h2><ul class="good">${li(strengths)}</ul>`:""}
+    ${improvements.length?`<h2>Areas to Improve</h2><ul class="work">${li(improvements)}</ul>`:""}
     ${c.coaching_notes?`<h2>Coaching</h2><p>${esc(c.coaching_notes)}</p>`:""}
     ${withTranscript&&c.transcript?`<h2>Transcript</h2><div class="transcript">${esc(c.transcript)}</div>`:""}
   </section>`;
 }
-const SCORECARD_CSS=`@page{margin:1.5cm}
-body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e293b;line-height:1.55;max-width:760px;margin:0 auto;padding:20px}
+const SCORECARD_CSS=`@page{margin:1.4cm}
+*{box-sizing:border-box}
+body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e293b;line-height:1.55;max-width:760px;margin:0 auto;padding:24px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .sc{page-break-after:always}.sc:last-child{page-break-after:auto}
-h1{font-size:22px;margin:0 0 4px;color:#4338ca}
-.cid{font-size:13px;color:#94a3b8;font-family:monospace}
-.meta{color:#64748b;font-size:13px;margin-bottom:18px}
-.score{font-size:15px;margin:14px 0;padding:12px 16px;background:#f1f5f9;border-radius:8px}
-.score b{font-size:26px;color:#4338ca}
-h2{font-size:15px;border-bottom:2px solid #e2e8f0;padding-bottom:4px;margin:22px 0 10px}
-table{width:100%;border-collapse:collapse;font-size:14px}
-td{padding:6px 8px;border-bottom:1px solid #eef2f7}
-td.num{text-align:right;font-weight:700;font-family:monospace}
-ul{font-size:14px;margin:6px 0;padding-left:22px}li{margin:3px 0}p{font-size:14px}
-.transcript{white-space:pre-wrap;font-size:12px;color:#334155;background:#f8fafc;padding:14px;border-radius:8px}
-.footer{margin-top:30px;color:#94a3b8;font-size:11px;text-align:center}`;
+.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #4338ca;padding-bottom:12px;margin-bottom:6px}
+.ttl{font-size:12px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#4338ca;margin-bottom:6px}
+.rep{font-size:22px;font-weight:800;color:#0f172a;line-height:1.2}.arw{color:#94a3b8;font-weight:400}
+.meta{color:#64748b;font-size:12px;margin-top:6px}
+.cid{font-size:12px;color:#94a3b8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#f1f5f9;padding:3px 9px;border-radius:6px}
+.score{display:flex;align-items:center;gap:16px;margin:16px 0;padding:14px 20px;border:1px solid;border-radius:12px}
+.score-big{font-size:40px;font-weight:800;line-height:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.score-den{font-size:18px;color:#94a3b8;font-weight:600}
+.score-band{font-size:15px;font-weight:800}.score-raw{font-size:12px;color:#64748b;margin-top:2px}
+h2{font-size:13px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#475569;border-bottom:1px solid #e2e8f0;padding-bottom:5px;margin:22px 0 10px}
+table.cats{width:100%;border-collapse:collapse;font-size:14px}
+table.cats td{padding:7px 8px;border-bottom:1px solid #eef2f7;vertical-align:middle}
+td.cat{font-weight:600;color:#334155;width:34%}
+td.bar{width:50%}
+.track{display:block;height:8px;background:#eef2f7;border-radius:5px;overflow:hidden}
+.fill{display:block;height:100%;border-radius:5px}
+td.num{text-align:right;font-weight:800;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#0f172a}
+.den{color:#94a3b8;font-weight:600;font-size:11px}
+ul{font-size:14px;margin:6px 0;padding-left:20px}li{margin:4px 0}p{font-size:14px;color:#334155}
+ul.ded{list-style:none;padding-left:0}ul.ded li{padding:6px 10px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:0 6px 6px 0;margin:5px 0}
+ul.ded .pts{font-family:ui-monospace,monospace;font-weight:800;color:#b91c1c}ul.ded .sev{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px}
+ul.good li::marker{color:#16a34a}ul.work li::marker{color:#d97706}
+.transcript{white-space:pre-wrap;font-size:12px;color:#334155;background:#f8fafc;border:1px solid #eef2f7;padding:14px;border-radius:8px}
+.footer{margin-top:30px;padding-top:12px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;text-align:center}`;
 
 // Open a printable window with one or many scorecards.
 function printScorecards(calls,withTranscript,title){
