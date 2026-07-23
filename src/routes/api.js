@@ -1058,12 +1058,24 @@ router.post('/calls/:id/tag', requireAdmin, express.json(), async (req, res) => 
     // they describe compatible facts (near-term blocker AND long-term timeline),
     // not contradictory ones. Driven by tag_group + is_primary_outcome, not
     // hardcoded tag names, so a future custom tag opts into this automatically.
+    //
+    // FIX (Jul 25): this used to be a hard DELETE with no status filter — confirming
+    // ANY outcome tag silently destroyed every competing bot SUGGESTION in a
+    // different group, not just competing CONFIRMED tags, with zero audit trail.
+    // Pre-existing since the original build, found while testing the stacking fix
+    // above. Now marks them DISMISSED instead: nothing is ever erased, a query on
+    // this table always shows what the bot originally thought vs. what was decided.
+    // `status<>'DISMISSED'` guard stops the reason text from growing every time a
+    // call gets re-tagged — an already-dismissed row is left completely alone.
     if (t.is_primary_outcome) {
       await q(
-        `DELETE FROM call_tag_assignments
+        `UPDATE call_tag_assignments
+         SET status='DISMISSED',
+             reason = COALESCE(reason,'') || ' [auto-superseded: "' || ? || '" was confirmed for this call instead]'
          WHERE call_id=? AND tag_key <> ?
+           AND status <> 'DISMISSED'
            AND tag_key IN (SELECT key FROM call_tags WHERE is_primary_outcome=true AND tag_group <> ?)`,
-        [callId, tag, t.tag_group]);
+        [tag, callId, tag, t.tag_group]);
     }
     await q(
       `INSERT INTO call_tag_assignments (call_id, tag_key, status, reason, suggested_by, confirmed_by, created_at, confirmed_at)
