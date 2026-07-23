@@ -1051,17 +1051,19 @@ router.post('/calls/:id/tag', requireAdmin, express.json(), async (req, res) => 
     }
     const ts = new Date().toISOString().replace('T',' ').slice(0,19);
     const who = by || 'Sam';
-    // Primary-outcome tags are mutually exclusive "what kind of call was this"
-    // answers — a call can't be both Disqualified AND Hard No. Driven by the
-    // is_primary_outcome flag on call_tags (not hardcoded group names), so a
-    // future custom tag can opt into this via the create/edit endpoint below
-    // without ever needing a code change here again.
+    // Primary-outcome tags are mutually exclusive ACROSS groups — a call can't be
+    // both "not closeable" (A) and "a real attempt happened" (B), since those are
+    // genuinely contradictory root judgments. WITHIN a group, tags now stack freely
+    // (Francis, Jul 24) — e.g. Not Ready + Long-Term Nurture can both apply, since
+    // they describe compatible facts (near-term blocker AND long-term timeline),
+    // not contradictory ones. Driven by tag_group + is_primary_outcome, not
+    // hardcoded tag names, so a future custom tag opts into this automatically.
     if (t.is_primary_outcome) {
       await q(
         `DELETE FROM call_tag_assignments
          WHERE call_id=? AND tag_key <> ?
-           AND tag_key IN (SELECT key FROM call_tags WHERE is_primary_outcome=true)`,
-        [callId, tag]);
+           AND tag_key IN (SELECT key FROM call_tags WHERE is_primary_outcome=true AND tag_group <> ?)`,
+        [callId, tag, t.tag_group]);
     }
     await q(
       `INSERT INTO call_tag_assignments (call_id, tag_key, status, reason, suggested_by, confirmed_by, created_at, confirmed_at)
@@ -2871,6 +2873,17 @@ router.get('/report', async (req, res) => {
     const windowLabel = preset === 'today' ? 'Today (ET)' : preset === 'yesterday' ? 'Yesterday (ET)'
       : (from || to) ? `${from || '…'} → ${to || '…'}` : `Last ${days} days`;
 
+    // Auto-confirmed cross-sell routing (Jul 24/25) — surfaced here so nothing
+    // happens silently even though it's the "safe" tier. Same reporting window as
+    // the rest of this digest, joined through to calls so it respects the period.
+    const autoConfirmedRows = await q(
+      `SELECT a.tag_key, COUNT(*) AS n
+       FROM call_tag_assignments a
+       JOIN calls c ON c.id = a.call_id
+       WHERE a.confirmed_by='auto' AND ${periodClause}
+       GROUP BY a.tag_key ORDER BY n DESC`);
+    const autoConfirmedTotal = autoConfirmedRows.rows.reduce((s, r) => s + Number(r.n), 0);
+
     // Slack copy-paste block (mrkdwn: *bold*, <url|text>). Server-built so it's consistent.
     const slackLine = (label, c) => {
       if (!c) return `${label}: _no calls_`;
@@ -2902,6 +2915,8 @@ router.get('/report', async (req, res) => {
       `🏆 ${slackLine('Best', samDigest.closers.best)}`,
       ``,
       `💪 ${slackLine('Toughest', samDigest.closers.toughest)}`,
+      ...(autoConfirmedTotal ? [``, `━━━━━━━━━━━━━━━`, ``,
+        `🔀 *${autoConfirmedTotal} lead(s) auto-routed* (cross-sell only, never affects a score): ${autoConfirmedRows.rows.map(r => `${r.tag_key.replace(/_/g,' ')} (${r.n})`).join(', ')}`] : []),
     ].join('\n');
 
     res.json({
@@ -2919,6 +2934,7 @@ router.get('/report', async (req, res) => {
       team_categories: teamCategories,
       sam_digest: samDigest,
       sam_digest_slack: samDigestSlack,
+      auto_confirmed_cross_sell: { total: autoConfirmedTotal, by_tag: autoConfirmedRows.rows },
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
