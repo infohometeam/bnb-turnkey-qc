@@ -487,30 +487,35 @@ function CallComments({callId}){
     setBody("");setBusy(false);load();
   }
   async function del(id){if(!(await qcConfirm({title:"Delete comment?",message:"This comment will be removed permanently.",confirmLabel:"Delete",danger:true})))return;await deleteApi(`/comments/${id}`);load();}
-  const typeColors={note:"#64748b",praise:"#22c55e",coaching:"#f59e0b",question:"#60a5fa"};
+  const typeColors={note:"#64748b",praise:"#22c55e",coaching:"#f59e0b",question:"#60a5fa",dispute:"#f43f5e",reply:"#818cf8"};
+  const typeLabels={note:"Note",praise:"Praise",coaching:"Coaching",question:"Question",dispute:"Score dispute",reply:"QC Bot reply"};
   return<div className="card" style={{padding:24}}>
     <div className="section-head">Team Notes {comments.length>0&&<span style={{color:"#4338ca"}}>· {comments.length}</span>}</div>
     <p style={{fontSize:11,color:"var(--t3)",marginTop:-10,marginBottom:16}}>Share feedback on this call — your own or a teammate's. Everyone on the team can see and add notes.</p>
     <div className="flex-col gap-10" style={{marginBottom:18}}>
       {comments.length===0&&<div style={{fontSize:12,color:"#374151",fontStyle:"italic"}}>No notes yet. Be the first to weigh in.</div>}
-      {comments.map(cm=><div key={cm.id} style={{padding:"12px 14px",background:"var(--bg)",borderRadius:10,border:"1px solid #2a3140"}}>
+      {comments.map(cm=>{const isBot=cm.comment_type==="reply";const isDispute=cm.comment_type==="dispute";const accent=typeColors[cm.comment_type]||"#64748b";return<div key={cm.id} style={{padding:"12px 14px",background:isBot?"#12132a":"var(--bg)",borderRadius:10,border:`1px solid ${isBot||isDispute?accent+"66":"#2a3140"}`,borderLeft:isBot||isDispute?`3px solid ${accent}`:`1px solid #2a3140`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,fontWeight:700,color:"var(--t2)"}}>{cm.author}</span>
-            {cm.author_role&&<span style={{fontSize:10,color:"#374151"}}>{cm.author_role}</span>}
-            <span className="badge" style={{background:(typeColors[cm.comment_type]||"#64748b")+"22",color:typeColors[cm.comment_type]||"#64748b",border:`1px solid ${typeColors[cm.comment_type]||"#64748b"}44`,fontSize:8}}>{cm.comment_type}</span>
+            {isBot&&<Icon name="target" size={13} color="#818cf8"/>}
+            <span style={{fontSize:12,fontWeight:700,color:isBot?"#a5b4fc":"var(--t2)"}}>{cm.author}</span>
+            {cm.author_role&&!isBot&&<span style={{fontSize:10,color:"#374151"}}>{cm.author_role}</span>}
+            <span className="badge" style={{background:accent+"22",color:accent,border:`1px solid ${accent}44`,fontSize:8}}>{typeLabels[cm.comment_type]||cm.comment_type}</span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:"#374151"}}>{cm.created_at}</span><AdminOnly><span onClick={()=>del(cm.id)} style={{fontSize:11,color:"#374151",cursor:"pointer"}}>✕</span></AdminOnly></div>
         </div>
         <div style={{fontSize:13,color:"var(--t2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{cm.body}</div>
-      </div>)}
+      </div>;})}
     </div>
     <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
       <select value={author} onChange={e=>setAuthor(e.target.value)} style={{padding:"7px 10px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="">You are…</option>{(reps||[]).map(r=><option key={r.id} value={r.name}>{r.name}</option>)}</select>
-      <select value={type} onChange={e=>setType(e.target.value)} style={{padding:"7px 10px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="note">Note</option><option value="praise">Praise</option><option value="coaching">Coaching</option><option value="question">Question</option></select>
+      <select value={type} onChange={e=>setType(e.target.value)} style={{padding:"7px 10px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:7,color:"var(--t1)",fontSize:12}}><option value="note">Note</option><option value="praise">Praise</option><option value="coaching">Coaching</option><option value="question">Question</option><option value="dispute">Dispute the score</option></select>
     </div>
-    <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="Add a note about this call…" rows={2} style={{width:"100%",padding:"10px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,color:"var(--t1)",fontSize:13,resize:"vertical",fontFamily:"inherit"}}/>
-    <button className="btn btn-primary" onClick={submit} disabled={busy||!author||!body.trim()} style={{marginTop:8}}>{busy?"Posting…":"Post Note"}</button>
+    {type==="dispute"&&<div style={{fontSize:11.5,color:"var(--t2)",lineHeight:1.55,marginBottom:8,padding:"10px 12px",background:"#1e0d12",border:"1px solid #f43f5e66",borderRadius:8}}>
+      <b style={{color:"#fb7185"}}>Disputing the score</b> sends the call back to the QC Bot to re-read the <b>full transcript</b>. Point it to what you think it missed — but the transcript is the only evidence, your note won't change the score by itself. If a claim holds up, the call is re-scored; if not, the score stands. Either way the bot replies here. One dispute per call.
+    </div>}
+    <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder={type==="dispute"?"Which part of the score do you think is wrong, and what in the call shows it?":"Add a note about this call…"} rows={2} style={{width:"100%",padding:"10px 12px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:8,color:"var(--t1)",fontSize:13,resize:"vertical",fontFamily:"inherit"}}/>
+    <button className={type==="dispute"?"btn":"btn btn-primary"} onClick={submit} disabled={busy||!author||!body.trim()} style={type==="dispute"?{marginTop:8,background:"#f43f5e22",color:"#fb7185",border:"1px solid #f43f5e"}:{marginTop:8}}>{busy?(type==="dispute"?"Submitting…":"Posting…"):type==="dispute"?"Submit dispute":"Post Note"}</button>
   </div>
 }
 
@@ -883,7 +888,7 @@ function TagBox({call}){
   const[busy,setBusy]=useState(null);
   const tags=data?.tags||[];
   const registry=reg?.tags||[];
-  const outcome=tags.find(t=>(t.tag_group==="A_NOT_CLOSEABLE"||t.tag_group==="B_REAL_ATTEMPT")&&t.status!=="DISMISSED");
+  const outcomes=tags.filter(t=>(t.tag_group==="A_NOT_CLOSEABLE"||t.tag_group==="B_REAL_ATTEMPT")&&t.status!=="DISMISSED");
   const routing=tags.filter(t=>t.tag_group==="C_ROUTING"&&t.status!=="DISMISSED");
   const excluded=tags.some(t=>t.status==="CONFIRMED"&&t.excludes_from_average);
   // Which tag keys are currently on this call (confirmed or suggested)
@@ -961,8 +966,8 @@ function TagBox({call}){
     {tags.filter(t=>t.status!=="DISMISSED").length===0&&!open&&
       <div style={{fontSize:12,color:"var(--t3)"}}>No tags. This call counts toward the rep's average as a normal call.</div>}
 
-    {(outcome||routing.length>0)&&<div style={{marginTop:4}}>
-      {outcome&&<Pill t={outcome}/>}
+    {(outcomes.length>0||routing.length>0)&&<div style={{marginTop:4}}>
+      {outcomes.map(t=><Pill key={t.tag_key} t={t}/>)}
       {routing.map(t=><Pill key={t.tag_key} t={t}/>)}
     </div>}
     {tags.filter(t=>t.status==="DISMISSED").length>0&&<div style={{fontSize:10,color:"var(--t4)",marginTop:2}}>
@@ -971,11 +976,11 @@ function TagBox({call}){
 
     {open&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #1e2635"}}>
       <div style={{fontSize:11,color:"var(--t3)",marginBottom:12,lineHeight:1.5}}>
-        Click to add or remove. You can stack as many cross-sell tags as apply — the picker stays open.
+        Click to add or remove. You can pick <b style={{color:"var(--t2)"}}>more than one within a section</b>; choosing an outcome in one section clears the other outcome section, since a call can't be both. Cross-sell tags stack freely. The picker stays open.
       </div>
-      <TagGroup title="OUTCOME — lead couldn't be closed" sub="Removes the call from the rep's average. The rep judged correctly, so their score shouldn't suffer. Picking one replaces any other outcome — a call has one outcome."
+      <TagGroup title="OUTCOME — lead couldn't be closed" sub="Removes the call from the rep's average — the rep judged correctly, so their score shouldn't suffer. Stack more than one here if they apply (e.g. Not Ready + Long-Term Nurture). Picking anything here clears the 'real attempt' section."
         tags={groupA} Chip={Chip}/>
-      <TagGroup title="OUTCOME — a real attempt happened" sub="Stays scored. A genuine pitch happened, so execution is fair to judge. Also replaces any other outcome."
+      <TagGroup title="OUTCOME — a real attempt happened" sub="Stays scored — a genuine pitch happened, so execution is fair to judge. Stack more than one here if they apply. Picking anything here clears the 'couldn't be closed' section."
         tags={groupB} Chip={Chip}/>
       <TagGroup title="CROSS-SELL — stack as many as apply" sub="No effect on the score. A call can be Disqualified for BNB Turnkey AND a great Lending + Surge Tax lead — that's a win, not a failure."
         tags={groupC} Chip={Chip}/>
