@@ -501,18 +501,34 @@ async function saveTagSuggestions(callId, result, ts, transcript, role) {
 
   if (!suggestions.length) return { suggested: 0 };
 
-  let n = 0;
+  // Cross-sell auto-confirm (Jul 24/25) — ONLY tags explicitly marked eligible AND
+  // where excludes_from_average=false AND is_primary_outcome=false, checked directly
+  // in this query rather than trusting the flag alone. This is the hard safety gate:
+  // even if auto_confirm_eligible were ever set incorrectly on a score-affecting tag
+  // (bad data entry, a future bug elsewhere), this query still can't select it,
+  // because the score-safety conditions are enforced here, not just upstream.
+  // Everything else — every outcome tag, every missed-opportunity flag — stays
+  // exactly as it's always been: SUGGESTED, human confirms, no exceptions.
+  const eligRows = await q(
+    `SELECT key FROM call_tags
+     WHERE auto_confirm_eligible=true AND excludes_from_average=false AND is_primary_outcome=false AND active=true`);
+  const autoConfirmKeys = new Set(eligRows.rows.map(r => r.key));
+
+  let n = 0, autoConfirmed = 0;
   for (const s of suggestions) {
-    // DO NOTHING on conflict — never clobber a human's CONFIRMED/DISMISSED decision.
+    const isAuto = autoConfirmKeys.has(s.key);
+    const status = isAuto ? 'CONFIRMED' : 'SUGGESTED';
+    // DO NOTHING on conflict — never clobber a human's CONFIRMED/DISMISSED decision,
+    // and never re-auto-confirm something a human already dismissed.
     const r = await q(
-      `INSERT INTO call_tag_assignments (call_id, tag_key, status, reason, suggested_by, created_at)
-       VALUES (?,?,'SUGGESTED',?,'bot',?)
+      `INSERT INTO call_tag_assignments (call_id, tag_key, status, reason, suggested_by, created_at, confirmed_by, confirmed_at)
+       VALUES (?,?,?,?,'bot',?,?,?)
        ON CONFLICT (call_id, tag_key) DO NOTHING`,
-      [callId, s.key, s.reason, ts]);
-    if (r.rowCount) n++;
+      [callId, s.key, status, s.reason, ts, isAuto ? 'auto' : null, isAuto ? ts : null]);
+    if (r.rowCount) { n++; if (isAuto) autoConfirmed++; }
   }
-  if (n) console.log(`[QC] #${callId} suggested ${n} tag(s): ${suggestions.map(s=>s.key).join(', ')}`);
-  return { suggested: n };
+  if (n) console.log(`[QC] #${callId} ${n} tag(s) written (${autoConfirmed} auto-confirmed cross-sell): ${suggestions.map(s=>s.key).join(', ')}`);
+  return { suggested: n, autoConfirmed };
 }
 
 // ── Re-extract golden + tough moments for an already-scored call ──
