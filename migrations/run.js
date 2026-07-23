@@ -454,6 +454,21 @@ async function migrate() {
   await q(`ALTER TABLE practice_sessions ADD COLUMN IF NOT EXISTS prior_attempt_score real`);
   await q(`ALTER TABLE practice_sessions ADD COLUMN IF NOT EXISTS score_delta real`);
 
+  // Cross-sell auto-confirm (Francis, Jul 24/25) — SCOPED, NOT the general "automate
+  // tagging" ask. Only cross-sell/routing tags (Group C) are eligible: they have
+  // ZERO effect on any rep's score (excludes_from_average is always false on them),
+  // so a wrong auto-confirm here is a mis-routed lead, not a corrupted average.
+  // ⚠️ SAFETY: this flag alone is NOT sufficient to trigger auto-confirm — the code
+  // in saveTagSuggestions ALSO hard-requires excludes_from_average=false AND
+  // is_primary_outcome=false, regardless of this flag. Defense in depth: even a
+  // future data-entry mistake (marking a score-affecting tag eligible) can't
+  // actually cause an auto-confirm, because the code checks the safety-critical
+  // flags directly, not just this one.
+  await q(`ALTER TABLE call_tags ADD COLUMN IF NOT EXISTS auto_confirm_eligible boolean DEFAULT false`);
+  await q(`UPDATE call_tags SET auto_confirm_eligible=true
+             WHERE tag_group='C_ROUTING' AND excludes_from_average=false AND is_primary_outcome=false
+               AND auto_confirm_eligible IS DISTINCT FROM true`);
+
   console.log('[DB] Migration complete ✓ (Postgres)');
 }
 
