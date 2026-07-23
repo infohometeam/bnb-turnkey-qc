@@ -469,6 +469,37 @@ async function migrate() {
              WHERE tag_group='C_ROUTING' AND excludes_from_average=false AND is_primary_outcome=false
                AND auto_confirm_eligible IS DISTINCT FROM true`);
 
+  // ⚠️ RETROACTIVE (Jul 25) — call_comments existed live with zero migration record,
+  // found while building Note-Triggered Re-Review. Third table found this way this
+  // project (after scenarios, practice_sessions) — schema copied exactly from
+  // information_schema.columns, not reconstructed from memory.
+  await q(`CREATE TABLE IF NOT EXISTS call_comments (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    call_id integer NOT NULL,
+    author text,
+    author_role text,
+    body text,
+    comment_type text,
+    created_at text)`);
+
+  // Note-Triggered Re-Review (Jul 25) — full audit log of every dispute, visible to
+  // Sam regardless of outcome. The core anti-gaming principle this whole feature is
+  // built on: "the note points the bot back to the transcript, the note never
+  // becomes the evidence" — this table is what makes that auditable after the fact,
+  // not just true in the moment.
+  await q(`CREATE TABLE IF NOT EXISTS dispute_reviews (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    call_id integer NOT NULL,
+    comment_id bigint,
+    rep_name text,
+    note_text text,
+    claims_json text,
+    any_supported boolean,
+    score_before real,
+    rescore_triggered boolean DEFAULT false,
+    model_used text,
+    created_at text)`);
+
   console.log('[DB] Migration complete ✓ (Postgres)');
 }
 
