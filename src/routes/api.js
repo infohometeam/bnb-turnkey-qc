@@ -2958,13 +2958,77 @@ router.get('/calls/:id/comments', async (req, res) => {
     res.json({ comments: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Note-Triggered Re-Review (Jul 25). The note is a POINTER, never evidence — the
+// bot independently re-reads the transcript and only re-scores if the transcript
+// itself supports the claim. Rate-limited to one dispute per call per rep so this
+// can't become back-and-forth negotiation. Every outcome (supported or not) is
+// logged to dispute_reviews and posted back as a reply, so Sam always sees what
+// happened either way.
+async function handleDisputeReview(callId, commentId, repName, noteText) {
+  const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const postReply = (text) => q(
+    'INSERT INTO call_comments (call_id, author, author_role, body, comment_type, created_at) VALUES (?,?,?,?,?,?)',
+    [callId, 'QC Bot', 'system', text, 'reply', ts]);
+
+  const prior = await q('SELECT id FROM dispute_reviews WHERE call_id=? AND rep_name=?', [callId, repName]);
+  if (prior.rows.length) {
+    const text = "This call's already been disputed once — one re-review per call per rep, so this doesn't turn into back-and-forth. If you think the re-review itself got it wrong, flag it to Sam or Francis directly.";
+    await postReply(text);
+    return { rate_limited: true, reply_text: text };
+  }
+
+  const call = (await q('SELECT * FROM calls WHERE id=?', [callId])).rows[0];
+  if (!call || !call.transcript) {
+    const text = "Couldn't run a re-review — no transcript found on this call.";
+    await postReply(text);
+    return { error: 'no_transcript', reply_text: text };
+  }
+
+  const { buildDisputeReviewPrompt } = require('../services/prompts');
+  const { callAIJson } = require('../services/ai');
+  const prompt = buildDisputeReviewPrompt(call.transcript, noteText, repName);
+  const { result, usage } = await callAIJson(prompt, { maxTokens: 2000 });
+
+  const claims = Array.isArray(result?.claims) ? result.claims : [];
+  const anySupported = claims.some(c => c && c.supported === true);
+  const replyText = result?.reply_text ||
+    (anySupported ? 'Re-review found support for at least one claim — rescoring this call now.'
+                  : "Re-reviewed the transcript and couldn't find support for the claim made. Score stands.");
+
+  await q(
+    `INSERT INTO dispute_reviews (call_id, comment_id, rep_name, note_text, claims_json, any_supported, score_before, rescore_triggered, model_used, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    [callId, commentId, repName, noteText, JSON.stringify(claims), anySupported, call.overall_score_adj, anySupported, usage?.model || 'claude', ts]);
+
+  await postReply(replyText);
+
+  // Rescore is a completely CLEAN pass through the standard pipeline — no dispute
+  // context is injected into the scoring prompt itself. Deliberate: the rescore
+  // should be based purely on what's actually in the transcript, never nudged by
+  // "this is a dispute" framing. The dispute's own reply comment + this audit row
+  // carry the "why", not the scoring prompt.
+  if (anySupported) await q(`UPDATE calls SET status='REQC', error='' WHERE id=?`, [callId]);
+
+  return { any_supported: anySupported, claims, rescore_triggered: anySupported, reply_text: replyText };
+}
+
 router.post('/calls/:id/comments', express.json(), async (req, res) => {
   try {
     const { author, author_role, body, comment_type } = req.body || {};
     if (!author || !body) return res.status(400).json({ error: 'author and body required' });
-    const ins = await q('INSERT INTO call_comments (call_id, author, author_role, body, comment_type) VALUES (?,?,?,?,?)',
-      [req.params.id, author, author_role || '', body, comment_type || 'note']);
-    res.json({ ok: true, id: ins.lastInsertRowid });
+    const callId = req.params.id;
+    const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const ins = await q('INSERT INTO call_comments (call_id, author, author_role, body, comment_type, created_at) VALUES (?,?,?,?,?,?)',
+      [callId, author, author_role || '', body, comment_type || 'note', ts]);
+    const commentId = ins.lastInsertRowid;
+
+    let dispute = null;
+    if (comment_type === 'dispute') {
+      try { dispute = await handleDisputeReview(callId, commentId, author, body); }
+      catch (dErr) { console.error(`[Dispute] #${callId} review failed: ${dErr.message} — comment saved, review did not run`); dispute = { error: dErr.message }; }
+    }
+
+    res.json({ ok: true, id: commentId, dispute });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 router.delete('/comments/:id', requireAdmin, async (req, res) => {
