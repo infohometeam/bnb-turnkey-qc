@@ -27,15 +27,35 @@
 // Matches "+1 614-***-**76", "(614) 555-1234", "6145551234", masked forms.
 const PHONE_LABEL = /(\*{2,})|(\+?\d[\d().\-\s]{6,}\d)/;
 
-// Parse "[hh:mm:ss] Speaker Name: utterance" → {speaker, utter}. Timestamp optional.
+// Turn mis-attribution thresholds. Env-overridable so these can be retuned from
+// Render without a deploy if the corpus shifts (e.g. a new call source).
+const MISATTR_MAJOR = Number(process.env.HYGIENE_MISATTR_MAJOR || 8);
+const MISATTR_MINOR = Number(process.env.HYGIENE_MISATTR_MINOR || 3);
+
+// "00:16:56" or "16:56" → seconds. Null if unparseable.
+function hmsToSec(s) {
+  const parts = String(s || '').split(':').map(Number);
+  if (parts.some(isNaN) || !parts.length) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return null;
+}
+
+// Parse "[hh:mm:ss] Speaker Name: utterance" → {speaker, utter, tsSec}.
+// Timestamp optional; tsSec is null when absent. Field names are unchanged from
+// the original version, so existing callers are unaffected by the added tsSec.
 function parseLine(line) {
   if (!line || !line.trim()) return null;
-  const withTs = line.match(/^\s*\[[0-9:]+\]\s*([^:]{1,40}):\s*(.*)$/);
-  const noTs = withTs ? null : line.match(/^\s*([^:\[\]]{1,40}):\s*(.*)$/);
-  const m = withTs || noTs;
-  if (!m) return null;
-  return { speaker: (m[1] || '').trim(), utter: (m[2] || '').trim() };
+  const withTs = line.match(/^\s*\[([0-9:]+)\]\s*([^:]{1,40}):\s*(.*)$/);
+  if (withTs) {
+    return { speaker: (withTs[2] || '').trim(), utter: (withTs[3] || '').trim(), tsSec: hmsToSec(withTs[1]) };
+  }
+  const noTs = line.match(/^\s*([^:\[\]]{1,40}):\s*(.*)$/);
+  if (noTs) return { speaker: (noTs[1] || '').trim(), utter: (noTs[2] || '').trim(), tsSec: null };
+  return null;
 }
+
+function wordCount(s) { return (String(s || '').trim().match(/\S+/g) || []).length; }
 
 // Normalize an utterance for duplicate comparison: lowercase, strip non-alnum.
 function norm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
@@ -90,6 +110,35 @@ function analyzeTranscriptHygiene(transcript, opts = {}) {
   let crossAttributed = 0;
   for (const set of bySpeaker.values()) if (set.size >= 2) crossAttributed++;
 
+  // ── TURN MIS-ATTRIBUTION (defect #3, added Jul 25) ──────────────
+  // A DIFFERENT failure mode from echo, and the echo detector above is blind to
+  // it: in rapid back-and-forth, diarization collapses an A/B/A/B exchange onto
+  // ONE speaker. Nothing is duplicated, so nothing trips the echo check — the
+  // transcript just quietly attributes the lead's replies to the rep.
+  // Found on call #2448, which the detector had rated "clean" with HIGH
+  // confidence: Kevin asks "How are you guys?" and the reply "Doing well." is
+  // attributed to Kevin as well.
+  //
+  // SIGNATURE: same speaker, a SHORT question immediately followed by that same
+  // speaker giving a SHORT answer, within a couple of seconds.
+  // The length + gap filters are what separate this from a rep's legitimate
+  // RHETORICAL question in a pitch ("And how many people pay that off in 12
+  // months? Very, very few.") — those have a longer setup question and a beat
+  // before the answer. Validated on #2448: this rejects all 21 rhetorical cases
+  // and keeps the ~15 genuine ones.
+  let misattributedTurns = 0;
+  const misattrExamples = [];
+  for (let i = 0; i < parsed.length - 1; i++) {
+    const a = parsed[i], b = parsed[i + 1];
+    if (!a.speaker || a.speaker !== b.speaker) continue;
+    if (!/\?\s*$/.test(a.utter)) continue;              // first line must be a question
+    if (/\?\s*$/.test(b.utter)) continue;               // two questions in a row = not an answer
+    if (wordCount(a.utter) > 8 || wordCount(b.utter) > 6) continue;  // long = rhetorical, not misattribution
+    if (a.tsSec != null && b.tsSec != null && (b.tsSec - a.tsSec) > 3) continue; // slow = rhetorical
+    misattributedTurns++;
+    if (misattrExamples.length < 3) misattrExamples.push(`"${a.utter}" → "${b.utter}"`);
+  }
+
   // ── Scoring (100 = clean). Calibrated to the live Fathom corpus. ──
   let score = 100;
   const isDialIn = phoneLabels > 0;
@@ -124,6 +173,27 @@ function analyzeTranscriptHygiene(transcript, opts = {}) {
     });
   }
 
+  // Turn mis-attribution. Thresholds calibrated against the live corpus (see the
+  // calibration run in the Jul 25 session) — set so genuinely conversational
+  // calls don't trip it, but a systematically mis-attributed one does.
+  if (misattributedTurns >= MISATTR_MAJOR) {
+    const pen = Math.min(35, misattributedTurns * 2);
+    score -= pen;
+    flags.push({
+      code: 'MISATTRIBUTION',
+      label: `Turn mis-attribution — ${misattributedTurns} exchanges collapsed onto one speaker`,
+      detail: `Rapid back-and-forth was attributed to a single speaker (e.g. ${misattrExamples[0] || 'question answered by the same speaker'}). Unlike echo, nothing is duplicated — the lead's replies are silently credited to the rep, so per-speaker word counts and "who said what" are unreliable.`,
+      severity: misattributedTurns >= MISATTR_MAJOR * 2 ? 'high' : 'medium',
+    });
+  } else if (misattributedTurns >= MISATTR_MINOR) {
+    flags.push({
+      code: 'MISATTRIBUTION_MINOR',
+      label: `Minor turn mis-attribution — ${misattributedTurns} exchange(s)`,
+      detail: 'A few rapid exchanges appear collapsed onto one speaker, typically in small talk. Unlikely to affect scoring of substance.',
+      severity: 'low',
+    });
+  }
+
   // A 1:1 call should have exactly 2 speakers. More than that on a 2-party call
   // is a diarization split (one person heard as several).
   if (distinctSpeakers > 3) {
@@ -140,21 +210,24 @@ function analyzeTranscriptHygiene(transcript, opts = {}) {
   const grade = score >= 90 ? 'clean' : score >= 70 ? 'minor' : 'degraded';
 
   // Suppress the talk-ratio deduction whenever the per-speaker split can't be trusted.
-  const suppressTalkRatio = isDialIn || crossAttributed >= 3;
+  // Mis-attribution corrupts per-speaker word counts the same way echo does —
+  // the words are real, they're just credited to the wrong person.
+  const suppressTalkRatio = isDialIn || crossAttributed >= 3 || misattributedTurns >= MISATTR_MAJOR;
 
-  const warning = grade === 'clean' ? null : buildWarning({ flags, isDialIn, crossAttributed, suppressTalkRatio });
+  const warning = grade === 'clean' ? null : buildWarning({ flags, isDialIn, crossAttributed, misattributedTurns, suppressTalkRatio });
 
   return {
     score, grade, isDialIn, suppressTalkRatio, flags, warning,
-    metrics: { labeledLines, distinctSpeakers, crossAttributed, echoAdjacent, phoneLabels, source },
+    metrics: { labeledLines, distinctSpeakers, crossAttributed, echoAdjacent, phoneLabels, misattributedTurns, source },
   };
 }
 
 // The block injected into the QC prompt so the scorer compensates for bad labels.
-function buildWarning({ flags, isDialIn, crossAttributed, suppressTalkRatio }) {
+function buildWarning({ flags, isDialIn, crossAttributed, misattributedTurns, suppressTalkRatio }) {
   const bullets = [];
   if (isDialIn) bullets.push('- Speaker labels are partially SCRAMBLED: lines attributed to the rep may belong to the lead and vice-versa. This was a phone dial-in.');
   if (crossAttributed >= 3) bullets.push('- Some utterances are ECHOED (duplicated under BOTH speakers). Treat a repeated line as ONE utterance, not two.');
+  if (misattributedTurns >= MISATTR_MAJOR) bullets.push('- Rapid back-and-forth has been COLLAPSED ONTO ONE SPEAKER: where you see the same person ask a question and immediately answer it in a short line, the answer almost certainly belongs to the OTHER party. Read those exchanges as a dialogue, not a monologue.');
   if (!bullets.length) bullets.push('- Diarization on this transcript is imperfect; speaker labels may be unreliable.');
 
   const lines = [
