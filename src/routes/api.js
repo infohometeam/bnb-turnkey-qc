@@ -16,6 +16,32 @@ const NOT_TAGGED = `NOT EXISTS (SELECT 1 FROM call_tag_assignments cta JOIN call
 // For WHERE clauses:
 const { requireAdmin } = require('../services/auth');
 const EXCL_TAGGED = `AND ${NOT_TAGGED}`;
+
+// Canonical DISPLAY names for deduction rules, keyed by the stable `rule` id.
+// Display-only — changing anything here is safe and never affects scoring,
+// habit grouping, or historical data, because all of that keys off `rule`.
+//
+// "no_objection_handling" was relabelled Jul 25. The old wording — "Failed: No
+// Objection Handling" — read as "this rep didn't handle objections at all",
+// which was actively misleading: the prompt's actual bar is "handled 2+
+// objections USING THE FRAMEWORK after the price drop". On 14 of 46 calls the
+// bot deducted for this while its own alt-investment analysis independently
+// graded the rep BALANCED for engaging honestly with an objection. Both were
+// correct — the label was the problem. It also drives the Habit Engine card
+// Sam reads, so the wrong wording pointed coaching at "start handling
+// objections" when the real gap is "handle more of them, with the framework".
+// The DEDUCTION LOGIC IS UNCHANGED — whether the 2+/framework/price-drop bar
+// itself is right is Sam's call, not a rename.
+const DEDUCTION_DISPLAY = {
+  no_discovery: 'No real discovery',
+  no_financial_qual: 'No financial qualification',
+  no_objection_handling: 'Objections: framework not applied',
+  untailored_pitch: 'Untailored pitch',
+  agent_talk_too_high: 'Talk balance: rep dominating (>90%)',
+  agent_talk_high: 'Talk balance: rep-heavy (>80%)',
+  agent_talk_too_low: 'Talk balance: rep too passive (<10%)',
+  agent_talk_low: 'Talk balance: rep light (<20%)',
+};
 // For use INSIDE FILTER(WHERE ...) aggregates — so a tagged call still counts as a call
 // the rep made (total_calls), but does NOT pull their AVERAGE. That distinction matters:
 // the call stays theirs, only the score stops counting.
@@ -118,15 +144,35 @@ router.get('/calls/:id', async (req, res) => {
         const h = await computeRepHabits(call.rep_name, call.role, 30);
         if (h.enough_data) {
           let pf = call.pass_fail; if (typeof pf === 'string') { try { pf = JSON.parse(pf); } catch { pf = null; } }
-          const labels = ((pf && pf.deductions) || []).filter(d => Number(d.points) !== 0).map(d => d.label || d.rule);
+          // Match on `rule`, not `label` — must stay in lockstep with the habit
+          // grouping in computeRepHabits, which groups by rule (see note there).
+          const ruleKeys = ((pf && pf.deductions) || []).filter(d => Number(d.points) !== 0).map(d => d.rule || d.label);
           call.habit_flags = (h.habits || [])
             .filter(x => x.type === 'watch')
             .filter(x => (x.call_ids || []).includes(call.id) ||
-                         labels.some(l => x.key === 'deduction:' + l))
+                         ruleKeys.some(k => x.key === 'deduction:' + k))
             .map(x => ({ label: x.label, frequency: x.frequency, trend: x.trend }));
         }
       }
     } catch (e) { /* habits are additive — never block the call view */ }
+
+    // Display-only: rewrite each deduction's label to the current canonical name
+    // for its rule. Applied at READ time so all ~109 historical calls carrying the
+    // old "Failed: No Objection Handling" wording show the corrected label
+    // immediately — no rescore, no backfill, and the stored data is untouched.
+    try {
+      let pf = call.pass_fail;
+      const wasString = typeof pf === 'string';
+      if (wasString) { try { pf = JSON.parse(pf); } catch { pf = null; } }
+      if (pf && Array.isArray(pf.deductions)) {
+        pf.deductions = pf.deductions.map(d => {
+          const canon = d && d.rule && DEDUCTION_DISPLAY[d.rule];
+          return canon ? { ...d, label: canon } : d;
+        });
+        call.pass_fail = wasString ? JSON.stringify(pf) : pf;
+      }
+    } catch (e) { /* display polish only — never block the call view */ }
+
     res.json(call);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1802,21 +1848,31 @@ async function computeRepHabits(repName, role, limit = 30) {
         frequency: `${bT.ids.length} of ${n} calls`, trend: trendOf(balanced), call_ids: bT.ids.slice(0, 6) });
     }
 
-    // 2. Recurring deductions — the concrete, fixable failures
+    // 2. Recurring deductions — the concrete, fixable failures.
+    // GROUPED BY `rule`, NOT by `label` (fixed Jul 25). Two real bugs this closes:
+    //   1. Talk-ratio labels embed the percentage ("Agent talk 84% (>80%)"), so
+    //      every call produced a UNIQUE label and the habit could never accumulate
+    //      past 1 — verified live: agent_talk_high fired 4x under 3 distinct labels.
+    //   2. Any future wording change to a deduction label would have silently
+    //      split one habit into two, halving both counts below the threshold.
+    // `rule` is the stable identity; the label is only ever a display string.
     const dedOf = (r) => { const pf = J(r.pass_fail); return (pf && Array.isArray(pf.deductions) ? pf.deductions : []).filter(d => Number(d.points) !== 0); };
-    const dedLabels = {};
+    const dedGroups = {}; // rule -> { ids: [], label }
     rows.forEach(r => dedOf(r).forEach(d => {
-      const k = d.label || d.rule; if (!k) return;
-      (dedLabels[k] = dedLabels[k] || []).push(r.id);
+      const k = d.rule || d.label; if (!k) return;
+      if (!dedGroups[k]) dedGroups[k] = { ids: [], label: null };
+      dedGroups[k].ids.push(r.id);
+      // Prefer a stable display name; fall back to whatever the call stored.
+      dedGroups[k].label = DEDUCTION_DISPLAY[k] || dedGroups[k].label || d.label || k;
     }));
-    Object.entries(dedLabels)
-      .filter(([, ids]) => ids.length >= 3 && ids.length / n >= 0.3)
-      .sort((a, b) => b[1].length - a[1].length).slice(0, 3)
-      .forEach(([label, ids]) => {
-        const has = (r) => dedOf(r).some(d => (d.label || d.rule) === label);
-        push({ key: 'deduction:' + label, type: 'watch', label: `Recurring: ${label}`,
-          detail: `This deduction has hit ${ids.length} of the last ${n} calls. It's a pattern, not a one-off — worth a focused drill.`,
-          frequency: `${ids.length} of ${n} calls`, trend: trendOf(has), call_ids: ids.slice(0, 6) });
+    Object.entries(dedGroups)
+      .filter(([, g]) => g.ids.length >= 3 && g.ids.length / n >= 0.3)
+      .sort((a, b) => b[1].ids.length - a[1].ids.length).slice(0, 3)
+      .forEach(([rule, g]) => {
+        const has = (r) => dedOf(r).some(d => (d.rule || d.label) === rule);
+        push({ key: 'deduction:' + rule, type: 'watch', label: `Recurring: ${g.label}`,
+          detail: `This deduction has hit ${g.ids.length} of the last ${n} calls. It's a pattern, not a one-off — worth a focused drill.`,
+          frequency: `${g.ids.length} of ${n} calls`, trend: trendOf(has), call_ids: g.ids.slice(0, 6) });
       });
 
     // 3. Category habits — chronically weak and consistently strong
