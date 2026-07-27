@@ -110,34 +110,49 @@ function analyzeTranscriptHygiene(transcript, opts = {}) {
   let crossAttributed = 0;
   for (const set of bySpeaker.values()) if (set.size >= 2) crossAttributed++;
 
-  // ── TURN MIS-ATTRIBUTION (defect #3, added Jul 25) ──────────────
+  // ── TURN MIS-ATTRIBUTION (defect #3, added Jul 25, BROADENED Jul 27) ──────
   // A DIFFERENT failure mode from echo, and the echo detector above is blind to
   // it: in rapid back-and-forth, diarization collapses an A/B/A/B exchange onto
   // ONE speaker. Nothing is duplicated, so nothing trips the echo check — the
   // transcript just quietly attributes the lead's replies to the rep.
-  // Found on call #2448, which the detector had rated "clean" with HIGH
-  // confidence: Kevin asks "How are you guys?" and the reply "Doing well." is
-  // attributed to Kevin as well.
   //
-  // SIGNATURE: same speaker, a SHORT question immediately followed by that same
-  // speaker giving a SHORT answer, within a couple of seconds.
-  // The length + gap filters are what separate this from a rep's legitimate
-  // RHETORICAL question in a pitch ("And how many people pay that off in 12
-  // months? Very, very few.") — those have a longer setup question and a beat
-  // before the answer. Validated on #2448: this rejects all 21 rhetorical cases
-  // and keeps the ~15 genuine ones.
-  let misattributedTurns = 0;
+  // TWO independent signatures. The first was built from call #2448 alone and
+  // proved TOO NARROW — it missed call #2580 entirely (found 2 events where the
+  // real count was 33), because #2580's mis-attribution contains no questions at
+  // all. Lesson: validating only against false positives is half a validation.
+  //
+  // SIGNAL A — self-answered question: same speaker, a SHORT question immediately
+  // followed by that same speaker giving a SHORT answer, within a couple seconds.
+  // Length + gap filters separate this from a rep's legitimate RHETORICAL question
+  // ("And how many people pay that off in 12 months? Very, very few.").
+  //
+  // SIGNAL B — orphaned backchannel: a bare acknowledgement ("Okay.", "Yeah.",
+  // "Got it.") sandwiched BETWEEN two turns by the SAME speaker. A backchannel is
+  // inherently a response to the OTHER party — finding one buried mid-monologue
+  // means the surrounding turns were mis-assigned. This is the stronger signal by
+  // far. Validated across the full corpus: Aloware 221 calls, avg 0.0, MAX 0 —
+  // literally never fires on a clean source. Fathom 73 calls, avg 38.1, max 158.
+  const BACKCHANNEL = /^(okay|ok|yeah|yep|yes|right|sure|got it|gotcha|mhm|exactly|absolutely|perfect|awesome|cool|nice|great|understood|correct|makes sense|sounds good|definitely|totally)[.!,]?$/i;
+  let selfAnsweredQuestions = 0, orphanBackchannels = 0;
   const misattrExamples = [];
   for (let i = 0; i < parsed.length - 1; i++) {
     const a = parsed[i], b = parsed[i + 1];
     if (!a.speaker || a.speaker !== b.speaker) continue;
-    if (!/\?\s*$/.test(a.utter)) continue;              // first line must be a question
-    if (/\?\s*$/.test(b.utter)) continue;               // two questions in a row = not an answer
-    if (wordCount(a.utter) > 8 || wordCount(b.utter) > 6) continue;  // long = rhetorical, not misattribution
-    if (a.tsSec != null && b.tsSec != null && (b.tsSec - a.tsSec) > 3) continue; // slow = rhetorical
-    misattributedTurns++;
-    if (misattrExamples.length < 3) misattrExamples.push(`"${a.utter}" → "${b.utter}"`);
+    if (!/\?\s*$/.test(a.utter)) continue;
+    if (/\?\s*$/.test(b.utter)) continue;
+    if (wordCount(a.utter) > 8 || wordCount(b.utter) > 6) continue;
+    if (a.tsSec != null && b.tsSec != null && (b.tsSec - a.tsSec) > 3) continue;
+    selfAnsweredQuestions++;
+    if (misattrExamples.length < 2) misattrExamples.push(`"${a.utter}" → "${b.utter}"`);
   }
+  for (let i = 1; i < parsed.length - 1; i++) {
+    const prev = parsed[i - 1], cur = parsed[i], next = parsed[i + 1];
+    if (!cur.speaker || cur.speaker !== prev.speaker || cur.speaker !== next.speaker) continue;
+    if (!BACKCHANNEL.test((cur.utter || '').trim())) continue;
+    orphanBackchannels++;
+    if (misattrExamples.length < 3) misattrExamples.push(`"${cur.utter}" stranded inside ${cur.speaker}'s own run`);
+  }
+  const misattributedTurns = selfAnsweredQuestions + orphanBackchannels;
 
   // ── Scoring (100 = clean). Calibrated to the live Fathom corpus. ──
   let score = 100;
@@ -177,13 +192,22 @@ function analyzeTranscriptHygiene(transcript, opts = {}) {
   // calibration run in the Jul 25 session) — set so genuinely conversational
   // calls don't trip it, but a systematically mis-attributed one does.
   if (misattributedTurns >= MISATTR_MAJOR) {
-    const pen = Math.min(35, misattributedTurns * 2);
+    // Penalty capped at 20 DELIBERATELY. Uncapped (35) this pushed a typical
+    // Fathom call to "degraded" — and since computeCallMechanics() returns null
+    // on degraded transcripts, that would have silently killed the Call Mechanics
+    // panel on ~every closer call. Verified on #2448 and #2580: the mis-attribution
+    // concentrates in rapid SMALL TALK, while the substantive sections (discovery,
+    // objection handling, the pitch) are attributed correctly. So the transcript is
+    // unreliable for WORD COUNTS but still sound for judging content — "minor" is
+    // the honest grade. We still flag it loudly, still warn the model, and still
+    // suppress talk-ratio; we just don't throw away a working feature over it.
+    const pen = Math.min(20, misattributedTurns * 2);
     score -= pen;
     flags.push({
       code: 'MISATTRIBUTION',
-      label: `Turn mis-attribution — ${misattributedTurns} exchanges collapsed onto one speaker`,
-      detail: `Rapid back-and-forth was attributed to a single speaker (e.g. ${misattrExamples[0] || 'question answered by the same speaker'}). Unlike echo, nothing is duplicated — the lead's replies are silently credited to the rep, so per-speaker word counts and "who said what" are unreliable.`,
-      severity: misattributedTurns >= MISATTR_MAJOR * 2 ? 'high' : 'medium',
+      label: `Turn mis-attribution — ${misattributedTurns} exchange(s) collapsed onto one speaker`,
+      detail: `Rapid back-and-forth was attributed to a single speaker (e.g. ${misattrExamples[0] || 'a reply credited to the wrong party'}). Unlike echo, nothing is duplicated — the other party's replies are silently credited to this speaker, so per-speaker word counts and "who said what" are unreliable. Substantive passages are usually still attributed correctly.`,
+      severity: misattributedTurns >= MISATTR_MAJOR * 3 ? 'high' : 'medium',
     });
   } else if (misattributedTurns >= MISATTR_MINOR) {
     flags.push({
@@ -218,7 +242,7 @@ function analyzeTranscriptHygiene(transcript, opts = {}) {
 
   return {
     score, grade, isDialIn, suppressTalkRatio, flags, warning,
-    metrics: { labeledLines, distinctSpeakers, crossAttributed, echoAdjacent, phoneLabels, misattributedTurns, source },
+    metrics: { labeledLines, distinctSpeakers, crossAttributed, echoAdjacent, phoneLabels, misattributedTurns, selfAnsweredQuestions, orphanBackchannels, source },
   };
 }
 
