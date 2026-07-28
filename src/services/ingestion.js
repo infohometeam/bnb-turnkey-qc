@@ -249,7 +249,15 @@ async function ingestCall(rawPayload, srcTag) {
 
   const source = resolvedSrcTag ? `${baseSource} (${resolvedSrcTag})` : baseSource;
   const clientName = detectClientName(data, inner);
-  const alowareCallId = inner?.id || inner?.communication?.id;
+  // Aloware nests the call ID DIFFERENTLY per event type, and getting this wrong
+  // silently mis-attributes calls to the wrong rep (see the rep guard below):
+  //   Recording-Saved      → body.id                     (no communication object)
+  //   Transcription-Saved  → body.communication_id / body.communication.id
+  //                          (body.id here is NOT the call ID)
+  // Checking `communication` FIRST is what makes transcription events resolve.
+  // Recording-Saved has no communication object, so it still falls through to
+  // body.id exactly as before — this ordering is safe for both.
+  const alowareCallId = inner?.communication?.id || inner?.communication_id || inner?.id;
   // Aloware deep links need BOTH ids: talk.aloware.io/contacts/{contactId}/communications/{callId}
   const alowareContactId = inner?.contact_id || inner?.communication?.contact_id || inner?.contact?.id || null;
   const callUrl = baseSource === 'Aloware' && alowareCallId ? `aloware:call:${alowareCallId}` : (data?.share_url || data?.url || '');
@@ -267,16 +275,29 @@ async function ingestCall(rawPayload, srcTag) {
       if (r.rows.length) existingRow = r.rows[0];
     }
 
-    // Strategy 2: Match by contact phone + WAIT_TRANSCRIPT
+    // Strategy 2: Match by client name + WAIT_TRANSCRIPT.
+    // ⚠️ REP-GUARDED (fixed Jul 27). This previously matched on client_name ALONE.
+    // Real incident: Andrew and Steven both dialled Frank Gutta within ~1 minute.
+    // Andrew's transcript arrived, Strategy 1 missed (call-ID nesting bug, fixed
+    // above), and this fell through to "most recent WAIT_TRANSCRIPT for that
+    // client" — which was STEVEN's row. Andrew's call was scored onto Steven's
+    // average as a 0. The transcription payload carried the correct user_id the
+    // whole time; it simply was never checked.
+    // Now: when we know the rep, the row MUST belong to them. Better to leave a
+    // transcript unmatched (visible, fixable) than to attach it to the wrong rep
+    // (silent, and it corrupts someone's score).
     if (!existingRow && inner.contact?.phone_number) {
       const cn = detectClientName(data, inner);
-      if (cn) {
-        const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND status='WAIT_TRANSCRIPT' AND client_name=? ORDER BY received_at DESC LIMIT 1", [cn]);
+      if (cn && repName) {
+        const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND status='WAIT_TRANSCRIPT' AND client_name=? AND rep_name=? ORDER BY received_at DESC LIMIT 1", [cn, repName]);
         if (r.rows.length) existingRow = r.rows[0];
+      } else if (cn && !repName) {
+        console.warn(`[Ingest] Strategy 2 skipped for "${cn}" — rep unknown on this event, refusing to match blind (would risk cross-rep attribution).`);
       }
     }
 
-    // Strategy 3: Match any recent WAIT_TRANSCRIPT for same rep
+    // Strategy 3: Match any recent WAIT_TRANSCRIPT for the SAME rep (already
+    // rep-scoped, so it was never able to cross reps — left as-is).
     if (!existingRow && repName) {
       const r = await q("SELECT id, status, transcript_chars, call_duration_sec FROM calls WHERE base_source='Aloware' AND status='WAIT_TRANSCRIPT' AND rep_name=? AND received_at >= to_char(NOW() - INTERVAL '2 hours','YYYY-MM-DD HH24:MI:SS') ORDER BY received_at DESC LIMIT 1", [repName]);
       if (r.rows.length) existingRow = r.rows[0];
