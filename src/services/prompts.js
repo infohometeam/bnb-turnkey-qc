@@ -200,7 +200,7 @@ Return ONLY valid JSON (no markdown). Schema:
   "tough_moments": [{"timestamp":"mm:ss","speaker":"rep|lead","quote":"short verbatim quote from the transcript","why_it_was_tough":"what went wrong / was hard here","what_to_do_instead":"the concrete better move (see TOUGH MOMENTS rules below)"}],
   "confidence": "high|medium|low",
   "confidence_reason": "1 sentence why",
-  "outcome_tag": "DISQUALIFIED|NOT_READY|LONG_TERM_NURTURE|INFO_SEEKER|SHORT_TERM_NURTURE|REDZONE_HOT|HARD_NO|SET|CLOSED_WON|PARTNERSHIP_CALL|NONE",
+  "outcome_tag": "DISQUALIFIED|NOT_READY|LONG_TERM_NURTURE|INFO_SEEKER|SHORT_TERM_NURTURE|REDZONE_HOT|HARD_NO|SET|CLOSED_WON|PARTNERSHIP_CALL|BNB_LEGACY|NONE",
   "outcome_tag_reason": "1 sentence citing the SPECIFIC stated blocker or signal from the transcript",
   "cross_sell_tags": ["HOTEL_TURNKEY_LEAD|BNB_LENDING_LEAD|INVESTOR_ACADEMY_LEAD|SURGE_TAX_LEAD|HOME_TEAM_MGMT_LEAD|REALTY_LEAD"],
   "cross_sell_reason": "1 sentence per tag, or empty if none",
@@ -242,6 +242,25 @@ CRITICAL RULES:
 3. WHEN IN DOUBT, RETURN "NONE". It is far better to score a borderline call than to let a weak call escape scoring.
 4. SET and CLOSED_WON require CONCRETE evidence IN THE TRANSCRIPT ITSELF — a confirmed booking with a date/time for SET, or live payment confirmation for CLOSED_WON. A call that merely sounds positive is not enough. When in doubt, do NOT use these two tags.
 5. PARTNERSHIP_CALL is a judgment about ROLE, not topic — a partnership call can still contain plenty of ordinary Turnkey language (properties, cash flow, the pitch). Do not require the absence of Turnkey vocabulary the way you would for a legal/off-topic call; look at who the caller is speaking FOR.
+
+═══════════════════════════════════════════════
+BNB_LEGACY — a business-structuring consult, not a sales call
+═══════════════════════════════════════════════
+Rise Legacy is the internal BUSINESS-STRUCTURING service (NOT estate/probate law).
+A Legacy call is one where the client is being advised on how to set up entities —
+LLCs, land trusts, holding companies, operating agreements, registered agents,
+asset protection — rather than being sold a Turnkey property.
+THE TEST: is the rep SELLING a property, or EXPLAINING how to structure ownership?
+On a Legacy call the client typically already decided to proceed and is now asking
+"where do I start / what do I need", and the rep answers procedurally. There is no
+discovery, no qualification and no pitch — because none are appropriate. Scoring
+such a call against the sales rubric produces a near-zero for a rep who did exactly
+the right thing.
+IMPORTANT: entity structuring frequently comes up INSIDE a genuine Turnkey sales
+call (a sophisticated investor asking how to hold the property). That is NOT a
+Legacy call — if there is real discovery, qualification or a pitch, and STR/cash-flow
+/property-management content throughout, score it normally. Use BNB_LEGACY only when
+structuring is essentially the ENTIRE call and Turnkey selling is absent.
 
 ═══════════════════════════════════════════════
 PARTNERSHIP_CALL — a different kind of call entirely, watch the ROLE not the topic
