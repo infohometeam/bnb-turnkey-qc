@@ -108,7 +108,7 @@ function estimateDurationFromTranscript(transcript) {
   return maxSec > 0 ? maxSec : null;
 }
 
-function extractMetrics(data, inner, baseSource, repHint, transcript) {
+function extractMetrics(data, inner, baseSource, repHint, transcript, clientHint) {
   let dur = null, agPct = null, coPct = null;
 
   // ── Aloware duration ──
@@ -147,29 +147,66 @@ function extractMetrics(data, inner, baseSource, repHint, transcript) {
       if (times.length) dur = Math.max(...times);
     }
 
-    // Talk % from Fathom word count
+    // Talk % from Fathom word count.
+    //
+    // ⚠️ FIXED Jul 28. This previously seeded the agent set with a HARDCODED list
+    // of rep first names: ['matt','kevin','matt snell']. On call #2838 the client
+    // was "Matt Weiss" — nameMatch() token-matches "matt" against "matt weiss",
+    // so the CLIENT was classified as the agent and the call scored 100% agent
+    // talk / 0% contact. Any call where the lead shares a first name with a rep
+    // was silently mis-measured.
+    //
+    // New order of trust, most authoritative first:
+    //   1. Fathom's own is_external flag (it knows who was on the host side)
+    //   2. Internal email-domain match
+    //   3. Name matching — ONLY when names are unambiguous
+    // If a speaker can't be confidently classified, we return NULL talk% rather
+    // than a confident wrong number, consistent with how this platform treats
+    // every other unreliable signal.
     if (Array.isArray(tarr) && tarr.length) {
       const agents = new Set();
       if (fd?.recorded_by?.name) agents.add(norm(fd.recorded_by.name));
       if (fd?.host?.name) agents.add(norm(fd.host.name));
       if (repHint) agents.add(norm(repHint));
-      ['matt','kevin','matt snell'].forEach(n => agents.add(n));
+
+      // If any candidate agent name ALSO matches the client's name, name-based
+      // matching cannot separate them — the exact #2838 situation.
+      const clientN = norm(clientHint);
+      let namesAmbiguous = false;
+      if (clientN) {
+        for (const a of agents) if (a && nameMatch(clientN, a)) { namesAmbiguous = true; break; }
+      }
+
       const intDom = (fd?.recorded_by?.email_domain || '').toLowerCase();
-      let aw = 0, cw = 0;
+      let aw = 0, cw = 0, unclassified = 0;
       for (const t of tarr) {
         const sp = t.speaker || {};
         const spN = norm(sp.display_name || sp.name);
         const spE = (sp.matched_calendar_invitee_email || sp.email || '').toLowerCase();
         const w = (t.text || '').trim().split(/\s+/).filter(x=>x).length;
         if (!w) continue;
-        let isAg = false;
-        if (spN) for (const a of agents) if (nameMatch(spN, a)) { isAg = true; break; }
-        if (!isAg && intDom && spE && spE.endsWith('@' + intDom)) isAg = true;
-        if (!isAg && sp.is_external === false) isAg = true;
+
+        let isAg = null;
+        if (sp.is_external === false) isAg = true;
+        else if (sp.is_external === true) isAg = false;
+        else if (intDom && spE) isAg = spE.endsWith('@' + intDom);
+        else if (spN && !namesAmbiguous) {
+          isAg = false;
+          for (const a of agents) if (a && nameMatch(spN, a)) { isAg = true; break; }
+        }
+
+        if (isAg === null) { unclassified += w; continue; }
         if (isAg) aw += w; else cw += w;
       }
       const tot = aw + cw;
-      if (tot > 0) { agPct = Math.round(aw / tot * 100); coPct = Math.round(cw / tot * 100); }
+      // Require a confident read on the large majority of speech. If too much is
+      // unclassified (e.g. ambiguous names and no is_external/email signal),
+      // report nothing rather than something wrong.
+      if (tot > 0 && unclassified <= tot * 0.15) {
+        agPct = Math.round(aw / tot * 100); coPct = Math.round(cw / tot * 100);
+      } else if (unclassified > 0) {
+        console.warn(`[Ingest] Talk% not computed — ${unclassified} words unclassifiable (names ambiguous: ${namesAmbiguous}). Reporting null rather than a wrong split.`);
+      }
     }
   }
 
@@ -263,7 +300,7 @@ async function ingestCall(rawPayload, srcTag) {
   const callUrl = baseSource === 'Aloware' && alowareCallId ? `aloware:call:${alowareCallId}` : (data?.share_url || data?.url || '');
   const audioUrl = baseSource === 'Aloware' ? (inner?.direct_recording_url || inner?.communication?.recording_url || '') : (data?.share_url || '');
   // Pass transcript to extractMetrics so it can estimate duration from timestamps
-  const metrics = extractMetrics(data, inner, baseSource, repName, transcript);
+  const metrics = extractMetrics(data, inner, baseSource, repName, transcript, clientName);
 
   // Aloware two-event linking
   if (baseSource === 'Aloware' && inner) {
