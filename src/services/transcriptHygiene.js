@@ -218,6 +218,37 @@ function analyzeTranscriptHygiene(transcript, opts = {}) {
     });
   }
 
+  // ── INCOMPLETE RECORDING START (defect #4, added Jul 29) ─────────
+  // Fathom sometimes begins recording AFTER the call has already started. The
+  // transcript still timestamps from [00:00:00], so nothing in the data reveals
+  // that the opening is missing — it looks like a complete call.
+  //
+  // Found via a real dispute: Kevin flagged call #2835 as a follow-up. The bot
+  // re-read the transcript, found no reference to a prior conversation, and
+  // rejected the dispute — but the transcript's first line is the fragment
+  // "Responses to that.", mid-answer. The opening, which is exactly where a
+  // follow-up would be referenced, was never recorded. The bot was confidently
+  // wrong about evidence it didn't know it was missing.
+  //
+  // DELIBERATELY SENSITIVE. Measured across the corpus: 31 of 332 calls (~9%)
+  // lack any opening marker, and most are genuine mid-conversation starts,
+  // though some are real openings this misses ("Yeah, I can hear you"). That
+  // trade is intentional — the costs are asymmetric. Over-flagging means the bot
+  // is slightly more cautious on a dispute; under-flagging means it confidently
+  // rejects a rep's valid claim using evidence that was never captured.
+  const OPENING_MARKER = /(hello|\bhi\b|\bhey\b|good morning|good afternoon|good evening|how are you|how's it going|thanks for|appreciate you|can you hear|this is |it's \w+ (with|from)|nice to meet|nice to see|doing well|how have you been|joining|jump(ing)? on)/i;
+  const head = String(transcript || '').slice(0, 250);
+  const looksIncompleteStart = parsed.length >= 4 && !OPENING_MARKER.test(head);
+  if (looksIncompleteStart) {
+    flags.push({
+      code: 'INCOMPLETE_START',
+      label: 'Recording may have started mid-conversation',
+      detail: `The transcript opens without any greeting or introduction (first words: "${(parsed[0]?.utter || '').slice(0, 60)}"), which usually means recording began after the call was already underway. Anything said in the opening — including references to a previous conversation — is missing and CANNOT be inferred from this transcript.`,
+      severity: 'medium',
+    });
+    score -= 10;
+  }
+
   // A 1:1 call should have exactly 2 speakers. More than that on a 2-party call
   // is a diarization split (one person heard as several).
   if (distinctSpeakers > 3) {
@@ -242,7 +273,7 @@ function analyzeTranscriptHygiene(transcript, opts = {}) {
 
   return {
     score, grade, isDialIn, suppressTalkRatio, flags, warning,
-    metrics: { labeledLines, distinctSpeakers, crossAttributed, echoAdjacent, phoneLabels, misattributedTurns, selfAnsweredQuestions, orphanBackchannels, source },
+    metrics: { labeledLines, distinctSpeakers, crossAttributed, echoAdjacent, phoneLabels, misattributedTurns, selfAnsweredQuestions, orphanBackchannels, looksIncompleteStart, source },
   };
 }
 
