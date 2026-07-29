@@ -3254,7 +3254,12 @@ router.post('/calls/:id/comments', express.json(), async (req, res) => {
 
 async function notifyCommentToSlack({ callId, author, kind, body, dispute }) {
   const { postToSlack } = require('../services/slackService');
-  const channel = process.env.SLACK_NOTES_CHANNEL || process.env.SLACK_DIGEST_CHANNEL;
+  // Notes/disputes/review-requests go to the ACTIVITY channel, not the digest one
+  // (Francis, Jul 29). The digest channel is for the scheduled daily report Sam
+  // reads; per-note chatter belongs with the other activity signals. Falls back
+  // to nothing rather than to the digest channel — posting to the wrong place is
+  // worse than not posting, since it would be noise in Sam's report feed.
+  const channel = process.env.SLACK_NOTES_CHANNEL || process.env.SLACK_ACTIVITY_CHANNEL;
   if (!channel) return;
   const c = (await q('SELECT rep_name, client_name, overall_score_adj FROM calls WHERE id=?', [callId])).rows[0] || {};
   const base = process.env.PUBLIC_BASE_URL || '';
