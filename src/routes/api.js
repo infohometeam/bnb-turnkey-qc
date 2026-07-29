@@ -3057,14 +3057,33 @@ async function handleDisputeReview(callId, commentId, repName, noteText) {
 
   const { buildDisputeReviewPrompt } = require('../services/prompts');
   const { callAIJson } = require('../services/ai');
-  const prompt = buildDisputeReviewPrompt(call.transcript, noteText, repName);
+
+  // Tell the reviewer when the transcript is known to be incomplete. Without
+  // this, "I can't find it" gets reported as "it didn't happen" — which is
+  // exactly how a valid dispute got rejected on call #2835 (Fathom began
+  // recording mid-conversation, so the opening where a follow-up would be
+  // referenced was never captured).
+  let transcriptWarning = null;
+  try {
+    const { analyzeTranscriptHygiene } = require('../services/transcriptHygiene');
+    const hy = analyzeTranscriptHygiene(call.transcript, { source: call.base_source });
+    const gaps = (hy.flags || []).filter(f => ['INCOMPLETE_START', 'MISATTRIBUTION', 'ECHO'].includes(f.code));
+    if (gaps.length) transcriptWarning = gaps.map(f => `- ${f.label}: ${f.detail}`).join('\n');
+  } catch (e) { console.error('[Dispute] hygiene check failed, continuing without warning:', e.message); }
+
+  const prompt = buildDisputeReviewPrompt(call.transcript, noteText, repName, transcriptWarning);
   const { result, usage } = await callAIJson(prompt, { maxTokens: 2000 });
 
   const claims = Array.isArray(result?.claims) ? result.claims : [];
   const anySupported = claims.some(c => c && c.supported === true);
+  const anyInconclusive = claims.some(c => c && c.inconclusive === true);
+  // An inconclusive verdict must NOT be reported to the rep as a rejection, and
+  // must NOT silently disappear — it goes to a human instead. Never auto-rescore
+  // on inconclusive: that would let an unverifiable claim move a score.
   const replyText = result?.reply_text ||
     (anySupported ? 'Re-review found support for at least one claim — rescoring this call now.'
-                  : "Re-reviewed the transcript and couldn't find support for the claim made. Score stands.");
+     : anyInconclusive ? "Part of this recording is missing, so the transcript can't confirm or rule out what you described. The score is unchanged for now and this has been flagged for a human to review — you don't need to do anything else."
+     : "Re-reviewed the transcript and couldn't find support for the claim made. Score stands.");
 
   await q(
     `INSERT INTO dispute_reviews (call_id, comment_id, rep_name, note_text, claims_json, any_supported, score_before, rescore_triggered, model_used, created_at)
