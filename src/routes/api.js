@@ -137,7 +137,7 @@ router.get('/calls/:id', async (req, res) => {
       }
     }
     // Call mechanics — computed live from the transcript (no stored columns needed).
-    call.mechanics = computeCallMechanics(call.transcript, call.rep_name, call.call_duration_sec, call.transcript_quality);
+    call.mechanics = computeCallMechanics(call.transcript, call.rep_name, call.call_duration_sec, call.transcript_quality, call.client_name);
     // Habit tie-in: which of THIS call's issues are part of a wider pattern for the rep.
     try {
       if (call.status === 'SCORED' && call.rep_name && call.rep_name !== 'Unknown Setter') {
@@ -195,13 +195,22 @@ const DIRECTIVE_RE = /\b(you should|you need to|you have to|you must|trust me|i'
 // Detection only: whether the rep responded well is a judgment call for the AI layer.
 const ALT_INVESTMENT_RE = /\b(stock market|the market|other market|another market|real estate elsewhere|another rental|other rental|crypto(?:currency)?|401\(?k\)?|mutual fund|index fund|other investment|different market|competitor|another company|other program|another program|other company|day ?trad(?:e|ing|er)|algo(?:rithmic)? trad(?:e|ing|er)|ai trad(?:e|ing|er)s?|forex|reit|precious metals?|gold|bonds?|annuit(?:y|ies)|other business|another business)\b/gi;
 
-function computeCallMechanics(transcript, repName, durationSec, quality) {
+function computeCallMechanics(transcript, repName, durationSec, quality, clientName) {
   if (!transcript || quality === 'degraded') return null;
   const repFirst = (repName || '').split(/\s+/)[0].toLowerCase();
+  // ⚠️ Guard against a rep and lead sharing a first name (call #2838: rep "Matt",
+  // client "Matt Weiss" — substring matching classified BOTH as the rep and
+  // produced 100% agent talk). When the client's name contains the rep's first
+  // name, name matching can't separate them, so we fall back to explicit
+  // AGENT/CONTACT role labels only and return null if the transcript doesn't
+  // carry them — no number beats a wrong number.
+  const clientLower = (clientName || '').toLowerCase();
+  const nameAmbiguous = !!(repFirst && clientLower.includes(repFirst));
   const isRep = (label) => {
     const l = (label || '').toLowerCase();
     if (/^agent\b/.test(l) || l === 'rep' || l === 'salesperson') return true;
     if (/^contact\b/.test(l) || l === 'customer' || l === 'prospect' || l === 'client') return false;
+    if (nameAmbiguous) return null;   // can't tell these two apart by name
     return !!(repFirst && l.includes(repFirst));
   };
   const wc = (s) => (String(s).trim().match(/\S+/g) || []).length;
@@ -211,9 +220,15 @@ function computeCallMechanics(transcript, repName, durationSec, quality) {
     if (m) turns.push({ rep: isRep(m[1].trim()), text: m[2] || '' });
   }
   if (turns.length < 4) return null;
+  // If the rep/lead names are ambiguous and the transcript has no explicit
+  // AGENT/CONTACT labels, isRep() returns null. Counting those as "lead" would
+  // just move the error rather than fix it — so bail out and show nothing.
+  const unknownTurns = turns.filter(t => t.rep === null).length;
+  if (unknownTurns > turns.length * 0.15) return null;
   let repWords = 0, leadWords = 0, repQ = 0, leadQ = 0, longestRep = 0, switches = 0, prev = null;
   let openQ = 0, closedQ = 0, otherQ = 0, directive = 0, altInvestment = 0;
   for (const t of turns) {
+    if (t.rep === null) continue;
     const w = wc(t.text), qm = (t.text.match(/\?/g) || []).length;
     if (t.rep) {
       repWords += w; repQ += qm; if (w > longestRep) longestRep = w;
