@@ -269,7 +269,7 @@ function analyzeTranscriptHygiene(transcript, opts = {}) {
   // the words are real, they're just credited to the wrong person.
   const suppressTalkRatio = isDialIn || crossAttributed >= 3 || misattributedTurns >= MISATTR_MAJOR;
 
-  const warning = grade === 'clean' ? null : buildWarning({ flags, isDialIn, crossAttributed, misattributedTurns, suppressTalkRatio });
+  const warning = grade === 'clean' ? null : buildWarning({ flags, isDialIn, crossAttributed, misattributedTurns, looksIncompleteStart, suppressTalkRatio });
 
   return {
     score, grade, isDialIn, suppressTalkRatio, flags, warning,
@@ -278,10 +278,11 @@ function analyzeTranscriptHygiene(transcript, opts = {}) {
 }
 
 // The block injected into the QC prompt so the scorer compensates for bad labels.
-function buildWarning({ flags, isDialIn, crossAttributed, misattributedTurns, suppressTalkRatio }) {
+function buildWarning({ flags, isDialIn, crossAttributed, misattributedTurns, looksIncompleteStart, suppressTalkRatio }) {
   const bullets = [];
   if (isDialIn) bullets.push('- Speaker labels are partially SCRAMBLED: lines attributed to the rep may belong to the lead and vice-versa. This was a phone dial-in.');
   if (crossAttributed >= 3) bullets.push('- Some utterances are ECHOED (duplicated under BOTH speakers). Treat a repeated line as ONE utterance, not two.');
+  if (looksIncompleteStart) bullets.push('- The recording appears to START MID-CONVERSATION (no greeting or introduction). Whatever was said before recording began is PERMANENTLY MISSING. Do NOT conclude that something did not happen merely because it is absent here \u2014 in particular, do not rule out a prior relationship, an earlier call, or context set in the opening.');
   if (misattributedTurns >= MISATTR_MAJOR) bullets.push('- Rapid back-and-forth has been COLLAPSED ONTO ONE SPEAKER: where you see the same person ask a question and immediately answer it in a short line, the answer almost certainly belongs to the OTHER party. Read those exchanges as a dialogue, not a monologue.');
   if (!bullets.length) bullets.push('- Diarization on this transcript is imperfect; speaker labels may be unreliable.');
 
@@ -295,7 +296,7 @@ function buildWarning({ flags, isDialIn, crossAttributed, misattributedTurns, su
     '- Attribute each line to the rep or the lead by CONTENT and conversational logic, NOT by the printed label. (A structured sales pitch, discovery question, or price drop is the REP. A personal financial situation, an objection, or "let me think about it" is the LEAD.)',
   ];
   if (suppressTalkRatio) lines.push('- IGNORE talk-ratio / talk-balance entirely on this call — the per-speaker word counts are derived from the bad labels and are meaningless here. Do not reward or penalize talk balance.');
-  lines.push('- Score the SUBSTANCE (discovery depth, qualification, objection handling, close) which is still readable despite the labels. If a stretch is genuinely unintelligible due to the artifacts, say so in coaching_notes and score conservatively on what IS clear.');
+  lines.push('- Score the SUBSTANCE (discovery depth, qualification, objection handling, close) which is still readable despite the labels.\n- \u26a0\ufe0f DO NOT describe this transcript as \"clear\", \"complete\", or its artifacts as \"minimal\" in your confidence note or summary. These defects were detected deterministically and are real. If your confidence note contradicts this warning, the note is wrong. State plainly which parts you could not read reliably. If a stretch is genuinely unintelligible due to the artifacts, say so in coaching_notes and score conservatively on what IS clear.');
   lines.push('');
   return lines.join('\n');
 }
