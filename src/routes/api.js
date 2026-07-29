@@ -3095,6 +3095,88 @@ const REVIEW_REASONS = {
   other:     'Other (see note)',
 };
 
+// ─── Invariant checks (Jul 29) ───────────────────────────────────────────────
+// Automated detection of impossible/contradictory states, so data bugs surface
+// on their own instead of being discovered when a rep complains. Every check
+// here was derived from a REAL bug found this month, and each is calibrated to
+// return zero on the current (clean) corpus — a check that fires constantly is
+// noise, not a signal.
+router.get('/health/invariants', async (req, res) => {
+  try {
+    const checks = [];
+    const add = (key, label, why, rows) => checks.push({
+      key, label, why, count: rows.length, call_ids: rows.map(r => r.id).slice(0, 25), sample: rows.slice(0, 5),
+    });
+
+    // 1. Transcript truncation — the original bug: model scored on a fraction of the call.
+    add('truncated_transcript', 'Model saw less than the full transcript',
+      'Scoring was based on partial input. This is what caused calls to be scored on as little as 12% of the conversation.',
+      (await q(`SELECT id, rep_name, transcript_chars, LENGTH(transcript_slice) AS sent
+                FROM calls WHERE status='SCORED' AND transcript_slice IS NOT NULL
+                  AND transcript_chars IS NOT NULL AND LENGTH(transcript_slice) < transcript_chars
+                ORDER BY id DESC LIMIT 50`)).rows);
+
+    // 2. Talk ratio at an impossible extreme — both parties spoke, by definition.
+    add('talk_ratio_extreme', 'Talk ratio is 0% or 100%',
+      'A two-party call cannot be one-sided. Caused previously by a rep and lead sharing a first name.',
+      (await q(`SELECT id, rep_name, client_name, agent_talk_pct, contact_talk_pct
+                FROM calls WHERE status='SCORED'
+                  AND (agent_talk_pct IN (0,100) OR contact_talk_pct IN (0,100))
+                ORDER BY id DESC LIMIT 50`)).rows);
+
+    // 3. Wrong rep — the agent introduces themselves as a DIFFERENT roster rep.
+    // Deliberately requires the spoken name to resolve to another rep on the
+    // roster: transcription mangles names constantly ("Stephen"/"Steve" for
+    // Steven, "Analag" for Anurag), and those must not fire. Validated both
+    // directions: 0 false positives on the clean corpus, and it correctly flags
+    // call #2666 in its pre-fix state ("Andrew" spoken on a Steven-attributed call).
+    add('wrong_rep_suspected', 'Agent introduces themselves as a different rep',
+      'Strong signal the call is attributed to the wrong person — which corrupts two reps averages at once.',
+      (await q(`WITH intro AS (
+                  SELECT c.id, c.rep_name, c.client_name,
+                    (regexp_match(LEFT(c.transcript, 3000),
+                      '(?:[Ii]t''s|[Tt]his is|[Mm]y name is)\\s+([A-Z][a-z]{2,})\\s+(?:with|from|at)\\s+(?:B&B|BNB|B and B|Turnkey|the)'))[1] AS said_name
+                  FROM calls c WHERE c.status='SCORED' AND c.transcript IS NOT NULL)
+                SELECT i.id, i.rep_name, i.client_name, i.said_name, r.name AS resolves_to
+                FROM intro i JOIN rep_roster r
+                  ON lower(split_part(r.name,' ',1)) = lower(i.said_name)
+                 AND lower(split_part(r.name,' ',1)) <> lower(split_part(i.rep_name,' ',1))
+                WHERE i.said_name IS NOT NULL LIMIT 50`)).rows);
+
+    // 4. Internal contradiction in the score itself.
+    add('zero_score_but_beliefs_covered', 'Scored 0 while all 7 beliefs were covered',
+      'Contradictory: a call cannot both cover the full belief ladder and merit a zero. Usually means the rubric did not fit the call type.',
+      (await q(`SELECT id, rep_name, client_name, overall_score_adj
+                FROM calls WHERE status='SCORED' AND jsonb_typeof(pass_fail::jsonb)='object'
+                  AND overall_score_adj = 0 AND pass_fail::jsonb->>'covered_7_beliefs' = 'true'
+                ORDER BY id DESC LIMIT 50`)).rows);
+
+    // 5. Same provider call id on multiple rows — duplicate ingestion.
+    add('duplicate_call_ids', 'Same Aloware call id on more than one call',
+      'Indicates duplicate ingestion or a transcript attached to the wrong row.',
+      (await q(`SELECT MIN(id) AS id, aloware_call_id, COUNT(*) AS rows_sharing_it
+                FROM calls WHERE aloware_call_id IS NOT NULL
+                GROUP BY aloware_call_id HAVING COUNT(*) > 1 LIMIT 50`)).rows);
+
+    // 6. Scored with no duration — usually a metadata pairing failure.
+    add('scored_without_duration', 'Scored but has no call duration',
+      'Duration drives several deductions; a missing value means those were silently skipped.',
+      (await q(`SELECT id, rep_name, client_name, call_duration_sec
+                FROM calls WHERE status='SCORED'
+                  AND (call_duration_sec IS NULL OR call_duration_sec = 0)
+                ORDER BY id DESC LIMIT 50`)).rows);
+
+    const violations = checks.filter(c => c.count > 0);
+    res.json({
+      generated: new Date().toISOString(),
+      healthy: violations.length === 0,
+      total_violations: violations.reduce((s, c) => s + c.count, 0),
+      failing_checks: violations.length,
+      checks,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/review-requests', async (req, res) => {
   try {
     const r = await q(
