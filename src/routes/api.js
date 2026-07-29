@@ -3083,25 +3083,118 @@ async function handleDisputeReview(callId, commentId, repName, noteText) {
   return { any_supported: anySupported, claims, rescore_triggered: anySupported, reply_text: replyText };
 }
 
+// Reasons a rep can give when asking for a call to be reviewed for exclusion.
+// Deliberately a REQUEST, not an action: it lands in Francis's queue and still
+// requires a human to apply the actual tag. A rep must never be able to move
+// their own average — that invariant is the whole trust model of this platform.
+const REVIEW_REASONS = {
+  follow_up: 'Follow-up call — the real pitch happened on an earlier call',
+  legacy:    'Legacy / not a Turnkey conversation',
+  dq:        'Lead was disqualified — not closeable',
+  no_pitch:  'No pitch delivered — call did not reach that stage',
+  other:     'Other (see note)',
+};
+
+router.get('/review-requests', async (req, res) => {
+  try {
+    const r = await q(
+      `SELECT cc.id, cc.call_id, cc.author, cc.body, cc.created_at,
+              c.client_name, c.rep_name, c.overall_score_adj,
+              EXISTS (SELECT 1 FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
+                      WHERE a.call_id=cc.call_id AND a.status='CONFIRMED' AND t.excludes_from_average=true) AS resolved
+       FROM call_comments cc JOIN calls c ON c.id = cc.call_id
+       WHERE cc.comment_type='review_request'
+       ORDER BY cc.created_at DESC LIMIT 200`);
+    const open = r.rows.filter(x => !x.resolved);
+    res.json({ requests: r.rows, open_count: open.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Per-rep upheld rate. Turns a potential gaming vector into accountability data:
+// a rep whose requests consistently hold up has demonstrably good judgment; one
+// whose rarely do is a coaching conversation, not a policing problem.
+router.get('/review-requests/stats', async (req, res) => {
+  try {
+    const r = await q(
+      `SELECT cc.author AS rep,
+              COUNT(*) AS requested,
+              COUNT(*) FILTER (WHERE EXISTS (
+                SELECT 1 FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
+                WHERE a.call_id=cc.call_id AND a.status='CONFIRMED' AND t.excludes_from_average=true)) AS upheld
+       FROM call_comments cc
+       WHERE cc.comment_type='review_request'
+       GROUP BY cc.author ORDER BY requested DESC`);
+    res.json({
+      stats: r.rows.map(x => ({
+        rep: x.rep,
+        requested: Number(x.requested),
+        upheld: Number(x.upheld),
+        upheld_pct: Number(x.requested) ? Math.round(100 * Number(x.upheld) / Number(x.requested)) : null,
+      })),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.post('/calls/:id/comments', express.json(), async (req, res) => {
   try {
-    const { author, author_role, body, comment_type } = req.body || {};
+    const { author, author_role, body, comment_type, review_reason } = req.body || {};
     if (!author || !body) return res.status(400).json({ error: 'author and body required' });
     const callId = req.params.id;
+    const kind = comment_type || 'note';
+    if (kind === 'review_request' && !REVIEW_REASONS[review_reason]) {
+      return res.status(400).json({ error: 'review_reason required', valid: Object.keys(REVIEW_REASONS) });
+    }
     const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    // The structured reason is prepended into the body so it survives in one place
+    // and shows up in the UI without needing a new column.
+    const storedBody = kind === 'review_request' ? `[${REVIEW_REASONS[review_reason]}] ${body}` : body;
     const ins = await q('INSERT INTO call_comments (call_id, author, author_role, body, comment_type, created_at) VALUES (?,?,?,?,?,?)',
-      [callId, author, author_role || '', body, comment_type || 'note', ts]);
+      [callId, author, author_role || '', storedBody, kind, ts]);
     const commentId = ins.lastInsertRowid;
 
     let dispute = null;
-    if (comment_type === 'dispute') {
+    if (kind === 'dispute') {
       try { dispute = await handleDisputeReview(callId, commentId, author, body); }
       catch (dErr) { console.error(`[Dispute] #${callId} review failed: ${dErr.message} — comment saved, review did not run`); dispute = { error: dErr.message }; }
+    }
+
+    // Slack notification. Best-effort and non-blocking: a Slack outage must never
+    // cost someone their note. Bot replies are skipped so a dispute doesn't
+    // notify twice (once for the rep's note, once for the bot's answer).
+    if (author !== 'QC Bot' && kind !== 'reply') {
+      notifyCommentToSlack({ callId, author, kind, body, dispute }).catch(err =>
+        console.error('[Slack] comment notification failed (comment saved):', err.message));
     }
 
     res.json({ ok: true, id: commentId, dispute });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+async function notifyCommentToSlack({ callId, author, kind, body, dispute }) {
+  const { postToSlack } = require('../services/slackService');
+  const channel = process.env.SLACK_NOTES_CHANNEL || process.env.SLACK_DIGEST_CHANNEL;
+  if (!channel) return;
+  const c = (await q('SELECT rep_name, client_name, overall_score_adj FROM calls WHERE id=?', [callId])).rows[0] || {};
+  const base = process.env.PUBLIC_BASE_URL || '';
+  const link = base ? `\n<${base}/#/calls/${callId}|open call →>` : '';
+  const who = `*${author}* on ${c.rep_name || '?'} → ${c.client_name || '?'} (#${callId}, ${c.overall_score_adj ?? '—'}/10)`;
+  const snippet = String(body || '').slice(0, 300);
+
+  let head;
+  if (kind === 'dispute') {
+    const verdict = dispute?.rate_limited ? '_(already disputed — not re-run)_'
+      : dispute?.any_supported === true ? '✅ *bot found support — call is being re-scored*'
+      : dispute?.any_supported === false ? '❌ *bot found no support — score stands*'
+      : '_(review did not complete)_';
+    head = `⚖️ *Score disputed* by ${who}\n>${snippet}\n${verdict}`;
+  } else if (kind === 'review_request') {
+    head = `🚩 *Review requested* by ${who}\n>${snippet}\n_Needs a human decision — nothing changes until someone applies a tag._`;
+  } else {
+    head = `📝 *New note* from ${who}\n>${snippet}`;
+  }
+  await postToSlack({ text: head + link, channel });
+}
+
 router.delete('/comments/:id', requireAdmin, async (req, res) => {
   try { await q('DELETE FROM call_comments WHERE id=?', [req.params.id]); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
