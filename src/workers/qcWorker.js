@@ -485,6 +485,21 @@ async function saveTagSuggestions(callId, result, ts, transcript, role) {
     suggestions.push({ key: missed, reason: result?.missed_opportunity_reason || '' });
   }
 
+  // Follow-up detection (Kevin's suggestion, Jul 29) — deterministic, no AI cost.
+  // Fires only on explicit reconnect language between THIS rep and the lead;
+  // references to the setter's prior call are discounted, since every closer call
+  // follows a setter call. SUGGESTED only, and the tag does not exclude from
+  // average — measured, genuine follow-ups average 6.67 vs 5.70 overall, so they
+  // are strong calls, not ones needing protection.
+  try {
+    const { detectFollowUp } = require('../services/topicDetect');
+    const fu = detectFollowUp(transcript);
+    if (fu.isFollowUp) {
+      suggestions.push({ key: 'FOLLOW_UP_CALL',
+        reason: `Auto-detected: rep and lead reference a prior conversation (${fu.evidence.map(e => `"${e}"`).join(', ')}).${fu.discounted ? ` ${fu.discounted} further match(es) discounted as setter-handoff references.` : ''}` });
+    }
+  } catch (e) { console.error('[QC] follow-up check failed, continuing:', e.message); }
+
   // Deterministic wrong-business-unit check (no AI, no prompt dependency) — catches
   // a call like Kevin's Legacy call the moment it's SCORED, not weeks later when
   // someone happens to notice. SUGGESTED only, same as everything else here; a human
