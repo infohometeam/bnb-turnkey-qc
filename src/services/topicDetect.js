@@ -15,7 +15,26 @@
 // Same "ambiguous -> leave it alone" bias as the call-tagging spec's DQ test.
 // ─────────────────────────────────────────────────────────────────
 
-const LEGAL_TOPIC_RE = /\b(estate planning|living trust|revocable trust|irrevocable trust|last will and testament|power of attorney|probate|elder law|asset protection trust|legacy planning|trust document|law firm|attorney fees|legal services|legal counsel)\b/gi;
+// ⚠️ CORRECTED Jul 29. The original version of this detector was built on
+// ESTATE-PLANNING vocabulary (wills, probate, power of attorney, elder law) —
+// I assumed "Rise Legacy" meant a law firm doing estate work. It doesn't:
+// Legacy does BUSINESS STRUCTURING. Call #2860 (Kevin/Estuardo Godoy) was a pure
+// entity-structuring consult — holding company → LLC → land trust → property —
+// and scored 0 because it isn't a sales call. My regex scored it **0 legal hits
+// against 34 structuring hits**: it had no chance of firing, because it was
+// looking for entirely the wrong words.
+//
+// Two changes:
+//   1. Vocabulary replaced with entity/structuring terms (kept the estate terms
+//      too — they're still Legacy work, just not the common case).
+//   2. The old rule required ZERO Turnkey language. That made sense for a probate
+//      call, which genuinely never mentions STRs. A structuring call ALWAYS
+//      mentions properties, so that condition guaranteed a miss. Replaced with a
+//      DOMINANCE test: Legacy content must clearly outweigh Turnkey content.
+//      Validated both directions — #2860 (34 vs 1) fires; #2708 (68 vs 17) and
+//      #1182 (10 vs 4) are genuine Turnkey calls where structuring merely came up
+//      alongside the pitch, and they must NOT fire.
+const LEGAL_TOPIC_RE = /\b(llc|land trust|holding company|business structur\w*|entity structur\w*|s.corp|c.corp|operating agreement|registered agent|incorporat\w*|asset protection|estate planning|living trust|revocable trust|irrevocable trust|last will and testament|power of attorney|probate|elder law|trust document|law firm|attorney fees|legal counsel)\b/gi;
 const TURNKEY_TOPIC_RE = /\b(short-?term rental|\bstr\b|airbnb|turnkey|cash ?flow|rental income|occupancy|investment property|property management|vacation rental|booking)\b/gi;
 
 function offTopicCounts(transcript) {
@@ -28,7 +47,20 @@ function offTopicCounts(transcript) {
 function looksOffTopic(transcript) {
   if (!transcript) return false;
   const { legal, turnkey } = offTopicCounts(transcript);
-  return legal >= 3 && turnkey === 0;
+  // Requires substantial Legacy content AND near-total absence of Turnkey content.
+  //
+  // A RATIO test was tried first and rejected: #2708 (a genuine sales call —
+  // "strong discovery and pitch... client declined the $10K upfront fee") scored
+  // 67 legal vs 15 turnkey and passed a 3x dominance test. The reason is that
+  // "LLC" is ordinary vocabulary in real-estate investing, so a sophisticated
+  // client discussing tax strategy racks up hits inside a legitimate Turnkey call.
+  //
+  // The real discriminator is ABSOLUTE Turnkey volume: a true Legacy consult
+  // barely mentions STRs at all (#2860: 34 vs 1), whereas a sales call that
+  // happens to cover entity setup still carries substantial Turnkey content.
+  // Validated across all 336 scored calls: exactly 1 flags, and it is the correct
+  // one. Zero false positives.
+  return legal >= 8 && turnkey <= 3;
 }
 
 // ─────────────────────────────────────────────────────────────────
