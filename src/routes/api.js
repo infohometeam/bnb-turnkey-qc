@@ -3185,6 +3185,40 @@ router.get('/health/invariants', async (req, res) => {
                   AND (call_duration_sec IS NULL OR call_duration_sec = 0)
                 ORDER BY id DESC LIMIT 50`)).rows);
 
+    // 7. Short call scored 0 and NOT already excluded — usually means the rubric
+    // didn't fit the call type (Legacy consult, partnership, dropped call), not
+    // that the rep failed. Filtered to un-excluded only: the same query without
+    // that filter returns 17, most already handled, which would be noise.
+    add('short_call_scored_zero', 'Very short call scored 0 and not excluded',
+      'A sub-6-minute call scoring zero is usually a call type the sales rubric does not fit (structuring consult, partnership, dropped line) rather than a genuine failure. Worth a human look before it sits on a rep average.',
+      (await q(`SELECT c.id, c.rep_name, c.client_name, c.overall_score_adj, c.call_duration_sec
+                FROM calls c WHERE c.status='SCORED'
+                  AND c.call_duration_sec IS NOT NULL AND c.call_duration_sec <= 360
+                  AND c.overall_score_adj = 0
+                  AND NOT EXISTS (SELECT 1 FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
+                                  WHERE a.call_id=c.id AND a.status='CONFIRMED' AND t.excludes_from_average=true)
+                ORDER BY c.id DESC LIMIT 50`)).rows);
+
+    // 8. A dispute was REJECTED while the transcript was known to be unreliable.
+    // This encodes Lesson 19 as a standing check. Both rejected disputes to date
+    // (#2835 incomplete recording, #2860 Legacy) turned out to be correct claims —
+    // rejecting on imperfect evidence has a 100% wrong rate so far.
+    add('dispute_rejected_on_bad_transcript', 'Dispute rejected while the transcript was flagged unreliable',
+      'The reviewer told a rep "no evidence found" using a transcript with known defects. "Could not find it" is not "it did not happen" — these should be inconclusive and escalated, never rejected.',
+      (await q(`SELECT d.call_id AS id, d.rep_name, d.note_text, c.transcript_quality
+                FROM dispute_reviews d JOIN calls c ON c.id = d.call_id
+                WHERE d.any_supported = false AND c.transcript_quality IS DISTINCT FROM 'clean'
+                ORDER BY d.created_at DESC LIMIT 50`)).rows);
+
+    // 9. The model's own summary contradicts the deterministic hygiene finding.
+    add('summary_contradicts_hygiene', 'Scoring summary calls a flagged transcript clean',
+      'Hygiene detection found real defects but the model described the transcript as clear/complete. The deterministic finding is authoritative; a summary that contradicts it will mislead whoever reads the call.',
+      (await q(`SELECT id, rep_name, client_name, transcript_quality
+                FROM calls WHERE status='SCORED'
+                  AND transcript_quality IN ('degraded','minor')
+                  AND quick_summary ~* '(transcript is (clear|clean|complete)|artifacts are minimal|diarization[^.]{0,30}minimal)'
+                ORDER BY id DESC LIMIT 50`)).rows);
+
     const violations = checks.filter(c => c.count > 0);
     res.json({
       generated: new Date().toISOString(),
