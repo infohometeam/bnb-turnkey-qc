@@ -3275,6 +3275,149 @@ router.post('/import/daily-metrics', requireAdmin, express.text({ limit: '10mb',
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Match closed deals back to the calls that produced them.
+//
+// Priority: email (100% coverage on the deals side) → normalised phone (96%) →
+// exact name (weak, recorded as such so it can be excluded from any analysis
+// needing precision). match_method is always stored — a name match and an email
+// match are not the same evidence and must never be silently treated alike.
+//
+// A deal only links to calls PRECEDING its close date, within a window. Without
+// that, a repeat customer's later calls would be credited to an earlier deal.
+// ── Process vs Outcome timeline ──────────────────────────────────────────────
+// The view that answers "what changed?". Puts QC process metrics (how the calls
+// were run) next to tracker outcomes (what they produced) on one monthly axis.
+//
+// The two halves are INDEPENDENT aggregates — this deliberately does NOT depend
+// on deal↔call matching working well, so it stays trustworthy even at a low
+// match rate. Outcomes come from `deals` (authoritative, one row per real deal),
+// funnel volume from `daily_metrics` (rep-reported EOD).
+router.get('/analytics/process-vs-outcome', async (req, res) => {
+  try {
+    const role = (req.query.role || '').trim();          // '', 'Closer', 'Setter'
+    const roleClause = role ? `AND role = '${role.replace(/'/g, "''")}'` : '';
+
+    // PROCESS — from QC scoring. Percentages are of scored calls in that month.
+    const process = (await q(`
+      SELECT substring(received_at,1,7) AS month,
+             COUNT(*) AS scored_calls,
+             ROUND(AVG(overall_score)::numeric,2) AS avg_raw_score,
+             ROUND(AVG(overall_score_adj)::numeric,2) AS avg_score,
+             ROUND(100.0*COUNT(*) FILTER (WHERE pass_fail::jsonb->>'has_discovery'='true')/NULLIF(COUNT(*),0)) AS pct_discovery,
+             ROUND(100.0*COUNT(*) FILTER (WHERE pass_fail::jsonb->>'financial_qualification'='true')/NULLIF(COUNT(*),0)) AS pct_financially_qualified,
+             ROUND(100.0*COUNT(*) FILTER (WHERE pass_fail::jsonb->>'handled_objections'='true')/NULLIF(COUNT(*),0)) AS pct_objections_handled,
+             ROUND(100.0*COUNT(*) FILTER (WHERE pass_fail::jsonb->>'explained_offer'='true')/NULLIF(COUNT(*),0)) AS pct_offer_explained,
+             ROUND(100.0*COUNT(*) FILTER (WHERE pass_fail::jsonb->>'clear_next_step'='true')/NULLIF(COUNT(*),0)) AS pct_clear_next_step
+      FROM calls
+      WHERE status='SCORED' AND jsonb_typeof(pass_fail::jsonb)='object' ${roleClause}
+        AND NOT EXISTS (SELECT 1 FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
+                        WHERE a.call_id=calls.id AND a.status='CONFIRMED' AND t.excludes_from_average=true)
+      GROUP BY month ORDER BY month`)).rows;
+
+    // OUTCOME — authoritative closes and revenue.
+    const outcome = (await q(`
+      SELECT substring(close_date,1,7) AS month,
+             COUNT(*) AS closes,
+             ROUND(SUM(revenue)::numeric) AS revenue,
+             ROUND(SUM(collected)::numeric) AS collected
+      FROM deals WHERE close_date IS NOT NULL
+      GROUP BY month ORDER BY month`)).rows;
+
+    // FUNNEL — rep-reported EOD volume.
+    const funnel = (await q(`
+      SELECT substring(eod_date,1,7) AS month,
+             SUM(dials) AS dials, SUM(sets) AS sets,
+             SUM(live_calls) AS live_calls, SUM(offers) AS offers,
+             CASE WHEN SUM(live_calls) > 0
+                  THEN ROUND(100.0*SUM(offers)/SUM(live_calls)) END AS offer_pct
+      FROM daily_metrics GROUP BY month ORDER BY month`)).rows;
+
+    // Merge onto one axis so the frontend gets a single ready-to-plot series.
+    const months = [...new Set([...process, ...outcome, ...funnel].map(r => r.month))].sort();
+    const byMonth = (arr) => Object.fromEntries(arr.map(r => [r.month, r]));
+    const P = byMonth(process), O = byMonth(outcome), F = byMonth(funnel);
+
+    const timeline = months.map(m => ({
+      month: m,
+      process: P[m] ? { ...P[m], month: undefined } : null,
+      outcome: O[m] ? { ...O[m], month: undefined } : null,
+      funnel:  F[m] ? { ...F[m], month: undefined } : null,
+    }));
+
+    // State plainly what each half can and cannot support, so the numbers are not
+    // over-read. QC history starts July; the Jun→Jul close drop predates it.
+    const qcMonths = process.map(r => r.month);
+    res.json({
+      generated: new Date().toISOString(),
+      role: role || 'all',
+      timeline,
+      coverage: {
+        qc_data_from: qcMonths[0] || null,
+        outcome_data_from: outcome[0]?.month || null,
+        funnel_data_from: funnel[0]?.month || null,
+      },
+      caveats: [
+        'Process and outcome are independent aggregates, not matched per-call — a month showing both does not establish that these calls produced those deals.',
+        'Outcome months are by CLOSE date; the calls that produced a close often happened weeks earlier.',
+        'The current month is partial — compare rates, not totals.',
+      ],
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/deals/match', requireAdmin, express.json(), async (req, res) => {
+  try {
+    const windowDays = Number(req.body?.window_days) || 120;
+    const dry = req.body?.dry_run === true;
+
+    // Reset only bot-made matches; never clobber a manual one.
+    if (!dry) await q(`UPDATE calls SET deal_id=NULL, deal_match_method=NULL
+                       WHERE deal_match_method IS DISTINCT FROM 'manual'`);
+
+    // Ordered weakest-last so a stronger method wins: each pass only fills rows
+    // still unmatched.
+    const passes = [
+      { method: 'email', on: `lower(c.contact_email) = lower(d.email) AND c.contact_email IS NOT NULL AND d.email IS NOT NULL` },
+      { method: 'phone', on: `c.contact_phone_norm = d.phone_norm AND c.contact_phone_norm IS NOT NULL AND d.phone_norm IS NOT NULL` },
+      { method: 'name',  on: `lower(btrim(c.client_name)) = lower(btrim(d.client_name)) AND length(btrim(c.client_name)) >= 5` },
+    ];
+
+    const results = {};
+    for (const p of passes) {
+      const sql = `
+        WITH best AS (
+          SELECT DISTINCT ON (c.id) c.id AS call_id, d.id AS deal_id
+          FROM calls c JOIN deals d ON ${p.on}
+          WHERE c.deal_id IS NULL
+            AND c.received_at::date <= d.close_date::date
+            AND c.received_at::date >= (d.close_date::date - INTERVAL '${windowDays} days')
+          ORDER BY c.id, d.close_date ASC
+        )
+        ${dry ? 'SELECT COUNT(*) AS n FROM best'
+              : `UPDATE calls SET deal_id = best.deal_id, deal_match_method = '${p.method}'
+                 FROM best WHERE calls.id = best.call_id`}`;
+      const r = await q(sql);
+      results[p.method] = dry ? Number(r.rows[0].n) : r.rowCount;
+    }
+
+    const summary = (await q(`
+      SELECT COUNT(*) FILTER (WHERE deal_id IS NOT NULL) AS matched,
+             COUNT(*) FILTER (WHERE deal_id IS NULL) AS unmatched,
+             COUNT(*) AS total_scored
+      FROM calls WHERE status='SCORED'`)).rows[0];
+    const dealsCovered = (await q(`
+      SELECT COUNT(DISTINCT deal_id) AS n FROM calls WHERE deal_id IS NOT NULL`)).rows[0].n;
+    const totalDeals = (await q('SELECT COUNT(*) AS n FROM deals')).rows[0].n;
+
+    res.json({
+      ok: true, dry_run: dry, window_days: windowDays, matched_by: results,
+      scored_calls: { matched: Number(summary.matched), unmatched: Number(summary.unmatched), total: Number(summary.total_scored) },
+      deals: { with_a_matched_call: Number(dealsCovered), total: Number(totalDeals) },
+      note: 'Most deals will have no matching call: QC data starts July, Collections runs from January. Unmatched is expected and is surfaced rather than hidden.',
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/health/invariants', async (req, res) => {
   try {
     const checks = [];
