@@ -286,6 +286,16 @@ async function ingestCall(rawPayload, srcTag) {
 
   const source = resolvedSrcTag ? `${baseSource} (${resolvedSrcTag})` : baseSource;
   const clientName = detectClientName(data, inner);
+
+  // Contact identifiers — captured so a closed deal can later be traced back to
+  // the call that produced it. Verified present in live Aloware payloads (phones
+  // arrive already E.164, e.g. "+19726251400"; email present on most contacts).
+  // Fathom payloads use a different shape, hence the fallbacks.
+  const contactPhone = inner?.contact?.phone_number || inner?.contact?.phone
+    || data?.contact?.phone_number || null;
+  const contactEmail = inner?.contact?.email || data?.contact?.email
+    || inner?.contact?.email_address || null;
+  const contactPhoneNorm = normalizePhone(contactPhone);
   // Aloware nests the call ID DIFFERENTLY per event type, and getting this wrong
   // silently mis-attributes calls to the wrong rep (see the rep guard below):
   //   Recording-Saved      → body.id                     (no communication object)
@@ -388,8 +398,8 @@ async function ingestCall(rawPayload, srcTag) {
   const team = role === 'Setter' ? 'Turnkey - Setters' : role === 'Closer' ? 'Turnkey - Closers' : 'Turnkey';
   const ws = getWeekStart(new Date()); const ts = now();
 
-  const res = await q('INSERT INTO calls (received_at,source,base_source,src_tag,rep_name,rep_id,role,team,client_name,call_url,audio_url,external_call_key,transcript,transcript_chars,call_duration_sec,agent_talk_pct,contact_talk_pct,status,error,weekstart,queued_at,created_at,aloware_contact_id,aloware_call_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-    [ts,source,baseSource,resolvedSrcTag,repName,repId,role,team,clientName,callUrl,audioUrl,extKey,transcript,transcript.length,metrics.durationSec,metrics.agentTalkPct,metrics.contactTalkPct,status,error,ws,ts,ts,alowareContactId ? String(alowareContactId) : null, alowareCallId ? String(alowareCallId) : null]);
+  const res = await q('INSERT INTO calls (received_at,source,base_source,src_tag,rep_name,rep_id,role,team,client_name,call_url,audio_url,external_call_key,transcript,transcript_chars,call_duration_sec,agent_talk_pct,contact_talk_pct,status,error,weekstart,queued_at,created_at,aloware_contact_id,aloware_call_id,contact_phone,contact_email,contact_phone_norm) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    [ts,source,baseSource,resolvedSrcTag,repName,repId,role,team,clientName,callUrl,audioUrl,extKey,transcript,transcript.length,metrics.durationSec,metrics.agentTalkPct,metrics.contactTalkPct,status,error,ws,ts,ts,alowareContactId ? String(alowareContactId) : null, alowareCallId ? String(alowareCallId) : null, contactPhone, contactEmail, contactPhoneNorm]);
 
   return { ok: true, duplicate: false, callId: Number(res.lastInsertRowid), status, message: 'OK' };
 }
@@ -398,6 +408,19 @@ function safeParse(s) { if(!s)return null; try{return JSON.parse(s)}catch(e){} t
 function parseTsSec(ts) { const p=String(ts||'').trim().split(':').map(Number); if(p.some(n=>!isFinite(n)))return null; return p.length===2?p[0]*60+p[1]:p.length===3?p[0]*3600+p[1]*60+p[2]:null; }
 function fin(v) { const n = Number(v); return typeof n === 'number' && isFinite(n) && v !== null && v !== undefined && v !== ''; }
 function norm(s) { return (s||'').toLowerCase().replace(/[^\w\s]/g,' ').replace(/\s+/g,' ').trim(); }
+// Normalise a phone to a comparable key: digits only, US 11-digit leading 1
+// stripped so "+1 (972) 625-1400", "9726251400" and "+19726251400" all match.
+// International numbers (Collections contains "+52 (554) 452-6511") keep their
+// country code, so they compare correctly against each other but never collide
+// with a US number.
+function normalizePhone(raw) {
+  if (!raw) return null;
+  let d = String(raw).replace(/\D/g, '');
+  if (!d) return null;
+  if (d.length === 11 && d.startsWith('1')) d = d.slice(1);
+  return d.length >= 7 ? d : null;
+}
+
 function nameMatch(a,b) { const x=norm(a),y=norm(b); if(!x||!y)return false; if(x===y)return true; for(const xi of x.split(' '))for(const yi of y.split(' '))if(xi.length>=3&&xi===yi)return true; return false; }
 function normUrl(u) { return String(u||'').trim().replace(/#.*$/,'').replace(/\?.*$/,'').replace(/\/+$/,'').toLowerCase(); }
 function getWeekStart(d) { const dt=new Date(d); dt.setDate(dt.getDate()-(dt.getDay()+6)%7); dt.setHours(0,0,0,0); return dt.toISOString().slice(0,10); }
