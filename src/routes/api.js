@@ -3120,6 +3120,161 @@ const REVIEW_REASONS = {
 // here was derived from a REAL bug found this month, and each is calibrated to
 // return zero on the current (clean) corpus — a check that fires constantly is
 // noise, not a signal.
+// ─── Unified Tracker import (Francis, Aug 18) ────────────────────────────────
+// CSV rather than .xlsx deliberately: parsing xlsx needs a new dependency, and
+// this project keeps its dependency list minimal (same reasoning as using Node's
+// built-in crypto for auth instead of a JWT library). Export the sheet to CSV
+// and post the text.
+//
+// Both importers are IDEMPOTENT — re-uploading the same sheet updates rather than
+// duplicates — so the tracker can be re-imported any time without cleanup.
+
+// Minimal RFC-4180-ish CSV parser. Handles quoted fields containing commas,
+// escaped quotes (""), and CRLF. Written inline to avoid a dependency.
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  const src = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (src[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(x => String(x).trim() !== ''));
+}
+
+// Find the header row by looking for an expected column name — the tracker sheets
+// carry title/description rows above the real header, so row 0 is not reliable.
+function findHeader(rows, mustContain) {
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const lower = rows[i].map(c => String(c).trim().toLowerCase());
+    if (mustContain.every(m => lower.includes(m))) return i;
+  }
+  return -1;
+}
+const csvNum = (v) => { const n = Number(String(v ?? '').replace(/[$,\s]/g, '')); return isFinite(n) && String(v ?? '').trim() !== '' ? n : null; };
+const csvDate = (v) => {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+};
+function normPhoneApi(raw) {
+  if (!raw) return null;
+  let d = String(raw).replace(/\D/g, '');
+  if (d.length === 11 && d.startsWith('1')) d = d.slice(1);
+  return d.length >= 7 ? d : null;
+}
+
+// Import closed deals from "Collections - All Deals".
+// This is the AUTHORITATIVE outcome source — one row per real deal, reconciling
+// to money. Deliberately not the EOD self-reported closes, which disagree with it
+// (July: Collections 19, EOD 14, Team Summary 23).
+router.post('/import/deals', requireAdmin, express.text({ limit: '10mb', type: '*/*' }), async (req, res) => {
+  try {
+    const rows = parseCsv(req.body);
+    const h = findHeader(rows, ['close date', 'client', 'closer']);
+    if (h < 0) return res.status(400).json({ error: 'Could not find a header row containing "Close date", "Client" and "Closer". Export the "Collections - All Deals" sheet as CSV.' });
+    const head = rows[h].map(c => String(c).trim().toLowerCase());
+    const col = (name) => head.indexOf(name);
+    const iDate = col('close date'), iClient = col('client'), iCloser = col('closer'),
+          iSetter = col('setter'), iSrc = col('lead source'), iEmail = col('email'),
+          iPhone = col('phone'), iRev = col('revenue'), iColl = col('collected'),
+          iBal = col('balance'), iSplit = col('split pay?');
+
+    const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    let inserted = 0, updated = 0, skipped = 0;
+    const problems = [];
+
+    for (let r = h + 1; r < rows.length; r++) {
+      const cells = rows[r];
+      const closeDate = csvDate(cells[iDate]);
+      const client = String(cells[iClient] ?? '').trim();
+      if (!closeDate || !client) { skipped++; if (problems.length < 10) problems.push({ row: r + 1, why: 'missing close date or client', raw: cells.slice(0, 3) }); continue; }
+
+      const email = String(cells[iEmail] ?? '').trim() || null;
+      const phone = String(cells[iPhone] ?? '').trim() || null;
+      const hash = require('crypto').createHash('md5')
+        .update([closeDate, client, cells[iCloser], cells[iRev], cells[iColl]].join('|')).digest('hex');
+
+      const r2 = await q(
+        `INSERT INTO deals (close_date, client_name, closer_name, setter_name, lead_source,
+                            email, phone, phone_norm, revenue, collected, balance, split_pay,
+                            source_row_hash, imported_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT (source_row_hash) DO UPDATE SET
+           collected=EXCLUDED.collected, balance=EXCLUDED.balance,
+           setter_name=EXCLUDED.setter_name, lead_source=EXCLUDED.lead_source,
+           imported_at=EXCLUDED.imported_at
+         RETURNING (xmax = 0) AS was_insert`,
+        [closeDate, client, String(cells[iCloser] ?? '').trim() || null,
+         String(cells[iSetter] ?? '').trim() || null, String(cells[iSrc] ?? '').trim() || null,
+         email, phone, normPhoneApi(phone),
+         csvNum(cells[iRev]), csvNum(cells[iColl]), csvNum(cells[iBal]),
+         /^y/i.test(String(cells[iSplit] ?? '')), hash, ts]);
+      if (r2.rows?.[0]?.was_insert) inserted++; else updated++;
+    }
+
+    const total = (await q('SELECT COUNT(*) AS n FROM deals')).rows[0].n;
+    res.json({ ok: true, rows_read: rows.length - h - 1, inserted, updated, skipped, problems, deals_in_db: Number(total) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Import EOD daily activity from the "Raw Data" sheet — the funnel VOLUME the QC
+// Bot otherwise has no sight of (dials, sets, live calls, offers). Treated as a
+// rep-reported LEADING indicator, explicitly not the source of truth for closes.
+router.post('/import/daily-metrics', requireAdmin, express.text({ limit: '10mb', type: '*/*' }), async (req, res) => {
+  try {
+    const rows = parseCsv(req.body);
+    const h = findHeader(rows, ['eod_date', 'rep_name', 'role']);
+    if (h < 0) return res.status(400).json({ error: 'Could not find a header row containing "eod_date", "rep_name" and "role". Export the "Raw Data" sheet as CSV.' });
+    const head = rows[h].map(c => String(c).trim().toLowerCase());
+    const col = (n) => head.indexOf(n);
+    const map = {
+      dials: col('setter_total_dials'), convos: col('setter_meaningful_conversations'),
+      sets: col('setter_sets'), discos: col('setter_discos_booked'),
+      sched: col('closer_schedule_calls'), live: col('closer_live_calls'),
+      offers: col('closer_offers'), closes: col('closer_closes'),
+      collected: col('closer_total_collected'), revenue: col('closer_total_revenue'),
+    };
+    const pick = (cells, i) => (i >= 0 ? csvNum(cells[i]) : null);
+    const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    let inserted = 0, updated = 0, skipped = 0;
+
+    for (let r = h + 1; r < rows.length; r++) {
+      const c = rows[r];
+      const d = csvDate(c[col('eod_date')]);
+      const rep = String(c[col('rep_name')] ?? '').trim();
+      const role = String(c[col('role')] ?? '').trim().toLowerCase();
+      if (!d || !rep || !role) { skipped++; continue; }
+      const r2 = await q(
+        `INSERT INTO daily_metrics (eod_date, rep_name, role, dials, meaningful_convos, sets,
+            discos_booked, schedule_calls, live_calls, offers, closes, collected, revenue, imported_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT (eod_date, rep_name, role) DO UPDATE SET
+           dials=EXCLUDED.dials, meaningful_convos=EXCLUDED.meaningful_convos, sets=EXCLUDED.sets,
+           discos_booked=EXCLUDED.discos_booked, schedule_calls=EXCLUDED.schedule_calls,
+           live_calls=EXCLUDED.live_calls, offers=EXCLUDED.offers, closes=EXCLUDED.closes,
+           collected=EXCLUDED.collected, revenue=EXCLUDED.revenue, imported_at=EXCLUDED.imported_at
+         RETURNING (xmax = 0) AS was_insert`,
+        [d, rep, role, pick(c, map.dials), pick(c, map.convos), pick(c, map.sets),
+         pick(c, map.discos), pick(c, map.sched), pick(c, map.live), pick(c, map.offers),
+         pick(c, map.closes), pick(c, map.collected), pick(c, map.revenue), ts]);
+      if (r2.rows?.[0]?.was_insert) inserted++; else updated++;
+    }
+    const total = (await q('SELECT COUNT(*) AS n FROM daily_metrics')).rows[0].n;
+    res.json({ ok: true, rows_read: rows.length - h - 1, inserted, updated, skipped, rows_in_db: Number(total) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/health/invariants', async (req, res) => {
   try {
     const checks = [];
