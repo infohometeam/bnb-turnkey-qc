@@ -500,6 +500,63 @@ async function migrate() {
     model_used text,
     created_at text)`);
 
+  // ── Tracker integration (Francis, Aug 18) ──────────────────────────────
+  // Contact identifiers on calls. Without one of these a closed deal cannot be
+  // traced back to the call that produced it — the QC Bot currently stores only
+  // client_name, which is far too weak to match on ("Rama R", "M G", case drift).
+  // Aloware's webhook already carries contact.phone_number; we simply never kept it.
+  await q(`ALTER TABLE calls ADD COLUMN IF NOT EXISTS contact_phone text`);
+  await q(`ALTER TABLE calls ADD COLUMN IF NOT EXISTS contact_email text`);
+  await q(`ALTER TABLE calls ADD COLUMN IF NOT EXISTS contact_phone_norm text`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_calls_phone_norm ON calls(contact_phone_norm)`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_calls_email ON calls(lower(contact_email))`);
+
+  // Closed deals — the AUTHORITATIVE outcome source, imported from the Unified
+  // Tracker's "Collections - All Deals" sheet (one row per real deal, reconciles
+  // to money). Deliberately NOT the EOD self-reported closes, which disagree:
+  // for July, Collections says 19, EOD says 14, Team Summary says 23.
+  // source_row_hash makes re-importing the sheet idempotent — safe to re-upload
+  // any time without creating duplicates.
+  await q(`CREATE TABLE IF NOT EXISTS deals (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    close_date text,
+    client_name text,
+    closer_name text,
+    setter_name text,
+    lead_source text,
+    email text,
+    phone text,
+    phone_norm text,
+    revenue numeric,
+    collected numeric,
+    balance numeric,
+    split_pay boolean,
+    source_row_hash text UNIQUE,
+    imported_at text)`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_deals_phone_norm ON deals(phone_norm)`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_deals_email ON deals(lower(email))`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_deals_close_date ON deals(close_date)`);
+
+  // EOD daily activity per rep — the funnel VOLUME the QC Bot has no sight of.
+  // The bot knows how well a call went; it has no idea how many dials produced it
+  // or whether an offer was made. Treated as a rep-reported LEADING indicator,
+  // explicitly not the source of truth for closes.
+  await q(`CREATE TABLE IF NOT EXISTS daily_metrics (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    eod_date text NOT NULL,
+    rep_name text NOT NULL,
+    role text NOT NULL,
+    dials integer, meaningful_convos integer, sets integer, discos_booked integer,
+    schedule_calls integer, live_calls integer, offers integer, closes integer,
+    collected numeric, revenue numeric,
+    imported_at text,
+    UNIQUE (eod_date, rep_name, role))`);
+
+  // Link from a call to the deal it produced. match_method records HOW it matched
+  // so weak (name-based) matches can be excluded from any analysis needing precision.
+  await q(`ALTER TABLE calls ADD COLUMN IF NOT EXISTS deal_id bigint`);
+  await q(`ALTER TABLE calls ADD COLUMN IF NOT EXISTS deal_match_method text`);
+
   console.log('[DB] Migration complete ✓ (Postgres)');
 }
 
