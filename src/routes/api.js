@@ -3292,6 +3292,83 @@ router.post('/import/daily-metrics', requireAdmin, express.text({ limit: '10mb',
 // on deal↔call matching working well, so it stays trustworthy even at a low
 // match rate. Outcomes come from `deals` (authoritative, one row per real deal),
 // funnel volume from `daily_metrics` (rep-reported EOD).
+// ── Score → Outcome correlation ──────────────────────────────────────────────
+// "Do higher-scoring calls actually close more?" — the question the whole
+// platform implicitly claims to answer. Unlike the timeline above, this DOES
+// depend on deal↔call matching, so match quality is surfaced on every response.
+//
+// MATURITY FILTER is essential: a call from last week has not had time to close.
+// Without it, recent high-scoring calls would drag the close rate down purely
+// because the clock has not run, making good months look worse than bad ones.
+router.get('/analytics/score-outcome', async (req, res) => {
+  try {
+    const role = (req.query.role || '').trim();
+    // Default 30, not 45. QC scoring history only began Jul 1 2026, so at the time
+    // of writing a 45-day filter left just 11 eligible calls out of 589 — the
+    // "correct" filter made the feature unusable. 30 days yields ~209. Revisit
+    // upward once there is a year of history; the tradeoff is that some 30-day-old
+    // deals genuinely close later and will be counted as not-closed.
+    const maturityDays = Number(req.query.maturity_days) || 30;
+    const strictOnly = req.query.strict === '1';   // exclude weak name-based matches
+    const roleClause = role ? `AND c.role = '${role.replace(/'/g, "''")}'` : '';
+    const matchClause = strictOnly ? `AND (c.deal_match_method IS NULL OR c.deal_match_method IN ('email','phone','manual'))` : '';
+
+    const rows = (await q(`
+      WITH eligible AS (
+        SELECT c.id, c.role, c.overall_score_adj AS score, c.deal_id, c.deal_match_method,
+               d.revenue
+        FROM calls c
+        LEFT JOIN deals d ON d.id = c.deal_id
+        WHERE c.status='SCORED'
+          AND c.overall_score_adj IS NOT NULL
+          AND c.received_at::date <= (CURRENT_DATE - INTERVAL '${maturityDays} days')
+          ${roleClause} ${matchClause}
+          AND NOT EXISTS (SELECT 1 FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
+                          WHERE a.call_id=c.id AND a.status='CONFIRMED' AND t.excludes_from_average=true)
+      )
+      SELECT CASE WHEN score >= 8 THEN 'a. 8-10'
+                  WHEN score >= 6 THEN 'b. 6-7'
+                  WHEN score >= 4 THEN 'c. 4-5'
+                  ELSE 'd. 0-3' END AS score_band,
+             COUNT(*) AS calls,
+             COUNT(*) FILTER (WHERE deal_id IS NOT NULL) AS closed,
+             ROUND(100.0*COUNT(*) FILTER (WHERE deal_id IS NOT NULL)/NULLIF(COUNT(*),0),1) AS close_rate_pct,
+             ROUND(COALESCE(SUM(revenue),0)::numeric) AS revenue
+      FROM eligible GROUP BY score_band ORDER BY score_band`)).rows;
+
+    const cov = (await q(`
+      SELECT COUNT(*) AS scored_total,
+             COUNT(*) FILTER (WHERE deal_id IS NOT NULL) AS matched,
+             COUNT(*) FILTER (WHERE deal_match_method='name') AS weak_name_matches
+      FROM calls WHERE status='SCORED'`)).rows[0];
+
+    const totalCalls = rows.reduce((s, r) => s + Number(r.calls), 0);
+    res.json({
+      generated: new Date().toISOString(),
+      role: role || 'all',
+      maturity_days: maturityDays,
+      strict_matches_only: strictOnly,
+      bands: rows,
+      sample_size: totalCalls,
+      match_coverage: {
+        scored_calls: Number(cov.scored_total),
+        matched_to_a_deal: Number(cov.matched),
+        weak_name_matches: Number(cov.weak_name_matches),
+      },
+      warnings: [
+        ...(totalCalls < 50 ? [`Sample is only ${totalCalls} calls — too small to read a trend. Lower maturity_days or wait for more history.`] : []),
+        ...(Number(cov.matched) === 0 ? ['No calls are matched to any deal yet. Import deals and run POST /deals/match first, or every band will read 0%.'] : []),
+      ],
+      caveats: [
+        'CORRELATION IS NOT CAUSATION. A genuinely strong lead plausibly produces both a better conversation and a closed deal, with call quality causing neither.',
+        `Only calls older than ${maturityDays} days are counted — recent calls have not had time to close.`,
+        'A call with no matched deal is counted as NOT closed. Where match coverage is low this understates close rates across every band equally.',
+        'QC scoring history begins July 2026; deals run from January. Earlier deals have no call to match.',
+      ],
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/analytics/process-vs-outcome', async (req, res) => {
   try {
     const role = (req.query.role || '').trim();          // '', 'Closer', 'Setter'
