@@ -1511,6 +1511,20 @@ router.post('/slack/test-digest', requireAdmin, express.json(), async (req, res)
     res.json(r);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Post the Top 5 / Bottom 5 digest on demand. `date` (YYYY-MM-DD) targets a
+// specific day — useful for backfilling or for testing against a day that
+// actually has scored calls. force=true posts even when the window is empty.
+router.post('/slack/test-topbottom', requireAdmin, express.json(), async (req, res) => {
+  try {
+    const { sendTopBottomDigest } = require('../services/slackService');
+    const r = await sendTopBottomDigest({
+      dateIso: (req.body && req.body.date) || null,
+      force: true,
+    });
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/slack/status', (req, res) => {
   try { const { slackStatus } = require('../services/slackService'); res.json(slackStatus()); }
   catch (err) { res.status(500).json({ error: err.message }); }
