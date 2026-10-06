@@ -112,4 +112,106 @@ function slackStatus() {
   };
 }
 
-module.exports = { postToSlack, sendDailyDigest, postActivity, sendUsageSummary, slackStatus };
+// ─── Top & Bottom 5 calls digest (Francis + Sam, Oct 6) ──────────────────────
+// Built as Sam's PRIMARY surface, not an extra report. Usage data showed he has
+// 634 scored calls and a 458-item review queue, and has never used calibration,
+// comments, 1:1 logging or golden-moment pins. The fix is not another console
+// view — it is bringing ten calls a day to him where he already is.
+//
+// Window: the previous working day. On MONDAY it reaches back to FRIDAY, so the
+// weekend never produces an empty post and Friday's calls are never skipped.
+function previousWorkingDay(now = new Date()) {
+  // Compute in US Eastern so the window matches the cron's timezone.
+  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const d = new Date(et);
+  const dow = et.getDay();                 // 0 Sun … 6 Sat
+  if (dow === 1) d.setDate(d.getDate() - 3);        // Mon → Fri
+  else if (dow === 0) d.setDate(d.getDate() - 2);   // Sun → Fri
+  else d.setDate(d.getDate() - 1);                  // otherwise → yesterday
+  const iso = d.toISOString().slice(0, 10);
+  const label = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  return { iso, label };
+}
+
+// Mention for the top/bottom post. Separate from SLACK_DIGEST_MENTION because
+// this list is built for one person — pinging @channel every morning for a post
+// aimed at Sam trains the whole team to mute it.
+//
+// Accepts: a Slack USER ID (U… / W…) → <@U…>  ·  an already-formatted <@U…>
+//          · 'channel' / 'here'  ·  'none' or unset → no mention.
+//
+// ⚠️ A plain "@sam" does NOT notify anyone in Slack — the API only resolves real
+// member IDs. Get it from the member's profile → ⋮ → Copy member ID.
+function topBottomMention() {
+  const raw = (process.env.SLACK_TOPBOTTOM_MENTION || '').trim();
+  if (!raw || raw.toLowerCase() === 'none') return '';
+  const v = raw.toLowerCase();
+  if (v === 'channel') return '<!channel>\n\n';
+  if (v === 'here') return '<!here>\n\n';
+  if (/^<@[UW][A-Z0-9]+>$/i.test(raw)) return `${raw}\n\n`;       // already formatted
+  if (/^[UW][A-Z0-9]{6,}$/i.test(raw)) return `<@${raw.toUpperCase()}>\n\n`;  // bare member ID
+  console.warn(`[Slack] SLACK_TOPBOTTOM_MENTION="${raw}" is not a Slack member ID — it will appear as plain text and will NOT notify anyone. Use the member ID (U…) instead.`);
+  return `${raw}\n\n`;
+}
+
+async function sendTopBottomDigest({ dateIso = null, force = false } = {}) {
+  const { q } = require('../db');
+  const channel = process.env.SLACK_TOPBOTTOM_CHANNEL || process.env.SLACK_DIGEST_CHANNEL;
+  if (!channel) return { posted: false, reason: 'NO_CHANNEL' };
+
+  const win = dateIso ? { iso: dateIso, label: dateIso } : previousWorkingDay();
+
+  // Calls deliberately EXCLUDED from both lists:
+  //  - anything carrying a confirmed excludes_from_average tag (Disqualified,
+  //    Not Ready, Partnership, Legacy…). Platform principle: a call the lead could
+  //    never have closed must not drag a rep's average — and must certainly not be
+  //    published as one of the day's worst.
+  //  - degraded transcripts, where the score reflects a bad recording rather than
+  //    the rep's work.
+  const rows = (await q(
+    `SELECT id, rep_name, client_name, role, overall_score_adj AS score,
+            ROUND(call_duration_sec/60.0) AS mins, quick_summary
+     FROM calls c
+     WHERE status='SCORED'
+       AND substring(received_at,1,10) = ?
+       AND overall_score_adj IS NOT NULL
+       AND COALESCE(transcript_quality,'clean') <> 'degraded'
+       AND NOT EXISTS (SELECT 1 FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
+                       WHERE a.call_id=c.id AND a.status='CONFIRMED' AND t.excludes_from_average=true)
+     ORDER BY overall_score_adj DESC, call_duration_sec DESC`, [win.iso])).rows;
+
+  if (!rows.length && !force) return { posted: false, reason: 'NO_SCORED_CALLS', window: win.iso };
+
+  const base = process.env.PUBLIC_BASE_URL || '';
+  const link = (c) => base ? `<${base}/#/calls/${c.id}|#${c.id}>` : `#${c.id}`;
+  const line = (c) => `${link(c)} · *${c.rep_name}* → ${c.client_name || 'unknown'} · *${c.score}/10* · ${c.mins}m`;
+
+  // With few calls a "top 5 / bottom 5" split would list the same call twice.
+  // Below 6, show one honest ranked list instead of inventing two.
+  const n = rows.length;
+  let body;
+  if (n === 0) {
+    body = `_No calls were scored on ${win.label}._`;
+  } else if (n < 6) {
+    body = `*All ${n} scored call${n === 1 ? '' : 's'}* (too few for a top/bottom split):\n`
+         + rows.map(c => '• ' + line(c)).join('\n');
+  } else {
+    const top = rows.slice(0, 5);
+    const bottom = rows.slice(-5).reverse();
+    body =
+      `*🏆 Top 5 — worth a listen*\n` + top.map(c => '• ' + line(c)).join('\n') +
+      `\n\n*🎯 Bottom 5 — coaching opportunities*\n` + bottom.map(c => '• ' + line(c)).join('\n');
+  }
+
+  const avg = n ? (rows.reduce((s, c) => s + Number(c.score), 0) / n).toFixed(1) : '—';
+  const text =
+    topBottomMention() +
+    `📞 *QC — ${win.label}*  ·  ${n} call${n === 1 ? '' : 's'} scored  ·  team avg *${avg}/10*\n\n` +
+    body +
+    `\n\n_Calls that couldn't be closed (DQ, not ready, partnership, legacy) and calls with unreliable transcripts are excluded from both lists._`;
+
+  await postToSlack({ text, channel });
+  return { posted: true, window: win.iso, calls: n, channel };
+}
+
+module.exports = { postToSlack, sendDailyDigest, postActivity, sendUsageSummary, slackStatus, sendTopBottomDigest, previousWorkingDay };
