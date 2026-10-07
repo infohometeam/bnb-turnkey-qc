@@ -155,7 +155,7 @@ function topBottomMention() {
 }
 
 async function sendTopBottomDigest({ dateIso = null, force = false } = {}) {
-  const { q } = require('../db');
+  const { q } = require('../../migrations/run');   // same helper api.js uses; there is no src/db.js
   const channel = process.env.SLACK_TOPBOTTOM_CHANNEL || process.env.SLACK_DIGEST_CHANNEL;
   if (!channel) return { posted: false, reason: 'NO_CHANNEL' };
 
