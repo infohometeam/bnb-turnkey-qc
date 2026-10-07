@@ -63,6 +63,25 @@ cron.schedule('0 8 * * *', async () => {
   } catch (e) { console.error('[Slack cron]', e.message); }
 }, { timezone: 'America/New_York' });
 
+// Morning: post the previous working day's Top 5 / Bottom 5 calls at 8:15 AM ET.
+// Sits between the digest (8:00) and the usage summary (8:30) so the three posts
+// arrive in a readable order rather than landing together.
+// Mon–Fri only: on Monday the service itself reaches back to Friday, so a Sat/Sun
+// run would just repost Friday twice.
+cron.schedule('15 8 * * 1-5', async () => {
+  try {
+    const { sendTopBottomDigest } = require('./services/slackService');
+    const r = await sendTopBottomDigest();
+    if (r.posted) console.log(`[Slack] Top/Bottom posted (${r.calls} calls, ${r.window})`);
+    else console.log(`[Slack] Top/Bottom not posted: ${r.reason}`);
+  } catch (e) {
+    // Log the stack, not just the message. A require-path typo here previously
+    // failed silently inside this catch and the digest simply never appeared.
+    console.error('[Slack topbottom cron] FAILED:', e.message);
+    console.error(e.stack);
+  }
+}, { timezone: 'America/New_York' });
+
 // Morning: post yesterday's bot-usage summary to the activity channel at 8:30 AM ET.
 // Skips silently if there was no activity (never posts an empty summary).
 cron.schedule('30 8 * * *', async () => {
