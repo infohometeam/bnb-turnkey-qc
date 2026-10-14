@@ -210,8 +210,19 @@ async function sendTopBottomDigest({ dateIso = null, force = false } = {}) {
     body +
     `\n\n_Calls that couldn't be closed (DQ, not ready, partnership, legacy) and calls with unreliable transcripts are excluded from both lists._`;
 
-  await postToSlack({ text, channel });
-  return { posted: true, window: win.iso, calls: n, channel };
+  // postToSlack RETURNS {ok:false,error} rather than throwing — Slack signals
+  // failure with HTTP 200 and an error body. Ignoring this return value meant the
+  // digest reported success while Slack was rejecting every post.
+  // The usual cause is `not_in_channel`: a bot must be invited to a channel before
+  // it can post, and a newly created channel never has it.
+  const sent = await postToSlack({ text, channel });
+  if (!sent.ok) {
+    console.error(`[Slack] Top/Bottom post REJECTED for channel ${channel}: ${sent.error}` +
+      (String(sent.error || '').includes('not_in_channel')
+        ? ' → invite the bot: type "/invite @<botname>" in that channel.' : ''));
+    return { posted: false, reason: 'SLACK_REJECTED', slack_error: sent.error, channel, window: win.iso, calls: n };
+  }
+  return { posted: true, window: win.iso, calls: n, channel, ts: sent.ts };
 }
 
 module.exports = { postToSlack, sendDailyDigest, postActivity, sendUsageSummary, slackStatus, sendTopBottomDigest, previousWorkingDay };
