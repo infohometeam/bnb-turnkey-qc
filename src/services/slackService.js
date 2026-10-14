@@ -168,17 +168,36 @@ async function sendTopBottomDigest({ dateIso = null, force = false } = {}) {
   //    published as one of the day's worst.
   //  - degraded transcripts, where the score reflects a bad recording rather than
   //    the rep's work.
+  // Restrict to the core selling team. Driven off rep_roster rather than hardcoded
+  // names so it stays correct as people join or leave:
+  //   active = 1          → excludes departed reps
+  //   role IN Setter/Closer → excludes 'Both' accounts (Francis, Tyler), which are
+  //                           admin/hybrid rather than people being QC'd
+  // This also drops "Unknown Setter" and any other unrostered caller, which were
+  // appearing in the digest and are not a person to coach.
+  // SLACK_TOPBOTTOM_REPS (comma-separated names) overrides this entirely if the
+  // team ever needs a different list without a deploy.
+  const repOverride = (process.env.SLACK_TOPBOTTOM_REPS || '')
+    .split(',').map(x => x.trim()).filter(Boolean);
+  const repFilter = repOverride.length
+    ? `AND c.rep_name IN (${repOverride.map(() => '?').join(',')})`
+    : `AND EXISTS (SELECT 1 FROM rep_roster r
+                   WHERE r.name = c.rep_name AND r.active = 1
+                     AND r.role IN ('Setter','Closer'))`;
+
   const rows = (await q(
     `SELECT id, rep_name, client_name, role, overall_score_adj AS score,
             ROUND(call_duration_sec/60.0) AS mins, quick_summary
      FROM calls c
      WHERE status='SCORED'
        AND substring(received_at,1,10) = ?
+       ${repFilter}
        AND overall_score_adj IS NOT NULL
        AND COALESCE(transcript_quality,'clean') <> 'degraded'
        AND NOT EXISTS (SELECT 1 FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
                        WHERE a.call_id=c.id AND a.status='CONFIRMED' AND t.excludes_from_average=true)
-     ORDER BY overall_score_adj DESC, call_duration_sec DESC`, [win.iso])).rows;
+     ORDER BY overall_score_adj DESC, call_duration_sec DESC`,
+    [win.iso, ...repOverride])).rows;
 
   if (!rows.length && !force) return { posted: false, reason: 'NO_SCORED_CALLS', window: win.iso };
 
