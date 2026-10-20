@@ -217,6 +217,35 @@ async function processCall(row) {
   console.log(`[QC] #${row.id} | ${row.rep_name} (${row.role}) | ${txChars}ch | dur:${durSec}s | ag:${agTalk}%`);
   if (!row.transcript || row.transcript.trim().length < 50) throw new Error('NO_TRANSCRIPT: ' + txChars + 'ch');
 
+  // ── Minimum duration gate (Francis, Oct 14) ────────────────────────────────
+  // Skip very short calls BEFORE any AI spend. Placed here deliberately: it is
+  // after duration is resolved (including the estimate-from-timestamps fallback
+  // above) but before classifyCall(), so it saves BOTH the classifier call and
+  // the scoring call.
+  //
+  // Measured across 787 scored calls: every single call under 5 minutes scored
+  // 0.00 — all 2 closer calls and all 36 setter calls, without exception. They
+  // are too short to demonstrate discovery, qualification or objection handling,
+  // so scoring them spends tokens to learn nothing.
+  // Volume: ~5% of calls (1% of closer, 6% of setter), so the saving is modest
+  // but the noise removed from the dashboard and digest is real.
+  //
+  // Env-tunable so the threshold can be changed without a deploy. Set
+  // MIN_SCORE_DURATION_SEC=0 to disable the gate entirely.
+  const minDur = Number(process.env.MIN_SCORE_DURATION_SEC ?? 300);
+  if (minDur > 0 && durSec !== null && durSec < minDur) {
+    const ts0 = now();
+    await q(
+      `UPDATE calls SET status='SKIP_SHORT', processed_at=?, quick_summary=?, error=?,
+              call_duration_sec=? WHERE id=?`,
+      [ts0,
+       `Not scored — call ran ${Math.round(durSec)}s, under the ${minDur}s minimum.`,
+       `SKIP_SHORT: ${Math.round(durSec)}s < ${minDur}s minimum`,
+       durSec, row.id]);
+    console.log(`[QC] #${row.id} SKIP_SHORT (${durSec}s < ${minDur}s) — no AI spend`);
+    return { callId: row.id, score: null, flagged: false, cost: 0, skipped: 'SKIP_SHORT' };
+  }
+
   const engine = process.env.AI_ENGINE || 'gemini';
   if (engine==='gemini' && !process.env.GEMINI_API_KEY) throw new Error('MISSING_GEMINI_API_KEY');
   if (engine==='claude' && !process.env.ANTHROPIC_API_KEY) throw new Error('MISSING_ANTHROPIC_API_KEY');
