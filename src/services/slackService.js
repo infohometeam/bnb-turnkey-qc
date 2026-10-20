@@ -177,6 +177,10 @@ async function sendTopBottomDigest({ dateIso = null, force = false } = {}) {
   // appearing in the digest and are not a person to coach.
   // SLACK_TOPBOTTOM_REPS (comma-separated names) overrides this entirely if the
   // team ever needs a different list without a deploy.
+  // Shares the scoring gate's threshold by default, so the digest and the scorer
+  // never disagree about what counts as a real call.
+  const minCallSec = Number(process.env.SLACK_TOPBOTTOM_MIN_SEC ?? process.env.MIN_SCORE_DURATION_SEC ?? 300);
+
   const repOverride = (process.env.SLACK_TOPBOTTOM_REPS || '')
     .split(',').map(x => x.trim()).filter(Boolean);
   const repFilter = repOverride.length
@@ -193,6 +197,11 @@ async function sendTopBottomDigest({ dateIso = null, force = false } = {}) {
        AND substring(received_at,1,10) = ?
        ${repFilter}
        AND overall_score_adj IS NOT NULL
+       -- Minimum length: short calls are not substantial enough to be worth Sam's
+       -- time either as a model or as a coaching case. Every call under 5 minutes
+       -- in the corpus scored 0.00, so they were filling the bottom-5 list with
+       -- dropped and abandoned calls rather than real coaching opportunities.
+       AND COALESCE(call_duration_sec, 0) >= ${minCallSec}
        AND COALESCE(transcript_quality,'clean') <> 'degraded'
        AND NOT EXISTS (SELECT 1 FROM call_tag_assignments a JOIN call_tags t ON t.key=a.tag_key
                        WHERE a.call_id=c.id AND a.status='CONFIRMED' AND t.excludes_from_average=true)
