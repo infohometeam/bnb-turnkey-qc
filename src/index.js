@@ -63,6 +63,23 @@ cron.schedule('0 8 * * *', async () => {
   } catch (e) { console.error('[Slack cron]', e.message); }
 }, { timezone: 'America/New_York' });
 
+// Nightly: backfill any Fathom meetings the webhooks did not deliver.
+// Runs at 3:05 AM ET, before the morning digests, so anything recovered overnight
+// appears in that day's Top/Bottom post rather than a day late.
+// Safe to run always: ingestCall() dedupes on external_call_key, so already-known
+// meetings are no-ops. With no API keys configured it exits immediately.
+cron.schedule('5 3 * * *', async () => {
+  try {
+    const { pollFathom } = require('./services/fathomPoller');
+    const r = await pollFathom({ days: Number(process.env.FATHOM_POLL_DAYS || 7) });
+    if (!r.ok) console.log(`[FathomPoll] skipped: ${r.reason}`);
+    else console.log(`[FathomPoll] done — recovered ${r.recovered} call(s)`);
+  } catch (e) {
+    console.error('[FathomPoll cron] FAILED:', e.message);
+    console.error(e.stack);
+  }
+}, { timezone: 'America/New_York' });
+
 // Morning: post the previous working day's Top 5 / Bottom 5 calls at 8:15 AM ET.
 // Sits between the digest (8:00) and the usage summary (8:30) so the three posts
 // arrive in a readable order rather than landing together.
