@@ -262,7 +262,11 @@ function isVoicemail(inner, transcript, metrics) {
 function redact(t) { return (t||'').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'[EMAIL]').replace(/\+?\d[\d\s().-]{7,}\d/g,'[PHONE]'); }
 function now() { return new Date().toISOString().replace('T',' ').slice(0,19); }
 
-async function ingestCall(rawPayload, srcTag) {
+// opts.receivedAt — 'YYYY-MM-DD HH:MM:SS' (UTC, same format as now()). Used by the
+// Fathom backfill poller so a recovered call is dated when it HAPPENED, not when
+// we found it. Without this, a Nov 3 call recovered on Nov 20 lands in Nov 20's
+// digest and the wrong week of every trend. Webhooks omit it and get now().
+async function ingestCall(rawPayload, srcTag, opts = {}) {
   const data = safeParse(rawPayload);
   const baseSource = detectSource(data, srcTag);
   const { inner, event } = baseSource === 'Aloware' ? unwrapAloware(data) : { inner: data, event: '' };
@@ -383,6 +387,16 @@ async function ingestCall(rawPayload, srcTag) {
   const sid = baseSource === 'Aloware' ? (alowareCallId || '') : (data?.meeting?.id || data?.id || '');
   const rawKey = [baseSource, resolvedSrcTag, String(sid), normUrl(callUrl), (transcript || '').slice(0, 500)].join('|');
   const extKey = rawKey.replace(/\|/g, '').trim() ? crypto.createHash('sha256').update(rawKey, 'utf8').digest('hex') : '';
+  // Fathom identity check. Fathom payloads carry NO `id` field, so `sid` above is
+  // always '' for them and the hash key leans on the transcript's first 500 chars.
+  // The webhook and the REST API can format the same meeting slightly differently,
+  // which would make the backfill poller re-ingest (and re-score) calls we already
+  // have. share_url (stored as call_url) is unique per recording — verified 298/298
+  // distinct, none empty — and both routes carry it, so it is the identity.
+  if (baseSource === 'Fathom' && callUrl) {
+    const dupF = await q("SELECT id FROM calls WHERE base_source='Fathom' AND call_url=? LIMIT 1", [callUrl]);
+    if (dupF.rows.length) return { ok: true, duplicate: true, callId: Number(dupF.rows[0].id), message: 'DUPLICATE_SKIPPED' };
+  }
   if (extKey) {
     const dup = await q('SELECT id FROM calls WHERE external_call_key=?', [extKey]);
     if (dup.rows.length) return { ok: true, duplicate: true, callId: Number(dup.rows[0].id), message: 'DUPLICATE_SKIPPED' };
@@ -396,10 +410,13 @@ async function ingestCall(rawPayload, srcTag) {
   else if (transcript.trim().length < 120) { status = 'SKIP_SHORT'; error = 'Too short.'; }
 
   const team = role === 'Setter' ? 'Turnkey - Setters' : role === 'Closer' ? 'Turnkey - Closers' : 'Turnkey';
-  const ws = getWeekStart(new Date()); const ts = now();
+  const occurred = opts.receivedAt && !isNaN(new Date(opts.receivedAt.replace(' ', 'T') + 'Z'))
+    ? new Date(opts.receivedAt.replace(' ', 'T') + 'Z') : null;
+  const ws = getWeekStart(occurred || new Date());
+  const ts = occurred ? opts.receivedAt : now();
 
   const res = await q('INSERT INTO calls (received_at,source,base_source,src_tag,rep_name,rep_id,role,team,client_name,call_url,audio_url,external_call_key,transcript,transcript_chars,call_duration_sec,agent_talk_pct,contact_talk_pct,status,error,weekstart,queued_at,created_at,aloware_contact_id,aloware_call_id,contact_phone,contact_email,contact_phone_norm) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-    [ts,source,baseSource,resolvedSrcTag,repName,repId,role,team,clientName,callUrl,audioUrl,extKey,transcript,transcript.length,metrics.durationSec,metrics.agentTalkPct,metrics.contactTalkPct,status,error,ws,ts,ts,alowareContactId ? String(alowareContactId) : null, alowareCallId ? String(alowareCallId) : null, contactPhone, contactEmail, contactPhoneNorm]);
+    [ts,source,baseSource,resolvedSrcTag,repName,repId,role,team,clientName,callUrl,audioUrl,extKey,transcript,transcript.length,metrics.durationSec,metrics.agentTalkPct,metrics.contactTalkPct,status,error,ws,now(),now(),alowareContactId ? String(alowareContactId) : null, alowareCallId ? String(alowareCallId) : null, contactPhone, contactEmail, contactPhoneNorm]);
 
   return { ok: true, duplicate: false, callId: Number(res.lastInsertRowid), status, message: 'OK' };
 }
