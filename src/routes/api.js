@@ -1552,7 +1552,9 @@ router.post('/slack/test-topbottom', requireAdmin, express.json(), async (req, r
 router.post('/fathom/poll', requireAdmin, express.json(), async (req, res) => {
   try {
     const { pollFathom } = require('../services/fathomPoller');
-    res.json(await pollFathom({ days: Number(req.body?.days) || 7 }));
+    // audit:true lists what Fathom has vs what we have, without ingesting or
+    // scoring anything — run this first to see the gap before paying for it.
+    res.json(await pollFathom({ days: Number(req.body?.days) || 7, audit: req.body?.audit === true }));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
