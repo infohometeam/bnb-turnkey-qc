@@ -557,6 +557,10 @@ async function migrate() {
   await q(`ALTER TABLE calls ADD COLUMN IF NOT EXISTS deal_id bigint`);
   await q(`ALTER TABLE calls ADD COLUMN IF NOT EXISTS deal_match_method text`);
 
+  // Fathom identity dedupe looks calls up by call_url (= Fathom share_url) on
+  // every webhook and every backfilled meeting.
+  await q(`CREATE INDEX IF NOT EXISTS idx_calls_fathom_url ON calls(call_url) WHERE base_source='Fathom'`);
+
   console.log('[DB] Migration complete ✓ (Postgres)');
 }
 
